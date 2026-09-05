@@ -329,8 +329,11 @@ export class MmlParser {
   // ---- @ で始まるコマンド ----
 
   private processAt(line: string, pos: number, lineNo: number, tracks: TrackBuilder[]): number {
-    // 長い語から先に判定する
+    // 長い語から先に判定する (@PE / @VE / @FM は mml_reference.md 3.4-3.6 のエイリアス)
     if (startsWithWord(line, pos, 'EP')) return this.processPitchEnvelopeCmd(line, pos + 2, lineNo, tracks);
+    if (startsWithWord(line, pos, 'PE')) return this.processPitchEnvelopeCmd(line, pos + 2, lineNo, tracks);
+    if (startsWithWord(line, pos, 'VE')) return this.processVolumeEnvelopeCmd(line, pos + 2, lineNo, tracks);
+    if (startsWithWord(line, pos, 'FM')) return this.processTone(line, pos + 2, lineNo, tracks);
     if (startsWithWord(line, pos, 'SW')) return this.processSweep(line, pos + 2, lineNo, tracks);
     if (startsWithWord(line, pos, 'wn')) return this.processNoiseWave(line, pos + 2, lineNo, tracks);
     if (startsWithWord(line, pos, 'in')) return this.processNoiseSync(line, pos + 2, lineNo, tracks);
@@ -339,6 +342,11 @@ export class MmlParser {
     if (startsWithWord(line, pos, 'v')) return this.processVolumeEnvelopeCmd(line, pos + 1, lineNo, tracks);
 
     // @<n> : FM 音色指定
+    return this.processTone(line, pos, lineNo, tracks);
+  }
+
+  /** @<n> / @FM<n> : FM 音色指定。 */
+  private processTone(line: string, pos: number, lineNo: number, tracks: TrackBuilder[]): number {
     const read = readUnsigned(line, pos, -1);
     if (read === null) {
       this.diagnostics.push(mmlError(lineNo, '不明な @ コマンドです'));

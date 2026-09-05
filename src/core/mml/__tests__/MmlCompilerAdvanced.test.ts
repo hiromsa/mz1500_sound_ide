@@ -3,8 +3,9 @@
  * (移植元: tests/MzSound.MmlCompiler.Tests/MmlCompilerAdvancedTests.cs / MacroMultiLineTests.cs)
  */
 import { describe, expect, it } from 'vitest';
-import { DiagnosticSeverity } from '../TrackId';
+import { DiagnosticSeverity, type MmlDiagnostic } from '../TrackId';
 import { MmlCompiler } from '../MmlCompiler';
+import { parsePitchEnvelope, parseVolumeEnvelope } from '../MmlCompilerMacros';
 import { getTrackData } from './MmlCompiler.test';
 
 function compile(mml: string) {
@@ -165,5 +166,92 @@ describe('MML macro multi-line', () => {
       'P1 @EP0 c',
     ].join('\n'));
     expect(result.success).toBe(true);
+  });
+});
+
+describe('MML reference compliance (mml_reference.md 4章)', () => {
+  // FM 音色 46 パラメータ (ALG, FB + OP1〜OP4 各 11: AR, D1R, D2R, RR, D1L, TL, KS, MUL, DT1, DT2, AME)
+  const tone46MultiLine = [
+    '  4, 6,',
+    '  31, 12, 0, 15, 3, 24, 0, 1, 0, 0, 0,',
+    '  31, 18, 0, 12, 5, 18, 0, 2, 3, 0, 0,',
+    '  31, 10, 0, 15, 2, 30, 0, 1, 0, 0, 0,',
+    '  31,  8, 0,  8, 4,  0, 0, 1, 0, 0, 0',
+  ].join('\n');
+  const tone46Inline = tone46MultiLine.replace(/\s+/g, ' ').trim();
+
+  it('FM tone @1 = { } multi-line definition (4.3 / TONE エディタ出力形式)', () => {
+    const result = compile(`@1 = {\n  /* E.PIANO 1 */\n${tone46MultiLine}\n}\nF1 @1 c`);
+    expect(result.success).toBe(true);
+    expect((result.musicData as Uint8Array)[20]).toBe(1); // FM 音色数
+  });
+
+  it('FM tone @FM1 = { } definition and @FM1 apply', () => {
+    const result = compile(`@FM1 = { ${tone46Inline} }\nF1 @FM1 c`);
+    expect(result.success).toBe(true);
+    expect((result.musicData as Uint8Array)[20]).toBe(1); // FM 音色数
+  });
+
+  it('volume envelope @VE1 = { } definition and @VE1 apply (4.1)', () => {
+    const result = compile('@VE1 = {15, 14, 13, |, 12, 11, >, 8, 5, 2, 0}\nP1 @VE1 c');
+    expect(result.success).toBe(true);
+    expect((result.musicData as Uint8Array)[14]).toBe(1); // 音量エンベロープ数
+  });
+
+  it('pitch envelope @PE1 = { } definition and @PE1 apply (4.2)', () => {
+    const result = compile('@PE1 = {5, -5, |, 5, -5}\nP1 @PE1 c');
+    expect(result.success).toBe(true);
+    expect((result.musicData as Uint8Array)[17]).toBe(1); // ピッチエンベロープ数
+  });
+
+  it('volume envelope loop | and release > markers are parsed', () => {
+    const diagnostics: MmlDiagnostic[] = [];
+    const env = parseVolumeEnvelope(1, '15, 14, 13, |, 12, 11, >, 8, 5, 2, 0', 1, diagnostics);
+    expect(env).not.toBeNull();
+    expect(env?.loopIndex).toBe(3);
+    expect(env?.releaseIndex).toBe(5);
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it('pitch envelope loop | marker is parsed', () => {
+    const diagnostics: MmlDiagnostic[] = [];
+    const env = parsePitchEnvelope(1, '|, 0, 3, 6', 1, diagnostics);
+    expect(env).not.toBeNull();
+    expect(env?.loopIndex).toBe(0);
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it('obsolete |L / |R markers are invalid elements', () => {
+    const result = compile('@v1 = { 15, |L 12, |R 8 }\nP1 @v1 c');
+    expect(result.success).toBe(false);
+  });
+
+  it('sample main.mml compiles with reference syntax', () => {
+    const mml = [
+      '; MZ-1500 MML Example',
+      '',
+      '#TITLE "Theme of MZ"',
+      '#COMPOSER "User"',
+      '#OPM OFF',
+      '#OCTAVE NORMAL',
+      '',
+      '; FM音色定義 (#OPM ON 時に F1〜F8 トラックで @1 を指定して使用)',
+      '@1 = {',
+      '  4, 6,',
+      '  31, 12, 0, 15, 3, 24, 0, 1, 0, 0, 0,',
+      '  31, 18, 0, 12, 5, 18, 0, 2, 3, 0, 0,',
+      '  31, 10, 0, 15, 2, 30, 0, 1, 0, 0, 0,',
+      '  31,  8, 0,  8, 4,  0, 0, 1, 0, 0, 0',
+      '}',
+      '@v1 = { 15, 14, 13, |, 12, 11, >, 8, 5, 2, 0 }',
+      '@PE1 = { |, 0, 2, 4, 6, 8, 6, 4, 2 }',
+      '',
+      'P1 t120 l8 o4 @v1 @PE1',
+      'P1 c e g > c < g e c r',
+      'P1 L [c d e f g2]2',
+    ].join('\n');
+    const result = compile(mml);
+    expect(result.success).toBe(true);
+    expect(result.diagnostics.filter((d) => d.severity === DiagnosticSeverity.Error)).toHaveLength(0);
   });
 });
