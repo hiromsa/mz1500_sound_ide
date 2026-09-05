@@ -166,62 +166,62 @@ export const mmlThemeData: editor.IStandaloneThemeData = {
   base: 'vs-dark',
   inherit: true,
   rules: [
-    // コメント: オリーブグリーン
-    { token: 'comment', foreground: '6A9955', fontStyle: 'italic' },
+    // コメント: スモーキーなオリーブグレー
+    { token: 'comment', foreground: '667761', fontStyle: 'italic' },
 
-    // ディレクティブ: マゼンタ
-    { token: 'keyword.directive', foreground: 'C586C0', fontStyle: 'bold' },
-    { token: 'directive.value', foreground: '4EC9B0', fontStyle: 'bold' },
-    { token: 'string', foreground: 'CE9178' },
+    // ディレクティブ: ダスティモーヴ / スモーキーパープル
+    { token: 'keyword.directive', foreground: 'A782A9', fontStyle: 'bold' },
+    { token: 'directive.value', foreground: '5FA89B' },
+    { token: 'string', foreground: 'B88572' },
 
-    // トラック指定子: 音源系統ごとに色分け
-    { token: 'track.psg', foreground: '00A8FF', fontStyle: 'bold' },   // DCSG矩形波: スカイブルー (IDEテーマと統一)
-    { token: 'track.noise', foreground: 'FF9E3B', fontStyle: 'bold' }, // DCSGノイズ: オレンジ
-    { token: 'track.beep', foreground: '50FA7B', fontStyle: 'bold' },  // BEEP: ライムグリーン
-    { token: 'track.fm', foreground: 'BD93F9', fontStyle: 'bold' },    // FM音源: バイオレット
+    // トラック指定子: 彩度を抑えたシックな系統色
+    { token: 'track.psg', foreground: '5B9BD5', fontStyle: 'bold' },   // DCSG矩形波: スレートブルー
+    { token: 'track.noise', foreground: 'CD8D5A', fontStyle: 'bold' }, // DCSGノイズ: ダスティオレンジ
+    { token: 'track.beep', foreground: '78B084', fontStyle: 'bold' },  // BEEP: セージグリーン
+    { token: 'track.fm', foreground: '9E86C8', fontStyle: 'bold' },    // FM音源: スモーキーラベンダー
 
-    // 音色・エンベロープマクロ
-    { token: 'macro.fm', foreground: 'FF79C6', fontStyle: 'bold' },    // FM音色: ピンク
-    { token: 'macro.vol', foreground: 'F1FA8C', fontStyle: 'bold' },   // 音量エンベロープ: ゴールド
-    { token: 'macro.pitch', foreground: '50FA7B', fontStyle: 'bold' }, // ピッチエンベロープ/スイープ: ミント
-    { token: 'macro.noise', foreground: 'FF6E6E', fontStyle: 'bold' }, // ノイズ波形/連動: コーラル
+    // 音色・エンベロープマクロ: 淡いトーン
+    { token: 'macro.fm', foreground: 'C97A9E' },    // FM音色: ダスティピンク
+    { token: 'macro.vol', foreground: 'D6C585' },   // 音量エンベロープ: ペールサンドゴールド
+    { token: 'macro.pitch', foreground: '6EB589' }, // ピッチエンベロープ/スイープ: スモーキーミント
+    { token: 'macro.noise', foreground: 'C77373' }, // ノイズ波形/連動: ダスティコーラル
 
-    // 音符 & 休符
-    { token: 'note', foreground: 'E6EDF3', fontStyle: 'bold' },        // 音符: クリアホワイト
-    { token: 'rest', foreground: '85E89D' },                           // 休符: ソフトグリーン/ミント
-    { token: 'note.tie', foreground: 'FF79C6', fontStyle: 'bold' },    // タイ: ピンク
-    { token: 'note.tuplet', foreground: 'FFB86C' },                    // 連符括弧: アンバー
+    // 音符 & 休符: 目に優しい柔らかいトーン
+    { token: 'note', foreground: 'C8D1D9' },                           // 音符: ソフトライトグレー
+    { token: 'rest', foreground: '7E9F95' },                           // 休符: スモーキーブルーグリーン
+    { token: 'note.tie', foreground: 'B87B95' },                       // タイ: ソフトローズ
+    { token: 'note.tuplet', foreground: 'BA9268' },                    // 連符括弧: ダスティアンバー
 
     // オクターブ & 移調
-    { token: 'octave', foreground: '4EC9B0', fontStyle: 'bold' },      // o4: シアン
-    { token: 'octave.step', foreground: '00E5FF', fontStyle: 'bold' }, // < >: ネオンシアン
-    { token: 'transpose', foreground: '79B8FF', fontStyle: 'bold' },   // K, D: スカイブルー
+    { token: 'octave', foreground: '58A497' },                         // o4: ソフトシアン
+    { token: 'octave.step', foreground: '5EA6B5', fontStyle: 'bold' }, // < >: スモーキーアクア
+    { token: 'transpose', foreground: '6C94B8' },                      // K, D: スモーキーアイスブルー
 
     // テンポ・音長・音量・クオンタイズ
-    { token: 'tempo', foreground: 'FF6B8B', fontStyle: 'bold' },       // t, @t: ホットピンク
-    { token: 'length', foreground: '56B6C2' },                         // l: ターコイズ
-    { token: 'volume', foreground: 'E5C07B', fontStyle: 'bold' },      // v: アンバーゴールド
-    { token: 'quantize', foreground: 'C678DD' },                       // q, @q: ラベンダー
+    { token: 'tempo', foreground: 'C47285' },                          // t, @t: ダスティローズ
+    { token: 'length', foreground: '52949C' },                         // l: スレートターコイズ
+    { token: 'volume', foreground: 'C4A76C' },                         // v: ソフトオーカー
+    { token: 'quantize', foreground: 'A57AB5' },                       // q, @q: ミュートラベンダー
 
     // フロー制御・ループ
-    { token: 'loop.global', foreground: 'FFDF5D', fontStyle: 'bold' }, // L: ネオンイエロー
-    { token: 'loop.bracket', foreground: 'FFD700', fontStyle: 'bold' },// [ ]: ゴールド
-    { token: 'macro.loop', foreground: '00E5FF', fontStyle: 'bold' },  // | (マクロ内ループ): ネオンシアン
-    { token: 'macro.release', foreground: 'FF9900', fontStyle: 'bold' },// > (マクロ内リリース): アンバー
-    { token: 'macro.repeat', foreground: 'FF79C6' },                   // 15x4: ピンク
+    { token: 'loop.global', foreground: 'D4B859', fontStyle: 'bold' }, // L: ウォームマスタード
+    { token: 'loop.bracket', foreground: 'C8A858' },                   // [ ]: ソフトゴールド
+    { token: 'macro.loop', foreground: '5EA6B5', fontStyle: 'bold' },  // |: スモーキーシアン
+    { token: 'macro.release', foreground: 'C9864E', fontStyle: 'bold' },// >: ダスティアンバー
+    { token: 'macro.repeat', foreground: 'B87B95' },                   // 15x4: ソフトローズ
 
     // その他
-    { token: 'number', foreground: 'B5CEA8' },
-    { token: 'delimiter', foreground: 'D4D4D4' },
-    { token: 'delimiter.bracket', foreground: 'FFD700' },
+    { token: 'number', foreground: '9AB38F' },                         // 数値: 落ち着いたセージ
+    { token: 'delimiter', foreground: '8E9297' },                      // 区切り: 落ち着いたグレー
+    { token: 'delimiter.bracket', foreground: 'C8A858' },
   ],
   colors: {
     'editor.background': '#1E1E1E',
-    'editor.foreground': '#D4D4D4',
-    'editorCursor.foreground': '#00A8FF',
-    'editor.lineHighlightBackground': '#2A2D32',
-    'editorLineNumber.foreground': '#5A5A5A',
-    'editorLineNumber.activeForeground': '#00A8FF',
+    'editor.foreground': '#C8D1D9',
+    'editorCursor.foreground': '#5B9BD5',
+    'editor.lineHighlightBackground': '#25282E',
+    'editorLineNumber.foreground': '#4F545C',
+    'editorLineNumber.activeForeground': '#8A9DB4',
   },
 };
 
