@@ -5,6 +5,12 @@
 ---
 
 ## 1. 直近の完了作業（最新）
+- **GitHub Pages 公開対応・モックのデプロイ (gh-pages ブランチ方式) ([`vite.config.ts`](./vite.config.ts), [`package.json`](./package.json))**:
+  - `vite.config.ts` に `base: '/mz1500_sound_ide/'` を設定 (GitHub Pages プロジェクトページのサブパス対応)。
+  - `package.json` に `predeploy` (`npm run build`) / `deploy` (`gh-pages -d dist`) スクリプトを追加。**`npm run deploy` 一発でビルド〜gh-pagesブランチ公開まで完結**。
+  - `gh-pages` を devDependency として追加。
+  - **公開URL**: <https://hiromsa.github.io/mz1500_sound_ide/> (動作確認済み: index.html / JS / CSS いずれも 200 OK 配信)
+  - 今後のモック更新手順: 修正後に `npm run deploy` を実行するだけ。
 - **サンプルMMLデータの `mml_reference.md` 準拠修正・旧 `TR` トラック表記の全面排除 ([`src/components/MmlEditor.tsx`](./src/components/MmlEditor.tsx), [`src/utils/mmlCaretParser.ts`](./src/utils/mmlCaretParser.ts), [`src/components/VirtualKeyboard.tsx`](./src/components/VirtualKeyboard.tsx), [`src/App.tsx`](./src/App.tsx), [`scripts/verify-mml-parser.mjs`](./scripts/verify-mml-parser.mjs))**:
   - **サンプルデータの文法修正**:
     - `main.mml`: FM音色定義を `@1 { ... }` から **`@1 = { ... }` (`=` 必須)** に修正し、実パラメータ (ALG/FB/OP1〜OP4) を記載。`TR1` → `P1` トラック、音符は小文字・`t120 l8` 付きのリファレンス実例準拠スタイルに統一。
@@ -386,3 +392,7 @@
 - [x] **ピッチエンベロープエディタ (`PITCH ENV`) のUI実装** (完了: 双極性バーグラフ、ダイナミックレンジ±7〜±48切替、ビブラートプリセット＆生成ツール、Web Audio試聴、MML出力)
 - [ ] **システムコンソールの機能拡張**
   - ログ出力、MMLビルドエラーの詳細表示、折りたたみ・リサイズ
+- [ ] **GitHub Actions による自動デプロイの導入検討**
+  - 現状は `npm run deploy` (gh-pages ブランチ方式) の手動デプロイ。main push 時の自動デプロイ (actions/deploy-pages) への移行候補。
+- [ ] **`<title>` タグの更新**
+  - 現状ビルド出力のタイトルが `temp_vite` のまま → `MZ-1500 Sound IDE` 等への変更候補。
