@@ -9,9 +9,10 @@ import {
   LineChart, 
   Music,
   Settings,
-  Repeat 
+  Repeat,
+  AlertCircle
 } from 'lucide-react';
-import { MmlEditor } from '../view/MmlEditor';
+import { MmlEditor, type BottomTab } from '../view/MmlEditor';
 import { TrackMonitor, type PlaybackMapInfo } from '../view/TrackMonitor';
 import { SettingsPanel } from '../view/SettingsPanel';
 import { SongSetupPanel, type SongMetadata } from '../view/SongSetupPanel';
@@ -182,6 +183,26 @@ function App() {
   // コンパイルエラー・問題一覧 (BUILD / PLAY 実行時にコンパイル結果で更新)
   const [compileErrors, setCompileErrors] = useState<CompileErrorItem[]>([]);
 
+  // エディタ下部パネルのアクティブタブ & 折りたたみ状態
+  const [activeBottomTab, setActiveBottomTab] = useState<BottomTab>('keyboard');
+  const [isBottomCollapsed, setIsBottomCollapsed] = useState<boolean>(false);
+
+  // PLAY失敗時のフィードバックステート (エラー時に一時的に true になり赤色・シェイクアニメーション)
+  const [isPlayFailed, setIsPlayFailed] = useState<boolean>(false);
+  const playFailedTimerRef = useRef<number | null>(null);
+
+  // PLAY失敗演出を発火する (900ms後に自動復帰)
+  const triggerPlayFailed = useCallback(() => {
+    setIsPlayFailed(true);
+    if (playFailedTimerRef.current !== null) {
+      window.clearTimeout(playFailedTimerRef.current);
+    }
+    playFailedTimerRef.current = window.setTimeout(() => {
+      setIsPlayFailed(false);
+      playFailedTimerRef.current = null;
+    }, 900);
+  }, []);
+
   // 楽曲メタデータ・ヘッダー設定 (#TITLE, #COMPOSER, #OCTAVE, #OPM)
   const [songMetadata, setSongMetadata] = useState<SongMetadata>({
     title: 'Theme of MZ',
@@ -225,11 +246,14 @@ function App() {
     return playerRef.current;
   }, [appendLog]);
 
-  // unmount 時に演奏ファサードを破棄する
+  // unmount 時に演奏ファサードとタイマーを破棄する
   useEffect(() => {
     return () => {
       void playerRef.current?.dispose();
       playerRef.current = null;
+      if (playFailedTimerRef.current !== null) {
+        window.clearTimeout(playFailedTimerRef.current);
+      }
     };
   }, []);
 
@@ -246,6 +270,10 @@ function App() {
       appendLog(`[BUILD] FAILED: ${errorCount} error(s). See the PROBLEMS panel.`);
       // エラー詳細 (行・桁・メッセージ) もコンソールへ出力する (上限件数を超えた分は要約)
       formatDiagnosticsAsLogLines(result.diagnostics).forEach(appendLog);
+      // エラー時は PROBLEMS タブをアクティブ化し、折りたたまれていれば展開
+      setActiveBottomTab('problems');
+      setIsBottomCollapsed(false);
+      triggerPlayFailed();
       return;
     }
 
@@ -262,8 +290,9 @@ function App() {
       setIsPlaying(true);
     } catch (err) {
       appendLog(`[AUDIO] ERROR: ${err instanceof Error ? err.message : String(err)}`);
+      triggerPlayFailed();
     }
-  }, [appendLog, ensurePlayer, isLoopEnabled, playbackMode]);
+  }, [appendLog, ensurePlayer, isLoopEnabled, playbackMode, triggerPlayFailed]);
 
   // STOP ハンドラ (停止)
   const handleStop = useCallback(() => {
@@ -314,6 +343,8 @@ function App() {
       const errorCount = result.diagnostics.filter(d => d.severity === DiagnosticSeverity.Error).length;
       appendLog(`[BUILD] FAILED: export aborted (${errorCount} error(s)). See the PROBLEMS panel.`);
       formatDiagnosticsAsLogLines(result.diagnostics).forEach(appendLog);
+      setActiveBottomTab('problems');
+      setIsBottomCollapsed(false);
       return;
     }
 
@@ -425,14 +456,20 @@ function App() {
           <button 
             onClick={handleTogglePlay}
             className={`h-7 px-3.5 rounded text-xs font-semibold border transition-all flex items-center gap-1.5 cursor-pointer shadow-xs ${
-              isPlaying 
-                ? 'bg-[#00A8FF]/25 text-[#00A8FF] border-[#00A8FF] shadow-[0_0_12px_rgba(0,168,255,0.45)] hover:bg-[#00A8FF]/35' 
-                : 'bg-[#383838] hover:bg-[#444444] active:bg-[#505050] text-[#00A8FF] hover:text-[#33BFFF] border-[#484848] hover:border-[#00A8FF]/40'
+              isPlayFailed
+                ? 'bg-red-950/70 text-red-300 border-red-500 shadow-[0_0_12px_rgba(239,68,68,0.5)] animate-shake'
+                : isPlaying 
+                  ? 'bg-[#00A8FF]/25 text-[#00A8FF] border-[#00A8FF] shadow-[0_0_12px_rgba(0,168,255,0.45)] hover:bg-[#00A8FF]/35' 
+                  : 'bg-[#383838] hover:bg-[#444444] active:bg-[#505050] text-[#00A8FF] hover:text-[#33BFFF] border-[#484848] hover:border-[#00A8FF]/40'
             }`}
-            title={isPlaying ? "クリックまたは Ctrl+Enter で停止" : "MMLをビルドして再生 (Ctrl+Enter)"}
+            title={isPlayFailed ? "ビルドまたは再生に失敗しました (PROBLEMS パネルを確認してください)" : isPlaying ? "クリックまたは Ctrl+Enter で停止" : "MMLをビルドして再生 (Ctrl+Enter)"}
           >
-            <Play className={`w-3.5 h-3.5 fill-current ${isPlaying ? 'animate-pulse text-[#00A8FF]' : ''}`} />
-            <span>{isPlaying ? 'STOP / PLAYING' : 'PLAY'}</span>
+            {isPlayFailed ? (
+              <AlertCircle className="w-3.5 h-3.5 text-red-400 shrink-0" />
+            ) : (
+              <Play className={`w-3.5 h-3.5 fill-current ${isPlaying ? 'animate-pulse text-[#00A8FF]' : ''}`} />
+            )}
+            <span>{isPlayFailed ? 'FAILED' : isPlaying ? 'STOP / PLAYING' : 'PLAY'}</span>
           </button>
 
           {/* Transport: STOP */}
@@ -479,6 +516,10 @@ function App() {
             onClearLogs={() => setLogs([])}
             errors={compileErrors}
             onClearErrors={() => setCompileErrors([])}
+            activeBottomTab={activeBottomTab}
+            onChangeBottomTab={setActiveBottomTab}
+            isBottomCollapsed={isBottomCollapsed}
+            onChangeBottomCollapsed={setIsBottomCollapsed}
             onSelectError={(item) => {
               const time = new Date().toLocaleTimeString();
               setLogs(prev => [...prev, `[${time}] [NAVIGATE] Jump to ${item.sourceFile} Ln ${item.line}, Col ${item.column}`]);

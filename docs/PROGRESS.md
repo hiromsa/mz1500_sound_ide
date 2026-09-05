@@ -5,6 +5,28 @@
 ---
 
 ## 1. 直近の完了作業（最新）
+- **PLAYエラー時のPROBLEMSタブ自動選択・PLAYボタン失敗フィードバック・エラー行ジャンプの実装 (`src/index.css`, `src/view/MmlEditor.tsx`, `src/app/App.tsx`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-06):
+  - **背景・ユーザー意図**:
+    - 再生開始時（PLAYボタン押下など）にコンパイルエラーがある場合、下部パネルで `KEYBOARD` や `CONSOLE` タブを開いているとエラーの発生に気付けず、何度PLAYを押しても音が鳴らないような感覚に陥る問題があった。
+    - また、PLAYボタンが失敗したことを視覚的に一瞬で体感できるようにしたいという要望、および `PROBLEMS` タブのエラー行をクリックした際にMMLの該当箇所（Line, Column）を自動選択してほしいという要望に対応。
+  - **変更内容**:
+    - **PLAYボタンの失敗フィードバック (`App.tsx`, `index.css`)**:
+      - `isPlayFailed` state および `triggerPlayFailed` (900msタイマーで自動復帰) を導入。
+      - `src/index.css` に `@keyframes shake` および `.animate-shake` クラスを追加。
+      - エラー発生時は約900ms間、PLAYボタンが赤色背景・赤色ボーダー・赤色テキスト（`bg-red-950/70 text-red-300 border-red-500 shadow-[0_0_12px_rgba(239,68,68,0.5)]`）となり、左右にブルブル揺れるシェイクアニメーションとともに `AlertCircle` アイコンと `FAILED` テキストを表示。
+    - **PROBLEMS タブへの自動アクティブ化 & 自動展開 (`App.tsx`, `MmlEditor.tsx`)**:
+      - `activeBottomTab` および `isBottomCollapsed` を App 側から制御可能に拡張（controlled / uncontrolled 両立設計）。
+      - PLAY または EXPORT 時にコンパイルエラー（または再生開始例外）を検出した場合、現在どのタブを開いていても自動で `PROBLEMS` タブに切り替わり、下部エリアが折りたたまれていた場合は自動展開。
+    - **PROBLEMS エラー行選択時の MML 該当箇所ジャンプ & 選択 (`MmlEditor.tsx`)**:
+      - `handleSelectErrorItem` を実装。エラー行クリック時に、対象ファイルが非アクティブな場合は該当タブへ自動切替。
+      - Monaco Editor のモデルを取得し、該当行・桁を特定して `model.getWordAtPosition` により単語（または該当文字）を `setSelection` で反転選択。
+      - `revealPositionInCenter` でエディタ中央へスクロールし、`focus` でキャレットをフォーカス。
+  - **検証**:
+    - `npm test` 全 **268 合格**。
+    - `npm run lint` エラーゼロ（既存警告 5 のみ）。
+    - `npm run build` 成功。
+    - 組み込みブラウザサブエージェント（`browser_subagent`）により、KEYBOARDタブ選択中のPLAYエラー発生でPROBLEMSタブへ自動切り替え、PLAYボタンの赤色シェイク、およびPROBLEMS行クリックでのMML該当箇所ハイライト・フォーカスを実機描画にて確認完了。
+
 - **MMLエディタ右クリックメニューの「編集」項目を定義行のみ表示に変更 & 複数行 (折り返し) 定義対応 (`src/utils/mmlContextParser.ts`, `src/view/MmlEditor.tsx`, `src/utils/__tests__/mmlContextParser.test.ts` 新設, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-06):
   - **背景**: 右クリックコンテキストメニューの「編集」項目 (`@N を TONE エディタで編集` 等) は、行に `@N` / `@vN` / `@PEN` が含まれていれば**定義・利用を問わず**表示されていた。また `@1 = { ... }` のような複数行 (折り返し) 定義では、ID はヘッダ行 (`@1 = {`) にしかないため、ブロック内の他の行ではメニューが出なかった。
   - **変更内容**:

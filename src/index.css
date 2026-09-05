@@ -44,5 +44,17 @@
   input[type="range"] {
     accent-color: #00A8FF;
   }
+
+  /* エラー発生時のシェイクアニメーション */
+  @keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    20%, 60% { transform: translateX(-4px); }
+    40%, 80% { transform: translateX(4px); }
+  }
+
+  .animate-shake {
+    animation: shake 0.35s ease-in-out;
+  }
 }
+
 

@@ -150,6 +150,14 @@ interface MmlEditorProps {
   onRequestNewTone?: (newId: number) => void;
   onRequestNewVolEnv?: (newId: number) => void;
   onRequestNewPitchEnv?: (newId: number) => void;
+  /** 下部エリアのアクティブタブ (外部制御可能) */
+  activeBottomTab?: BottomTab;
+  /** 下部エリアのアクティブタブ変更コールバック */
+  onChangeBottomTab?: (tab: BottomTab) => void;
+  /** 下部エリアの折りたたみ状態 (外部制御可能) */
+  isBottomCollapsed?: boolean;
+  /** 下部エリアの折りたたみ状態変更コールバック */
+  onChangeBottomCollapsed?: (collapsed: boolean) => void;
   /** MMLスニペットをカーソル位置に挿入するためのエディタインスタンス取得コールバック */
   onEditorMount?: (editorInstance: editor.IStandaloneCodeEditor) => void;
   /** アクティブファイルの MML ソースが変化したときに通知する (BUILD / EXPORT 用) */
@@ -179,6 +187,10 @@ export function MmlEditor({
   onRequestNewTone,
   onRequestNewVolEnv,
   onRequestNewPitchEnv,
+  activeBottomTab: propActiveBottomTab,
+  onChangeBottomTab,
+  isBottomCollapsed: propIsBottomCollapsed,
+  onChangeBottomCollapsed,
   onEditorMount,
   onActiveSourceChange,
 }: MmlEditorProps) {
@@ -188,14 +200,28 @@ export function MmlEditor({
   const [explorerWidth, setExplorerWidth] = useState<number>(240);
   const [isDraggingExplorer, setIsDraggingExplorer] = useState<boolean>(false);
 
-  // 下部エリア タブ化 & 上下リサイズ用ステート (デフォルトで KEYBOARD タブを選択可能に)
-  const [activeBottomTab, setActiveBottomTab] = useState<BottomTab>('keyboard');
+  // 下部エリア タブ化 & 上下リサイズ用ステート (controlled / uncontrolled 両立)
+  const [internalActiveBottomTab, setInternalActiveBottomTab] = useState<BottomTab>('keyboard');
+  const activeBottomTab = propActiveBottomTab ?? internalActiveBottomTab;
+  const setActiveBottomTab = useCallback((tab: BottomTab) => {
+    setInternalActiveBottomTab(tab);
+    onChangeBottomTab?.(tab);
+  }, [onChangeBottomTab]);
+
   const [bottomHeight, setBottomHeight] = useState<number>(180);
   const [isDraggingBottomSplitter, setIsDraggingBottomSplitter] = useState<boolean>(false);
 
   // 下部エリアの折りたたみ (タブバーのみ表示) とコンソールログコピーのフィードバック
-  const [isBottomCollapsed, setIsBottomCollapsed] = useState<boolean>(false);
+  const [internalIsBottomCollapsed, setInternalIsBottomCollapsed] = useState<boolean>(false);
+  const isBottomCollapsed = propIsBottomCollapsed ?? internalIsBottomCollapsed;
+  const setIsBottomCollapsed = useCallback((val: boolean | ((prev: boolean) => boolean)) => {
+    const nextVal = typeof val === 'function' ? val(isBottomCollapsed) : val;
+    setInternalIsBottomCollapsed(nextVal);
+    onChangeBottomCollapsed?.(nextVal);
+  }, [isBottomCollapsed, onChangeBottomCollapsed]);
+
   const [isLogsCopied, setIsLogsCopied] = useState<boolean>(false);
+
 
   // コンソールログ全文をクリップボードへコピーする
   const handleCopyLogs = useCallback((): void => {
@@ -680,7 +706,69 @@ export function MmlEditor({
     setActiveFileId(newId);
   };
 
+  /** PROBLEMS パネルのエラー行選択時: 対象ファイルタブへ切替し、MMLエディタの該当箇所 (Line, Col) を選択・スクロール・フォーカスする */
+  const handleSelectErrorItem = useCallback((item: CompileErrorItem) => {
+    // 1. ファイルが異なる場合は該当ファイルタブへ切り替え
+    const targetFile = files.find(f => f.name === item.sourceFile);
+    const fileSwitched = targetFile != null && targetFile.id !== activeFileId;
+    if (fileSwitched && targetFile) {
+      setActiveFileId(targetFile.id);
+      const parsed = parseSongMetadata(targetFile.content);
+      prevMetadataRef.current = parsed;
+      onChangeSongMetadata(parsed);
+    }
+
+    // 2. Monaco Editor 上で該当箇所を選択・スクロール・フォーカス
+    const applyJump = () => {
+      const ed = monacoEditorRef.current;
+      if (!ed) return;
+      const model = ed.getModel();
+      if (!model) return;
+
+      const lineCount = model.getLineCount();
+      const line = Math.max(1, Math.min(item.line, lineCount));
+      const maxCol = model.getLineMaxColumn(line);
+      const col = Math.max(1, Math.min(item.column, maxCol));
+
+      let startCol = col;
+      let endCol = col;
+
+      // 該当位置の単語または文字を選択範囲として特定
+      const word = model.getWordAtPosition({ lineNumber: line, column: col });
+      if (word && word.startColumn <= col && col <= word.endColumn) {
+        startCol = word.startColumn;
+        endCol = word.endColumn;
+      } else if (col < maxCol) {
+        startCol = col;
+        endCol = col + 1;
+      } else if (maxCol > 1) {
+        startCol = Math.max(1, maxCol - 1);
+        endCol = maxCol;
+      }
+
+      ed.setSelection({
+        startLineNumber: line,
+        startColumn: startCol,
+        endLineNumber: line,
+        endColumn: endCol,
+      });
+      ed.revealPositionInCenter({ lineNumber: line, column: startCol });
+      ed.focus();
+    };
+
+    if (fileSwitched) {
+      // ファイル切り替え時はモデルのバインド完了を待ってから実行
+      window.setTimeout(applyJump, 50);
+    } else {
+      applyJump();
+    }
+
+    // 外部コールバック (App側のログ記録等) も実行
+    onSelectError?.(item);
+  }, [files, activeFileId, onChangeSongMetadata, onSelectError]);
+
   return (
+
     <div ref={editorContainerRef} className="flex flex-row h-full w-full bg-[#090a0f] overflow-hidden relative">
       {/* リサイズ中の全画面オーバーレイ */}
       {(isDraggingExplorer || isDraggingBottomSplitter) && (
@@ -971,7 +1059,7 @@ export function MmlEditor({
             {activeBottomTab === 'problems' && (
               <CompileErrorPanel 
                 errors={errors}
-                onSelectError={onSelectError}
+                onSelectError={handleSelectErrorItem}
                 onClearErrors={onClearErrors}
                 embedded
               />
