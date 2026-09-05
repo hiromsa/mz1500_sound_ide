@@ -5,6 +5,19 @@
 ---
 
 ## 1. 直近の完了作業（最新）
+- **PSG (DCSG) のプレビューミュートが実音に反映されない & 初期状態で VU が動作しない不具合を修正 (`src/core/chips/DcsgChip.ts`, `src/core/chips/__tests__/DcsgChip.test.ts`)**:
+  - **不具合の内容 (TRACK MONITOR での報告)**:
+    - P1 等の PSG トラックで発音メーター (VU) が初期状態で動かず、プレビュー OFF → ON を行うと動き出す。
+    - プレビューを OFF にしても PSG の音が鳴り続ける (FM / BEEP は正常にミュートされる)。
+  - **原因**:
+    - `DcsgChip` の UI チャンネルゲイン (`gain`) 初期値が 0 (BEEP = 1.0 / FM = 1 と不整合) で、VU (`channelLevel`) が初期状態で常に 0 になる。
+    - `renderSample` がチャンネルゲインを一切参照しておらず、`setChannelGain(0)` (プレビューミュート) を実音出力へ反映できていなかった。
+  - **修正**:
+    - `gain` 初期値を 1 (鳴る状態) に変更し、`renderSample` のトーン 3 ch / ノイズの音量にチャンネルゲインを乗算 (ゲイン 0 で実音も VU も無音に)。
+    - ゲイン初期値 1 のため C# 版との標本一致検証 (`dcsgSamples` / `dcsgNoiseSamples` ビット完全一致) には影響なし (全テスト合格で確認)。
+  - **テスト追加**: チャンネルゲイン 0 (ミュート) で VU / 実音が無音になること、ノイズチャンネルも同様であることを検証 (2 ケース追加 → 合計 238 passed + 2 skipped)。
+  - **検証**: `npm test` 全合格 / `npm run lint` エラーゼロ / `npm run build` 成功。
+
 - **TRACK MONITOR 発音メーターの FM VU 不具合修正 & 既定演奏エンジンを Z80 DRIVER に変更 (`src/core/chips/fm/Ym2151.ts`, `src/core/chips/ChipBank.ts`, `src/app/App.tsx`, [`docs/specification/ui.md`](./specification/ui.md))**:
   - **FM VU 不具合修正 (複数チャンネル同時発音で VU が消える)**:
     - KEYON レジスタ ($08) は全 FM チャンネル共有のため、従来の「書き戻し値 (`tryGetRegister(0x08)`) の直接参照」では最後に操作した 1 チャンネルしか判定できず、TRACK MONITOR の FM 発音メーターが 1 ch 分しか点灯しない (他チャンネルが無音扱いで消える) 不具合があった。

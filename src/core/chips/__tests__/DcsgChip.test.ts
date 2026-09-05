@@ -61,6 +61,38 @@ describe('DcsgChip', () => {
     expect(chip.noiseClock).toBeCloseTo(chip.toneFrequency(2) * 16.0, 3);
   });
 
+  it('renders silence while the UI channel gain is muted', () => {
+    const chip = new DcsgChip();
+    chip.setTonePeriod(0, 253);
+    chip.setAttenuation(0, 0);
+    chip.setAttenuation(1, 15);
+    chip.setAttenuation(2, 15);
+    chip.setAttenuation(3, 15);
+
+    // 既定は鳴る状態 (BEEP / FM と同じ初期ゲイン)
+    expect(chip.channelLevel(0)).toBeGreaterThan(0);
+    expect(chip.renderSample(48000.0)).not.toBe(0);
+
+    // チャンネルゲイン 0 (プレビューミュート) で VU / 実音ともに無音
+    chip.setChannelGain(0, 0);
+    expect(chip.channelLevel(0)).toBe(0);
+    expect(chip.renderSample(48000.0)).toBe(0);
+  });
+
+  it('renders silence when the noise channel gain is muted', () => {
+    const chip = new DcsgChip();
+    chip.setAttenuation(0, 15);
+    chip.setAttenuation(1, 15);
+    chip.setAttenuation(2, 15);
+    chip.setNoiseControl(true, 0);
+
+    expect(chip.renderSample(48000.0)).not.toBe(0);
+
+    chip.setChannelGain(3, 0);
+    expect(chip.channelLevel(3)).toBe(0);
+    expect(chip.renderSample(48000.0)).toBe(0);
+  });
+
   it('renders the same tone samples as the C# reference', () => {
     const chip = new DcsgChip();
     chip.setTonePeriod(0, 253);

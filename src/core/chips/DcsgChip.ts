@@ -15,8 +15,8 @@ export class DcsgChip {
 
   private readonly phase: number[] = new Array<number>(3).fill(0);
 
-  /** ミキサー側チャンネルゲイン (UI 連携)。 */
-  private readonly gain: number[] = new Array<number>(DcsgChip.ChannelCount).fill(0);
+  /** ミキサー側チャンネルゲイン (UI 連携)。初期値 1 (鳴る状態、BEEP / FM と統一)。 */
+  private readonly gain: number[] = new Array<number>(DcsgChip.ChannelCount).fill(1);
 
   private noiseWhite = true;
 
@@ -91,7 +91,7 @@ export class DcsgChip {
     let mix = 0;
 
     for (let ch = 0; ch < 3; ch++) {
-      const gain = volumeGain(this.attenuation[ch]);
+      const gain = volumeGain(this.attenuation[ch]) * this.gain[ch];
       if (gain <= 0) {
         continue;
       }
@@ -110,7 +110,7 @@ export class DcsgChip {
     }
 
     // ノイズ
-    const noiseGain = volumeGain(this.attenuation[3]);
+    const noiseGain = volumeGain(this.attenuation[3]) * this.gain[3];
     if (noiseGain > 0) {
       const clock = this.noiseClock;
       if (clock > 0) {
