@@ -25,6 +25,7 @@ export function parseVolumeEnvelope(
   number: number,
   body: string,
   line: number,
+  column: number,
   diagnostics: MmlDiagnostic[],
 ): VolumeEnvelope | null {
   const values: number[] = [];
@@ -39,7 +40,7 @@ export function parseVolumeEnvelope(
 
     if (token === '|') {
       if (loopIndex >= 0) {
-        diagnostics.push(mmlError(line, 'エンベロープのループ位置 | は 1 回のみ指定できます'));
+        diagnostics.push(mmlError(line, column, 'エンベロープのループ位置 | は 1 回のみ指定できます'));
       } else {
         loopIndex = values.length;
       }
@@ -49,7 +50,7 @@ export function parseVolumeEnvelope(
 
     if (token === '>') {
       if (releaseIndex >= 0) {
-        diagnostics.push(mmlError(line, 'リリース位置 > は 1 回のみ指定できます'));
+        diagnostics.push(mmlError(line, column, 'リリース位置 > は 1 回のみ指定できます'));
       } else {
         releaseIndex = values.length;
       }
@@ -59,13 +60,13 @@ export function parseVolumeEnvelope(
 
     const match = envelopeElementRegex.exec(token);
     if (match === null) {
-      diagnostics.push(mmlError(line, `無効なエンベロープ要素: '${token}'`));
+      diagnostics.push(mmlError(line, column, `無効なエンベロープ要素: '${token}'`));
       continue;
     }
 
     let value = parseInt(match[1], 10);
     if (value < 0 || value > 15) {
-      diagnostics.push(mmlWarn(line, `音量値 ${value} は 0-15 の範囲外です (15 に制限しました)`));
+      diagnostics.push(mmlWarn(line, column, `音量値 ${value} は 0-15 の範囲外です (15 に制限しました)`));
       value = Math.min(15, Math.max(0, value));
     }
 
@@ -76,7 +77,7 @@ export function parseVolumeEnvelope(
   }
 
   if (values.length === 0) {
-    diagnostics.push(mmlError(line, `@v${number} の要素がありません`));
+    diagnostics.push(mmlError(line, column, `@v${number} の要素がありません`));
     return null;
   }
 
@@ -87,6 +88,7 @@ export function parsePitchEnvelope(
   number: number,
   body: string,
   line: number,
+  column: number,
   diagnostics: MmlDiagnostic[],
 ): PitchEnvelope | null {
   const values: number[] = [];
@@ -100,7 +102,7 @@ export function parsePitchEnvelope(
 
     if (token === '|') {
       if (loopIndex >= 0) {
-        diagnostics.push(mmlError(line, 'エンベロープのループ位置 | は 1 回のみ指定できます'));
+        diagnostics.push(mmlError(line, column, 'エンベロープのループ位置 | は 1 回のみ指定できます'));
       } else {
         loopIndex = values.length;
       }
@@ -109,13 +111,13 @@ export function parsePitchEnvelope(
     }
 
     if (token === '>') {
-      diagnostics.push(mmlWarn(line, 'ピッチエンベロープにリリース > は指定できません (無視しました)'));
+      diagnostics.push(mmlWarn(line, column, 'ピッチエンベロープにリリース > は指定できません (無視しました)'));
       continue;
     }
 
     const match = envelopeElementRegex.exec(token);
     if (match === null) {
-      diagnostics.push(mmlError(line, `無効なエンベロープ要素: '${token}'`));
+      diagnostics.push(mmlError(line, column, `無効なエンベロープ要素: '${token}'`));
       continue;
     }
 
@@ -127,7 +129,7 @@ export function parsePitchEnvelope(
   }
 
   if (values.length === 0) {
-    diagnostics.push(mmlError(line, `@EP${number} の要素がありません`));
+    diagnostics.push(mmlError(line, column, `@EP${number} の要素がありません`));
     return null;
   }
 
@@ -138,6 +140,7 @@ export function parseFmTone(
   number: number,
   body: string,
   line: number,
+  column: number,
   diagnostics: MmlDiagnostic[],
 ): FmTone | null {
   const tokens = splitMacroTokens(body);
@@ -145,7 +148,7 @@ export function parseFmTone(
 
   for (const token of tokens) {
     if (!/^[+-]?\d+$/.test(token)) {
-      diagnostics.push(mmlError(line, `無効な FM 音色パラメータ: '${token}'`));
+      diagnostics.push(mmlError(line, column, `無効な FM 音色パラメータ: '${token}'`));
       return null;
     }
 
@@ -156,6 +159,7 @@ export function parseFmTone(
   if (values.length !== FmToneParameterCount) {
     diagnostics.push(mmlError(
       line,
+      column,
       `@FM${number} のパラメータ数は ${FmToneParameterCount} 個必要です (現在 ${values.length} 個)`,
     ));
     return null;

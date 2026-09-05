@@ -31,14 +31,14 @@ const MaxLoopDepth = 8;
 const isDigitChar = (ch: string): boolean => ch >= '0' && ch <= '9';
 const isWhiteSpaceChar = (ch: string): boolean => /\s/.test(ch);
 
-/** エラー診断を生成する。 */
-export function mmlError(line: number, message: string): MmlDiagnostic {
-  return { severity: DiagnosticSeverity.Error, line, column: 1, message };
+/** エラー診断を生成する (column は 1-based)。 */
+export function mmlError(line: number, column: number, message: string): MmlDiagnostic {
+  return { severity: DiagnosticSeverity.Error, line, column, message };
 }
 
-/** 警告診断を生成する。 */
-export function mmlWarn(line: number, message: string): MmlDiagnostic {
-  return { severity: DiagnosticSeverity.Warning, line, column: 1, message };
+/** 警告診断を生成する (column は 1-based)。 */
+export function mmlWarn(line: number, column: number, message: string): MmlDiagnostic {
+  return { severity: DiagnosticSeverity.Warning, line, column, message };
 }
 
 export class MmlParser {
@@ -100,6 +100,7 @@ export class MmlParser {
           && stripComment(line).trim().length > 0) {
           this.diagnostics.push(mmlError(
             lineIndex + 1,
+            1,
             'トラック指定がありません (行頭に P1 などのトラック記号を書いてください)',
           ));
         }
@@ -112,14 +113,14 @@ export class MmlParser {
 
     for (const track of this.result.tracks.values()) {
       if (track.loopDepth > 0) {
-        this.diagnostics.push(mmlError(1, '[ に対応する ] がありません'));
+        this.diagnostics.push(mmlError(1, 1, '[ に対応する ] がありません'));
       }
 
       track.code.push(OpTrackEnd);
     }
 
     if (this.result.tracks.size === 0) {
-      this.diagnostics.push(mmlError(1, 'トラックが 1 つも定義されていません'));
+      this.diagnostics.push(mmlError(1, 1, 'トラックが 1 つも定義されていません'));
       return null;
     }
 
@@ -128,15 +129,18 @@ export class MmlParser {
 
   /** トラック未指定行の曲全体テンポ設定 (t120 / @t1,86) を処理する。テンポ行であれば true を返す。 */
   private tryProcessGlobalTempo(line: string, lineNo: number): boolean {
-    const trimmed = stripComment(line).replace(/^\s+/, '');
+    // 元の行 + 先頭非空白位置で処理し、診断の列位置がズレないようにする
+    const stripped = stripComment(line);
+    const contentStart = stripped.length - stripped.replace(/^\s+/, '').length;
+    const trimmed = stripped.replace(/^\s+/, '');
 
     if (trimmed.startsWith('@t')) {
-      return this.processFrameTempo(trimmed, 2, lineNo, []) >= 0;
+      return this.processFrameTempo(line, contentStart + 2, lineNo, []) >= 0;
     }
 
     if (trimmed.startsWith('t')
       && (trimmed.length === 1 || isDigitChar(trimmed[1]))) {
-      return this.processTempo(trimmed, 0, lineNo, []) >= 0;
+      return this.processTempo(line, contentStart, lineNo, []) >= 0;
     }
 
     return false;
@@ -186,7 +190,7 @@ export class MmlParser {
       case c === '@': return this.processAt(line, pos + 1, lineNo, tracks);
       case c >= 'a' && c <= 'g': return this.emitNoteSequence(line, pos, lineNo, tracks);
       default:
-        this.diagnostics.push(mmlError(lineNo, `不明な文字 '${c}' があります`));
+        this.diagnostics.push(mmlError(lineNo, pos + 1, `不明な文字 '${c}' があります`));
         return -1;
     }
   }
@@ -231,7 +235,7 @@ export class MmlParser {
 
   private emitTie(line: string, pos: number, lineNo: number, tracks: TrackBuilder[]): number {
     if (tracks.some((t) => t.notePatch === null)) {
-      this.diagnostics.push(mmlWarn(lineNo, 'タイ ^ の対象となる音符/休符がありません'));
+      this.diagnostics.push(mmlWarn(lineNo, pos + 1, 'タイ ^ の対象となる音符/休符がありません'));
     }
 
     const read = this.readNoteLength(line, pos + 1, lineNo, tracks[0].state);
@@ -266,7 +270,7 @@ export class MmlParser {
 
     while (true) {
       if (cursor >= line.length) {
-        this.diagnostics.push(mmlError(lineNo, '連符 { に対応する } がありません'));
+        this.diagnostics.push(mmlError(lineNo, pos + 1, '連符 { に対応する } がありません'));
         return -1;
       }
 
@@ -282,7 +286,7 @@ export class MmlParser {
       }
 
       if (ch === ';' || ch === '/') {
-        this.diagnostics.push(mmlError(lineNo, '連符内にコメントは書けません (} の後に書いてください)'));
+        this.diagnostics.push(mmlError(lineNo, cursor + 1, '連符内にコメントは書けません (} の後に書いてください)'));
         return -1;
       }
 
@@ -298,12 +302,12 @@ export class MmlParser {
         continue;
       }
 
-      this.diagnostics.push(mmlError(lineNo, `連符内では音符 (a-g, r) のみ指定できます ('${ch}')`));
+      this.diagnostics.push(mmlError(lineNo, cursor + 1, `連符内では音符 (a-g, r) のみ指定できます ('${ch}')`));
       return -1;
     }
 
     if (letters.length === 0) {
-      this.diagnostics.push(mmlError(lineNo, '連符の要素がありません'));
+      this.diagnostics.push(mmlError(lineNo, pos + 1, '連符の要素がありません'));
       return -1;
     }
 
@@ -349,19 +353,19 @@ export class MmlParser {
   private processTone(line: string, pos: number, lineNo: number, tracks: TrackBuilder[]): number {
     const read = readUnsigned(line, pos, -1);
     if (read === null) {
-      this.diagnostics.push(mmlError(lineNo, '不明な @ コマンドです'));
+      this.diagnostics.push(mmlError(lineNo, pos + 1, '不明な @ コマンドです'));
       return -1;
     }
 
     const toneIndex = this.toneIndexByNumber.get(read.value);
     if (toneIndex === undefined) {
-      this.diagnostics.push(mmlError(lineNo, `未定義の FM 音色 @FM${read.value} です`));
+      this.diagnostics.push(mmlError(lineNo, pos + 1, `未定義の FM 音色 @FM${read.value} です`));
       return -1;
     }
 
     for (const t of tracks) {
       if (!t.track.isFm) {
-        this.diagnostics.push(mmlWarn(lineNo, '@ (FM 音色) は FM トラック (F1-F8) でのみ有効です'));
+        this.diagnostics.push(mmlWarn(lineNo, pos + 1, '@ (FM 音色) は FM トラック (F1-F8) でのみ有効です'));
         break;
       }
 
@@ -375,18 +379,18 @@ export class MmlParser {
   private processFrameTempo(line: string, pos: number, lineNo: number, tracks: TrackBuilder[]): number {
     const denomRead = readUnsigned(line, pos, -1);
     if (denomRead === null) {
-      this.diagnostics.push(mmlError(lineNo, '@t は @t<N分音符>,<フレーム数> の形式で指定します'));
+      this.diagnostics.push(mmlError(lineNo, pos + 1, '@t は @t<N分音符>,<フレーム数> の形式で指定します'));
       return -1;
     }
 
     if (denomRead.next >= line.length || line[denomRead.next] !== ',') {
-      this.diagnostics.push(mmlError(lineNo, '@t は @t1,86 の形式で指定します'));
+      this.diagnostics.push(mmlError(lineNo, denomRead.next + 1, '@t は @t1,86 の形式で指定します'));
       return -1;
     }
 
     const framesRead = readUnsigned(line, denomRead.next + 1, -1);
     if (framesRead === null || denomRead.value <= 0) {
-      this.diagnostics.push(mmlError(lineNo, '@t のフレーム数が不正です'));
+      this.diagnostics.push(mmlError(lineNo, denomRead.next + 2, '@t のフレーム数が不正です'));
       return -1;
     }
 
@@ -403,7 +407,7 @@ export class MmlParser {
   private processFrameQuantize(line: string, pos: number, lineNo: number, tracks: TrackBuilder[]): number {
     const read = readUnsigned(line, pos, -1);
     if (read === null) {
-      this.diagnostics.push(mmlError(lineNo, '@q にはゲートカット フレーム数が必要です'));
+      this.diagnostics.push(mmlError(lineNo, pos + 1, '@q にはゲートカット フレーム数が必要です'));
       return -1;
     }
 
@@ -429,7 +433,7 @@ export class MmlParser {
 
     const index = this.venvIndexByNumber.get(read.value);
     if (index === undefined) {
-      this.diagnostics.push(mmlError(lineNo, `未定義の音量エンベロープ @v${read.value} です`));
+      this.diagnostics.push(mmlError(lineNo, pos + 1, `未定義の音量エンベロープ @v${read.value} です`));
       return -1;
     }
 
@@ -445,7 +449,7 @@ export class MmlParser {
   private processPitchEnvelopeCmd(line: string, pos: number, lineNo: number, tracks: TrackBuilder[]): number {
     const read = readUnsigned(line, pos, -1);
     if (read === null) {
-      this.diagnostics.push(mmlError(lineNo, '@EP には番号が必要です (解除は @EP255)'));
+      this.diagnostics.push(mmlError(lineNo, pos + 1, '@EP には番号が必要です (解除は @EP255)'));
       return -1;
     }
 
@@ -461,7 +465,7 @@ export class MmlParser {
 
     const index = this.penvIndexByNumber.get(read.value);
     if (index === undefined) {
-      this.diagnostics.push(mmlError(lineNo, `未定義のピッチエンベロープ @EP${read.value} です`));
+      this.diagnostics.push(mmlError(lineNo, pos + 1, `未定義のピッチエンベロープ @EP${read.value} です`));
       return -1;
     }
 
@@ -479,7 +483,7 @@ export class MmlParser {
   private processSweep(line: string, pos: number, lineNo: number, tracks: TrackBuilder[]): number {
     const read = readSigned(line, pos, -1);
     if (read === null) {
-      this.diagnostics.push(mmlError(lineNo, '@SW には数値が必要です'));
+      this.diagnostics.push(mmlError(lineNo, pos + 1, '@SW には数値が必要です'));
       return -1;
     }
 
@@ -496,7 +500,7 @@ export class MmlParser {
   private processNoiseWave(line: string, pos: number, lineNo: number, tracks: TrackBuilder[]): number {
     const read = readUnsigned(line, pos, -1);
     if (read === null || (read.value !== 0 && read.value !== 1)) {
-      this.diagnostics.push(mmlError(lineNo, '@wn には 0 (周期ノイズ) または 1 (ホワイトノイズ) が必要です'));
+      this.diagnostics.push(mmlError(lineNo, pos + 1, '@wn には 0 (周期ノイズ) または 1 (ホワイトノイズ) が必要です'));
       return -1;
     }
 
@@ -513,7 +517,7 @@ export class MmlParser {
     }
 
     if (!hasNoise) {
-      this.diagnostics.push(mmlWarn(lineNo, '@wn はノイズ トラック (N1, N2) でのみ有効です'));
+      this.diagnostics.push(mmlWarn(lineNo, pos + 1, '@wn はノイズ トラック (N1, N2) でのみ有効です'));
     }
 
     return read.next;
@@ -522,7 +526,7 @@ export class MmlParser {
   private processNoiseSync(line: string, pos: number, lineNo: number, tracks: TrackBuilder[]): number {
     const read = readUnsigned(line, pos, -1);
     if (read === null || (read.value !== 0 && read.value !== 1 && read.value !== 2)) {
-      this.diagnostics.push(mmlError(lineNo, '@in には 0 (オフ) / 1 (周期連動) / 2 (ホワイト連動) が必要です'));
+      this.diagnostics.push(mmlError(lineNo, pos + 1, '@in には 0 (オフ) / 1 (周期連動) / 2 (ホワイト連動) が必要です'));
       return -1;
     }
 
@@ -539,7 +543,7 @@ export class MmlParser {
     }
 
     if (!hasNoise) {
-      this.diagnostics.push(mmlWarn(lineNo, '@in はノイズ トラック (N1, N2) でのみ有効です'));
+      this.diagnostics.push(mmlWarn(lineNo, pos + 1, '@in はノイズ トラック (N1, N2) でのみ有効です'));
     }
 
     return read.next;
@@ -551,7 +555,7 @@ export class MmlParser {
     for (const t of tracks) {
       t.loopDepth++;
       if (t.loopDepth > MaxLoopDepth) {
-        this.diagnostics.push(mmlError(lineNo, 'ループのネストが深すぎます (上限 8)'));
+        this.diagnostics.push(mmlError(lineNo, pos + 1, 'ループのネストが深すぎます (上限 8)'));
         return -1;
       }
 
@@ -570,7 +574,7 @@ export class MmlParser {
     for (const t of tracks) {
       t.loopDepth--;
       if (t.loopDepth < 0) {
-        this.diagnostics.push(mmlError(lineNo, '] に対応する [ がありません'));
+        this.diagnostics.push(mmlError(lineNo, pos + 1, '] に対応する [ がありません'));
         return -1;
       }
 
@@ -595,13 +599,13 @@ export class MmlParser {
   private processOctave(line: string, pos: number, lineNo: number, tracks: TrackBuilder[]): number {
     const read = readUnsigned(line, pos + 1, -1);
     if (read === null) {
-      this.diagnostics.push(mmlError(lineNo, 'o の後にオクターブ番号が必要です'));
+      this.diagnostics.push(mmlError(lineNo, pos + 1, 'o の後にオクターブ番号が必要です'));
       return -1;
     }
 
     let octave = read.value;
     if (octave < 0 || octave > 10) {
-      this.diagnostics.push(mmlWarn(lineNo, `オクターブ ${octave} は 0-10 の範囲外です (制限しました)`));
+      this.diagnostics.push(mmlWarn(lineNo, pos + 2, `オクターブ ${octave} は 0-10 の範囲外です (制限しました)`));
       octave = Math.min(10, Math.max(0, octave));
     }
 
@@ -623,13 +627,13 @@ export class MmlParser {
   private processDefaultLength(line: string, pos: number, lineNo: number, tracks: TrackBuilder[]): number {
     const read = readUnsigned(line, pos + 1, -1);
     if (read === null) {
-      this.diagnostics.push(mmlError(lineNo, 'l の後に音長が必要です'));
+      this.diagnostics.push(mmlError(lineNo, pos + 1, 'l の後に音長が必要です'));
       return -1;
     }
 
     let len = read.value;
     if (len < 1 || len > 64) {
-      this.diagnostics.push(mmlWarn(lineNo, `音長 ${len} は 1-64 の範囲外です (制限しました)`));
+      this.diagnostics.push(mmlWarn(lineNo, pos + 2, `音長 ${len} は 1-64 の範囲外です (制限しました)`));
       len = Math.min(64, Math.max(1, len));
     }
 
@@ -645,13 +649,13 @@ export class MmlParser {
   private processTempo(line: string, pos: number, lineNo: number, tracks: TrackBuilder[]): number {
     const read = readUnsigned(line, pos + 1, -1);
     if (read === null) {
-      this.diagnostics.push(mmlError(lineNo, 't の後にテンポ (BPM) が必要です'));
+      this.diagnostics.push(mmlError(lineNo, pos + 1, 't の後にテンポ (BPM) が必要です'));
       return -1;
     }
 
     let bpm = read.value;
     if (bpm < 30 || bpm > 255) {
-      this.diagnostics.push(mmlWarn(lineNo, `テンポ ${bpm} は 30-255 BPM に制限しました`));
+      this.diagnostics.push(mmlWarn(lineNo, pos + 2, `テンポ ${bpm} は 30-255 BPM に制限しました`));
       bpm = Math.min(255, Math.max(30, bpm));
     }
 
@@ -668,13 +672,13 @@ export class MmlParser {
   private processVolume(line: string, pos: number, lineNo: number, tracks: TrackBuilder[]): number {
     const read = readUnsigned(line, pos + 1, -1);
     if (read === null) {
-      this.diagnostics.push(mmlError(lineNo, 'v の後に音量 (0-15) が必要です'));
+      this.diagnostics.push(mmlError(lineNo, pos + 1, 'v の後に音量 (0-15) が必要です'));
       return -1;
     }
 
     let vol = read.value;
     if (vol < 0 || vol > 15) {
-      this.diagnostics.push(mmlWarn(lineNo, `音量 ${vol} は 0-15 の範囲外です (制限しました)`));
+      this.diagnostics.push(mmlWarn(lineNo, pos + 2, `音量 ${vol} は 0-15 の範囲外です (制限しました)`));
       vol = Math.min(15, Math.max(0, vol));
     }
 
@@ -693,13 +697,13 @@ export class MmlParser {
   private processQuantize(line: string, pos: number, lineNo: number, tracks: TrackBuilder[]): number {
     const read = readUnsigned(line, pos + 1, -1);
     if (read === null) {
-      this.diagnostics.push(mmlError(lineNo, 'q の後にゲート比 (1-8) が必要です'));
+      this.diagnostics.push(mmlError(lineNo, pos + 1, 'q の後にゲート比 (1-8) が必要です'));
       return -1;
     }
 
     let q = read.value;
     if (q < 1 || q > 8) {
-      this.diagnostics.push(mmlWarn(lineNo, `ゲート比 ${q} は 1-8 に制限しました`));
+      this.diagnostics.push(mmlWarn(lineNo, pos + 2, `ゲート比 ${q} は 1-8 に制限しました`));
       q = Math.min(8, Math.max(1, q));
     }
 
@@ -714,7 +718,7 @@ export class MmlParser {
   private processTranspose(line: string, pos: number, lineNo: number, tracks: TrackBuilder[]): number {
     const read = readSigned(line, pos + 1, -1);
     if (read === null) {
-      this.diagnostics.push(mmlError(lineNo, 'K の後に移調量 (半音) が必要です'));
+      this.diagnostics.push(mmlError(lineNo, pos + 1, 'K の後に移調量 (半音) が必要です'));
       return -1;
     }
 
@@ -731,7 +735,7 @@ export class MmlParser {
   private processDetune(line: string, pos: number, lineNo: number, tracks: TrackBuilder[]): number {
     const read = readSigned(line, pos + 1, -1);
     if (read === null) {
-      this.diagnostics.push(mmlError(lineNo, 'D の後にディチューン量が必要です'));
+      this.diagnostics.push(mmlError(lineNo, pos + 1, 'D の後にディチューン量が必要です'));
       return -1;
     }
 
@@ -799,18 +803,19 @@ export class MmlParser {
     }
 
     if (len < 1 || len > 64) {
-      this.diagnostics.push(mmlWarn(lineNo, `音長 ${len} は 1-64 の範囲外です (制限しました)`));
+      this.diagnostics.push(mmlWarn(lineNo, pos + 1, `音長 ${len} は 1-64 の範囲外です (制限しました)`));
       len = Math.min(64, Math.max(1, len));
     }
 
     let dots = 0;
+    const dotsStart = next;
     while (next < line.length && line[next] === '.') {
       dots++;
       next++;
     }
 
     if (dots > 3) {
-      this.diagnostics.push(mmlWarn(lineNo, '付点は 3 個までに制限しました'));
+      this.diagnostics.push(mmlWarn(lineNo, dotsStart + 1, '付点は 3 個までに制限しました'));
       dots = 3;
     }
 

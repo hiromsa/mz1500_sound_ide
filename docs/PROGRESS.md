@@ -5,6 +5,32 @@
 ---
 
 ## 1. 直近の完了作業（最新）
+- **コンパイル診断の列位置 (Col) の正確化 & PROBLEMS パネル表示改善 (`src/core/mml/parser/MmlParser.ts`, `src/core/mml/MmlCompilerMacros.ts`, `src/core/mml/MmlCompiler.ts`, `src/view/CompileErrorPanel.tsx`, `src/app/App.tsx`, `src/core/mml/__tests__/MmlDiagnosticLocation.test.ts` 新設, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-06):
+  - **背景・ユーザー意図**:
+    - PROBLEMS パネルの `Ln xx, Col xx` 表示のうち `Col` は `mmlError` / `mmlWarn` 内でハードコードされた `column: 1` 固定であり、列位置として実質機能していなかった (実質 行単位の精度)。
+    - 「Col = 列まで特定できているのか」という確認に対し、列位置の正確な特定 + `Ln` → `Line` 表記への変更を実施。
+  - **変更内容**:
+    - `mmlError` / `mmlWarn` を `column` 必須シグネチャに変更し、全診断発行箇所 (~30 箇所) で正確な 1-based 列位置を報告するよう改善。
+      - エラー (引数欠落等) はコマンド文字の列、値の範囲警告は該当数値の列、連符内の不正文字はその文字の列を報告。
+      - `@t` のカンマ欠落はカンマ期待位置、フレーム数不正はフレーム数位置を報告 (`readUnsigned` の戻り位置を活用)。
+      - `tryProcessGlobalTempo` を trimmed 文字列ではなく元行 + 先頭非空白位置で処理するようリファクタリングし、先頭空白のあるテンポ行でも列がズレないよう修正。
+      - 付点警告は付点開始位置 (`dotsStart`) を報告。
+      - マクロ定義 (`@v` / `@EP` / `@FM`) 内の問題は定義ヘッダ `@` の列位置を報告 (`MmlCompiler.ts` に `countColumn` 新設、`match.indexOf('@')` でヘッダ位置を特定)。
+      - 行単位の問題 (トラック未指定、ループ閉じ忘れ等) は従来通り `Col 1` を報告。
+    - PROBLEMS パネルの位置バッジを `Ln xx, Col xx` → `Line xx, Col xx` に変更 (`CompileErrorPanel.tsx`)。コンソールの `[NAVIGATE]` ログも `Line` 表記へ統一 (`App.tsx`)。
+    - エラー行クリック時の Monaco ジャンプ (`handleSelectErrorItem`) は既に `item.column` を使用しており、column 精度向上により「行頭の単語」ではなくエラー箇所そのものが反転選択されるようになった。
+  - **テスト**:
+    - `src/core/mml/__tests__/MmlDiagnosticLocation.test.ts` を新設し、14 ケースで診断の line / column を統合検証 (不明文字・引数欠落・範囲警告・未定義エンベロープ・マクロ定義ヘッダ・グローバルテンポの列ズレ防止・コメント除外等)。
+    - `MmlCompilerAdvanced.test.ts` の `parseVolumeEnvelope` / `parsePitchEnvelope` 直接呼び出し 2 箇所を新シグネチャに追従。
+  - **検証**:
+    - `npm test` 全 **282 合格** (新規 14 ケース含む)。
+    - `node scripts/verify-mml-parser.mjs` 全 17 ケース合格。
+    - `npm run lint` エラーゼロ (既存警告 5 のみ)。
+    - `npm run build` 成功。
+  - **制限事項 (将来拡張)**:
+    - マクロ定義 body 内のトークン単位の列位置 (複数行定義の相対行を含む) は、`splitMacroTokens` が元位置を保持しないため今回は定義ヘッダ位置での報告。トークン単位の位置追跡が必要になった時点で再検討。
+
+
 - **PLAYエラー時のPROBLEMSタブ自動選択・PLAYボタン失敗フィードバック・エラー行ジャンプの実装 (`src/index.css`, `src/view/MmlEditor.tsx`, `src/app/App.tsx`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-06):
   - **背景・ユーザー意図**:
     - 再生開始時（PLAYボタン押下など）にコンパイルエラーがある場合、下部パネルで `KEYBOARD` や `CONSOLE` タブを開いているとエラーの発生に気付けず、何度PLAYを押しても音が鳴らないような感覚に陥る問題があった。

@@ -109,7 +109,7 @@ export function CompileErrorPanel({ errors, onSelectError, onClearErrors, height
                 <div className="flex items-center gap-2 shrink-0 ml-3 text-[10px] text-zinc-500 group-hover:text-zinc-400">
                   <span>{item.sourceFile}</span>
                   <span className="px-1 py-0.2 rounded bg-[#252525] border border-[#3A3A3A] font-mono text-zinc-400">
-                    Ln {item.line}, Col {item.column}
+                    Line {item.line}, Col {item.column}
                   </span>
                   <ChevronRight className="w-3 h-3 text-zinc-600 group-hover:text-zinc-400" />
                 </div>

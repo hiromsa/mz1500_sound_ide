@@ -98,10 +98,11 @@ export class MmlCompiler {
         }
 
         const line = countLine(source, offset);
+        const column = countColumn(source, offset + match.indexOf('@'));
 
         switch (header.kind) {
           case 'v': {
-            const venv = parseVolumeEnvelope(header.number, body, line, diagnostics);
+            const venv = parseVolumeEnvelope(header.number, body, line, column, diagnostics);
             if (venv !== null) {
               volumeEnvelopes.push(venv);
             }
@@ -110,7 +111,7 @@ export class MmlCompiler {
           }
 
           case 'EP': {
-            const penv = parsePitchEnvelope(header.number, body, line, diagnostics);
+            const penv = parsePitchEnvelope(header.number, body, line, column, diagnostics);
             if (penv !== null) {
               pitchEnvelopes.push(penv);
             }
@@ -119,7 +120,7 @@ export class MmlCompiler {
           }
 
           case 'FM': {
-            const tone = parseFmTone(header.number, body, line, diagnostics);
+            const tone = parseFmTone(header.number, body, line, column, diagnostics);
             if (tone !== null) {
               fmTones.push(tone);
             }
@@ -177,4 +178,14 @@ function countLine(source: string, index: number): number {
   }
 
   return line;
+}
+
+/** 指定インデックスの行内 1-based 列位置を返す。 */
+function countColumn(source: string, index: number): number {
+  let start = Math.min(index, source.length);
+  while (start > 0 && source[start - 1] !== '\n') {
+    start--;
+  }
+
+  return index - start + 1;
 }

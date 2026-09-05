@@ -206,7 +206,7 @@ describe('MML reference compliance (mml_reference.md 4章)', () => {
 
   it('volume envelope loop | and release > markers are parsed', () => {
     const diagnostics: MmlDiagnostic[] = [];
-    const env = parseVolumeEnvelope(1, '15, 14, 13, |, 12, 11, >, 8, 5, 2, 0', 1, diagnostics);
+    const env = parseVolumeEnvelope(1, '15, 14, 13, |, 12, 11, >, 8, 5, 2, 0', 1, 1, diagnostics);
     expect(env).not.toBeNull();
     expect(env?.loopIndex).toBe(3);
     expect(env?.releaseIndex).toBe(5);
@@ -215,7 +215,7 @@ describe('MML reference compliance (mml_reference.md 4章)', () => {
 
   it('pitch envelope loop | marker is parsed', () => {
     const diagnostics: MmlDiagnostic[] = [];
-    const env = parsePitchEnvelope(1, '|, 0, 3, 6', 1, diagnostics);
+    const env = parsePitchEnvelope(1, '|, 0, 3, 6', 1, 1, diagnostics);
     expect(env).not.toBeNull();
     expect(env?.loopIndex).toBe(0);
     expect(diagnostics).toHaveLength(0);

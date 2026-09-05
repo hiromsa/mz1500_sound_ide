@@ -522,7 +522,7 @@ function App() {
             onChangeBottomCollapsed={setIsBottomCollapsed}
             onSelectError={(item) => {
               const time = new Date().toLocaleTimeString();
-              setLogs(prev => [...prev, `[${time}] [NAVIGATE] Jump to ${item.sourceFile} Ln ${item.line}, Col ${item.column}`]);
+              setLogs(prev => [...prev, `[${time}] [NAVIGATE] Jump to ${item.sourceFile} Line ${item.line}, Col ${item.column}`]);
             }}
             onTogglePlay={handleTogglePlay}
             activeTabContext={activeTabContext}
