@@ -5,6 +5,39 @@
 ---
 
 ## 1. 直近の完了作業（最新）
+- **Phase 4 完了: Z80 CPU コア移植 + ドライバ実行 (`src/core/z80/`, `src/core/player/Z80DriverImage.ts` / `Z80DriverMachine.ts`, [`docs/specification/web_core_port.md`](./specification/web_core_port.md))**:
+  - **Z80 CPU コア (`src/core/z80/`)**: Z80dotNet と同一挙動の TypeScript 内製移植。
+    `Z80Processor.ts` (全命令セット: メイン + CB + ED + DD/FD + DDCB/FDCB、公式 + 主要未文書命令
+    (IXH/IXL 系 / SLL / DDCB の RES・SET レジスタロード / 未定義オペコード挙動))、
+    `Z80Registers.ts` + `MainRegisters.ts` (メイン + 代替 + IX/IY/PC/SP/I/R/IFF1/IFF2/IM)、
+    `Z80Bus.ts` (メモリ / ポートバスインターフェース)。命令ごとの実 T-state 積算、HALT 検出
+    (以降 NOP 4T)、16bit ポート空間 (`UseExtendedPortsSpace` 相当) を実装。
+    INT/NMI 割り込み線は本プロジェクトでは未使用のため対象外 (将来拡張)。
+  - **検証 (単体)**: 57 テスト (`z80/__tests__/Z80Processor.test.ts`)。ALU フラグ (F3/F5 未文書
+    ビット含む)、ロテート/シフト、16bit 演算、ジャンプ/コール、ブロック命令 (LDIR/CPIR/OTIR)、
+    I/O (16bit ポート 0708h/0709h 形式)、DD/FD・DDCB 未文書動作、未定義オペコードの PC 進行、
+    R レジスタ、RETN/LD A,I 等を検証。
+  - **`Z80DriverImage.ts`**: ドライバソースを Vite `?raw` import でバンドルし、既存 TS アセンブラで
+    ビルド (C# 版 `Z80DriverImage.Build` と同一契約: origin = 0x1200 / `music_data` ラベル /
+    org パディング除去)。`defaultDriver` はキャッシュ。
+  - **`Z80DriverMachine.ts`**: C# 版 `Z80DriverMachine.cs` の 1:1 移植。64KB RAM + メモリマップド I/O
+    (E004h 8253 / E007h 8253 コントロール / E008h H-BLANK + BEEP ゲート) + I/O バス (PSG x2 =
+    F2h/F3h/E9h、YM2151 = 0708h/0709h) を内製 Z80 コアへ接続。1 フレーム = 59,659T、
+    フレーム先頭 4,560T をブランキング扱い (E008h bit7)、STAT_PLAY 待ち / STAT_LOOP / CB_PTRS
+    (演奏位置ハイライト) / DcsgLatch デコードを実装。`traceSteps` / `traceWritesTo` デバッグ API も移植。
+  - **等価性テスト**: C# `Z80DriverEquivalenceTests` 相当の 11 シナリオを移植し、
+    **SourceInterpreter (`MzsdSequencer`) vs Z80Driver の全フレーム・全レジスタ比較で 9 合格**。
+    比較対象: PSG×2 (period×3 / attenuation×4 / ノイズ波形・分周)、BEEP (counter/gate)、
+    YM2151 全 256 レジスタ (書き込み有無 + 値)。残り 2 (FM 音色レジスタマッピング) は
+    **C# 版がスキップしている同一理由** (`apply_fm_tone` のレジスタマッピング未一致) で `it.skip`。
+  - **Z80DriverMachineTests も 11 テスト移植** (PSG/BEEP/ノイズ発音、キーオフ、L ループ巻き戻し、
+    ネストループ、VOLUME、FM トラック、演奏位置ハイライト)。
+  - **ライセンス**: Z80dotNet は「著作権 / 許諾表示の保持 + 改変の明示」条項付きライセンスのため、
+    `src/core/z80/*` のソース冒頭に表示を記載。仕様書 §4.1 にも方針を記録。
+  - **判明事項**: 実装中に `DD 34/35/36 (INC/DEC/LD (IX+d))` のディスプレースメント未フェッチバグを
+    テストで検出・修正。Z80dotNet の T-state は実機サイクル準拠 (LD r,n = 7T 等) であることを確認。
+  - 検証: `npx tsc -b` エラーゼロ / **`npm test` 209 合格 + 2 skip (合計 211)** /
+    `npm run lint` エラーゼロ (既存 UI 警告 5 のみ) / `npm run build` 成功。
 - **Phase 3 完了: 演奏エンジン移植 (`src/core/player/`, [`docs/specification/web_core_port.md`](./specification/web_core_port.md))**:
   - **移植元**: `MzSound.Player/Sequencer/*` + `Audio/AudioEngine.cs` + `Player.cs`。
     C# xUnit テスト (`MzsdSequencerTests.cs` のシーケンサ / FM 分) を vitest へ 1:1 移植。
@@ -102,11 +135,12 @@
   - 検証: `npx tsc -b` エラーゼロ / `npm run build` 成功 / `npm run lint` エラーゼロ / `npm test` 85/85 合格。
 
 ## 2. 次のフェーズ (Web コア移植の続き)
-- [ ] **Phase 4: Z80 コア移植 + ドライバ実行** (`src/core/z80/` + `src/core/player/Z80DriverMachine.ts`)
-  - Z80dotNet 相当の TS コア (全命令セット / 16bit ポート `UseExtendedPortsSpace` 相当 / T-state 精度 / HALT)
-  - 検証: `lkesteloot/trs80` モノレポの `z80-test` (1356 テスト) を内製コアの命令セット検証に活用 (web_core_port.md §1.1)
-  - `Z80DriverImage.ts` (ドライバビルド + MZSD 配置) / `Z80DriverMachine.ts` (E008h bit7 H-BLANK 同期)
-  - **等価性テスト**: SourceInterpreter vs Z80Driver の全フレーム音源レジスタ比較 (C# `Z80DriverEquivalenceTests` 相当)
+- [x] **Phase 4: Z80 コア移植 + ドライバ実行** (完了 → §1 参照)
+  - [x] Z80dotNet 相当の TS コア (全命令セット / 16bit ポート相当 / T-state 精度 / HALT)
+  - [x] `Z80DriverImage.ts` (ドライバビルド + MZSD 配置) / `Z80DriverMachine.ts` (E008h bit7 H-BLANK 同期)
+  - [x] **等価性テスト**: SourceInterpreter vs Z80Driver の全フレーム音源レジスタ比較 (9/11 合格、2 は C# と同一理由で skip)
+  - [ ] (残タスク) `lkesteloot/trs80` の `z80-test` (1356 テスト) による命令セット全数検証
+    (テストバイナリの取り込み + RST 38h 出力ハンドラ実装が必要。web_core_port.md §4.5)
 - [ ] **Phase 5: UI 接続** (本プロジェクト既存 UI とコアの統合)
   - MML エディタ BUILD → `MmlCompiler` 実行 (コンパイルエラー→ CompileErrorPanel / システムコンソール)
   - PLAY → `Player` (SourceInterpreter 先行、Z80Driver 切替) / トラックモニターへの VU・演奏位置反映

@@ -67,13 +67,15 @@ mz1500_sound_ide/
 │  │  │  ├─ fm/ (Ym2151.ts / Opm.ts / FmOperator.ts / FmChannel4.ts / FmTables.ts / FmTimer.ts /
 │  │  │  │        FmChip.ts / ISoundChip.ts / SystemRandom.ts)
 │  │  │  └─ __tests__/        (DCSG 7 + BEEP 4 + Ym2151 8 + ChipBank 4 + SystemRandom 2)
-│  │  ├─ player/            … 演奏エンジン (← MzSound.Player) ✅ (Z80Driver は次フェーズ)
+│  │  ├─ player/            … 演奏エンジン (← MzSound.Player) ✅
 │  │  │  ├─ MzsdSong.ts / TrackSequencer.ts / MzsdSequencer.ts
 │  │  │  ├─ AudioFrameMixer.ts / AudioEngine.ts (Web Audio 化) / Player.ts
 │  │  │  ├─ FramePlaybackWorklet.ts (AudioWorkletProcessor ソース / Blob URL ロード)
-│  │  │  ├─ __tests__/           (MZSD 解析 3 + シーケンサ/FM 12 + ミキサー 5 + Player 2)
-│  │  │  └─ Z80DriverImage.ts / Z80DriverMachine.ts 【次フェーズ】
-│  │  └─ z80/               … Z80 CPU コア (Z80dotNet 相当を内製移植) 【次フェーズ】
+│  │  │  ├─ Z80DriverImage.ts (?raw import + アセンブル) / Z80DriverMachine.ts (内蔵 Z80 でドライバ実行) ✅
+│  │  │  └─ __tests__/           (MZSD 解析 3 + シーケンサ/FM 12 + ミキサー 5 + Player 2 +
+│  │  │                            Z80DriverMachine 11 + Z80Driver 等価性 11)
+│  │  └─ z80/               … Z80 CPU コア (Z80dotNet 相当を内製移植) ✅
+│  │     └─ MainRegisters.ts / Z80Registers.ts / Z80Bus.ts / Z80Processor.ts / __tests__/ (57)
 │  └─ utils/                … UI 補助ユーティリティ (MML キャレット解析 / 仮想シンセ)
 └─ docs/specification/      … 本書を含む仕様ドキュメント一式
 ```
@@ -94,8 +96,8 @@ mz1500_sound_ide/
 | `src/MzSound.Player/Sequencer/MzsdSequencer.cs` | `src/core/player/MzsdSequencer.ts` | ✅ 移植済 (同上) |
 | `src/MzSound.Player/Audio/AudioEngine.cs` (NAudio) | `src/core/player/AudioFrameMixer.ts` (合成) + `AudioEngine.ts` (Web Audio) | ✅ 移植済。合成 / 60Hz フレーム駆動 / ミックス / VU を Web Audio 非依存の FrameMixer に分離し vitest で検証。出力は AudioWorklet (Blob URL) + ScriptProcessor フォールバック |
 | `src/MzSound.Player/Player.cs` | `src/core/player/Player.ts` | ✅ 移植済 (`play` / `rewindToStart` のみ AudioWorklet ロードのため async) |
-| `src/MzSound.Player/Driver/Z80DriverMachine.cs` (Z80dotNet) | `src/core/player/Z80DriverMachine.ts` + `src/core/z80/*` | ⏳ 次フェーズ (Phase 4) |
-| `tests/MzSound.*.Tests/*` (xUnit) | `src/core/**/__tests__/*` (vitest) | 🔶 アセンブラ 51 + MML 24 + チップ 25 + Player 22 = **132 テスト合格**。Z80Driver 等価テストは次フェーズ |
+| `src/MzSound.Player/Driver/Z80DriverMachine.cs` (Z80dotNet) | `src/core/z80/*` (CPU コア) + `src/core/player/Z80DriverImage.ts` / `Z80DriverMachine.ts` | ✅ 移植済。実ドライバ 1945 行が内製コア上で動作し、SourceInterpreter との全フレーム等価性を検証済み (§4.3) |
+| `tests/MzSound.*.Tests/*` (xUnit) | `src/core/**/__tests__/*` (vitest) | ✅ アセンブラ 51 + MML 24 + チップ 25 + Player (シーケンサ等) 22 + Z80 コア 57 + Z80DriverMachine 11 + 等価性 11 = **209 合格 + 2 skip (C# 版と同一理由)** |
 
 ### 3.1 C# partial class の統合対応
 
@@ -131,8 +133,12 @@ C# の partial class (1 クラス複数ファイル) は、TS では 1 ファイ
 2. **実ドライバ検証**: C# 版 `Z80DriverImage.Build` と同じ契約 (origin = 0x1200、
    `music_data` ラベル存在、org パディング除去) を vitest で常時検証する。
    実ドライバ 1945 行が TypeScript アセンブラでアセンブルできることが回帰防止になる。
-3. **等価性テスト (次フェーズ)**: C# 版 `Z80DriverEquivalenceTests` と同様に、
-   SourceInterpreter と Z80Driver の全フレーム音源レジスタ (PSG×2 / BEEP / FM 全レジスタ) を比較する。
+3. **等価性テスト**: C# 版 `Z80DriverEquivalenceTests` を vitest に移植し、
+   SourceInterpreter (`MzsdSequencer`) と Z80Driver (`Z80DriverMachine`) の全フレーム音源レジスタ
+   (PSG×2 全パラメータ / BEEP counter・gate / YM2151 全 256 レジスタの書き込み有無と値) を比較する。
+   11 シナリオ (全チャンネル / 音量エンベロープ / ピッチエンベロープ・スイープ / ノイズ / L ループ /
+   ネストループ / トランスポーズ / FM ピッチ系) 中 9 が合格。残り 2 (FM 音色レジスタマッピング) は
+   C# 版がスキップしている同一理由で `it.skip` とし、Z80 ドライバ側の `apply_fm_tone` 修正まで保留。
 4. **C# リファレンス値ダンプ (`tools/cs-probe/`)**: chips 移植の検証のため、C# 版
    `MzSound.Player` を参照する .NET コンソールツールを用意した。
    `dotnet run --project tools/cs-probe -c Release` で以下を `out/reference.json` へ出力し、
@@ -143,6 +149,27 @@ C# の partial class (1 クラス複数ファイル) は、TS では 1 ファイ
    - Ym2151 キーオン後の出力 (部分最大値・総和・先頭 48 int 値 → 完全一致)
    - Ym2151 + saw LFO / noise LFO 出力 (総和・先頭 int 値 → 完全一致)
    bin / obj / out は .gitignore 済み (ソース `Program.cs` / `.csproj` のみ管理)。
+5. **Z80 コアの検証**: 内製コア (`src/core/z80/`) は 57 単体テスト (ALU / フラグ未文書ビット /
+   T-state / ブロック命令 / 未文書 IXH・IXL / DDCB レジスタロード / 未定義オペコードの PC 進行 /
+   16bit ポート) に加え、上記 §4.3 の実ドライバ等価性テストで実機相当の命令列を通した検証を行う。
+   `lkesteloot/trs80` の `z80-test` (1356 テスト) による命令セット全数検証は、テストバイナリの
+   取り込みと RST 38h 出力ハンドラ実装が必要なため **今後の検証拡充タスク** とする (§1.1)。
+
+## 4.1 Z80dotNet 由来コードのライセンス表記
+
+`src/core/z80/` は Z80dotNet (https://github.com/Konamiman/Z80dotNet, Copyright (C) 2014
+Konamiman) を TypeScript へ移植・改変したものである。Z80dotNet の LICENSE.txt 条項
+(著作権表示と許諾表示を全てのコピーに添付すること、改変部分を明示すること) に従い、
+該当ソースの冒頭に下記を記載している。
+
+```text
+ * Based on Z80dotNet (https://github.com/Konamiman/Z80dotNet) originally written by Konamiman.
+ * Copyright (C) 2014 Konamiman, www.konamiman.com.
+ * 本ファイルは Z80dotNet の LICENSE.txt 条項 (著作権 / 許諾表示の保持、改変の明示) に従って改変したものである。
+```
+
+`Z80DriverImage.ts` / `Z80DriverMachine.ts` は C# 版プロジェクト (`mz1500_sound_devenv`) の
+実装移植であり Z80dotNet コードを含まないが、CPU コアの挙動参照元として本節に記録する。
 
 ## 5. 履歴
 
@@ -152,3 +179,4 @@ C# の partial class (1 クラス複数ファイル) は、TS では 1 ファイ
 | 2026/09/05 | §1.1 追加: Z80 コア外部ライブラリ (`lkesteloot/z80-emulator`) を評価。依存採用は見送り、Z80dotNet 内製移植方針を再確定 (`z80-test` は検証基盤として活用)。 |
 | 2026/09/05 | Phase 2 完了: 音源エミュレーション (DCSG ×2 / BEEP 8253 / YM2151 fmgen 由来) を移植。`tools/cs-probe` による C# リファレンス値とのビット一致検証を導入 (§3.1、§4.4 追加)。テスト合計 110 (アセンブラ 51 + MML 24 + チップ 25 + 実ドライバ 3 + …)。 |
 | 2026/09/05 | Phase 3 完了: 演奏エンジン (`Sequencer` + `Audio` + `Player`) を移植。NAudio の合成部は Web Audio 非依存の `AudioFrameMixer` に分離、出力は AudioWorklet (Blob URL) + ScriptProcessor フォールバック。テスト合計 132 (Player 系 +22)。 |
+| 2026/09/05 | Phase 4 完了: Z80 CPU コア (`src/core/z80/`、Z80dotNet 相当・全命令 / T-state / HALT / 16bit ポート) とドライバ実行環境 (`Z80DriverImage.ts` / `Z80DriverMachine.ts`) を移植。実ドライバが内蔵コア上で動作し、SourceInterpreter との全フレーム等価性テスト (9 シナリオ) 合格。テスト合計 209 合格 + 2 skip。§4.1 (ライセンス表記) / §4.5 (検証方針) 追加。 |
