@@ -27,6 +27,7 @@ import { parseMmlCaretContext, type MmlCaretContext } from '../utils/mmlCaretPar
 import { analyzeMmlLine, collectUsedIds, nextAvailableId } from '../utils/mmlContextParser';
 import { MmlContextMenu, type MmlContextMenuEntry } from './MmlContextMenu';
 import type { FmToneData } from '../core/fm/FmTone';
+import { setupMmlLanguage, MML_LANGUAGE_ID, MML_THEME_NAME } from '../utils/mmlLanguage';
 
 interface MmlFile {
   id: string;
@@ -212,8 +213,14 @@ export function MmlEditor({
   useEffect(() => { onRequestNewPitchEnvRef.current = onRequestNewPitchEnv; }, [onRequestNewPitchEnv]);
   useEffect(() => { onTogglePlayRef.current = onTogglePlay; }, [onTogglePlay]);
 
+  /** Monaco editor beforeMount: MML 言語定義・Monarch トークナイザー・テーマを登録 */
+  const handleBeforeMount = useCallback((monaco: Monaco) => {
+    setupMmlLanguage(monaco);
+  }, []);
+
   /** Monaco editor onMount: インスタンス保持・Ctrl+Enter再生キーバインド・キャレットコンテキスト解析をセットアップする */
   const handleEditorMount = useCallback((editorInstance: editor.IStandaloneCodeEditor, _monaco: Monaco) => {
+    setupMmlLanguage(_monaco);
     monacoEditorRef.current = editorInstance;
     onEditorMount?.(editorInstance);
 
@@ -768,8 +775,9 @@ export function MmlEditor({
         >
           <Editor
             height="100%"
-            language="plaintext"
-            theme="vs-dark"
+            language={MML_LANGUAGE_ID}
+            theme={MML_THEME_NAME}
+            beforeMount={handleBeforeMount}
             value={activeFile.content}
             onChange={handleEditorChange}
             onMount={handleEditorMount}
