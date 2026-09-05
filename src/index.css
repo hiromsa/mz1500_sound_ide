@@ -1,0 +1,48 @@
+@import "tailwindcss";
+
+@theme {
+  --color-studio-base: #1E1E1E;
+  --color-studio-panel: #2D2D2D;
+  --color-studio-card: #252525;
+  --color-studio-border: #3C3C3C;
+  --color-studio-accent: #00A8FF;
+}
+
+@layer base {
+  * {
+    border-color: #3C3C3C;
+  }
+
+  body {
+    background-color: #1E1E1E;
+    color: #e4e4e7;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* クリーンで薄い Professional DAW スタイルのカスタムスクロールバー */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #3C3C3C;
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #52525B;
+  }
+
+  /* プロ仕様のスライダー (Thumb: 明るく / Track: 暗く) */
+  input[type="range"] {
+    accent-color: #00A8FF;
+  }
+}
+
