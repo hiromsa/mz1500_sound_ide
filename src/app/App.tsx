@@ -12,12 +12,19 @@ import {
   Repeat 
 } from 'lucide-react';
 import { MmlEditor } from '../view/MmlEditor';
-import { TrackMonitor } from '../view/TrackMonitor';
+import { TrackMonitor, type PlaybackMapInfo } from '../view/TrackMonitor';
 import { SettingsPanel } from '../view/SettingsPanel';
 import { SongSetupPanel, type SongMetadata } from '../view/SongSetupPanel';
 import { VolEnvelopeEditor } from '../view/VolEnvelopeEditor';
 import { PitchEnvelopeEditor } from '../view/PitchEnvelopeEditor';
 import { FmToneEditor } from '../view/FmToneEditor';
+import { MmlCompiler } from '../core/mml/MmlCompiler';
+import type { MmlDiagnostic } from '../core/mml/TrackId';
+import { DiagnosticSeverity } from '../core/mml/TrackId';
+import { AudioEngineMode } from '../core/player/AudioEngine';
+import { Player } from '../core/player/Player';
+import { Z80DriverImage } from '../core/player/Z80DriverImage';
+import { buildQuickDiskImage } from '../core/export/QdfImageBuilder';
 import type { FmToneData } from '../core/fm/FmTone';
 import type { CompileErrorItem } from '../view/CompileErrorPanel';
 import type { ActiveTabContext } from '../view/VirtualKeyboard';
@@ -25,6 +32,36 @@ import type { editor } from 'monaco-editor';
 import mz1500Logo from '../assets/mz1500logo.svg';
 
 type RightTab = 'track' | 'tone' | 'vol_envelope' | 'pitch_envelope' | 'song_setup' | 'settings';
+
+/** コンパイル診断を PROBLEMS パネル用の項目へ変換する。 */
+function toCompileErrorItems(
+  diagnostics: readonly MmlDiagnostic[],
+  sourceFile: string,
+): CompileErrorItem[] {
+  return diagnostics.map((diagnostic, index) => ({
+    id: `compile-${index}-${diagnostic.line}-${diagnostic.column}`,
+    severity: diagnostic.severity === DiagnosticSeverity.Error ? 'error' : 'warning',
+    line: diagnostic.line,
+    column: diagnostic.column,
+    message: diagnostic.message,
+    sourceFile,
+  }));
+}
+
+/** QD のファイル名に使える ASCII 文字列へ正規化する (非 ASCII はアンダースコア)。 */
+function sanitizeFileName(name: string): string {
+  const normalized = [...name]
+    .map((ch) => (/[A-Za-z0-9 _-]/.test(ch) ? ch : '_'))
+    .join('')
+    .trim();
+
+  return normalized.slice(0, 16);
+}
+
+/** 演奏エンジンの表示名。 */
+function playbackModeLabel(mode: AudioEngineMode): string {
+  return mode === AudioEngineMode.Z80Driver ? 'Z80 DRIVER' : 'SOURCE INTERPRETER';
+}
 
 function App() {
   // 左右ペインの幅比率 (%)
@@ -116,11 +153,23 @@ function App() {
     ? 'mml'
     : (activeRightTab as ActiveTabContext);
 
-  // 再生ステート (PLAY / STOP モック連動)
+  // 再生ステート (PLAY / STOP 連動)
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
 
   // 無限ループ (Lコマンド) 有効/無効ステート (デフォルト ON)
   const [isLoopEnabled, setIsLoopEnabled] = useState<boolean>(true);
+
+  // 演奏エンジン (SourceInterpreter = リファレンス実装 / Z80Driver = 内蔵 Z80 コアでドライバ実行)
+  const [playbackMode, setPlaybackMode] = useState<AudioEngineMode>(AudioEngineMode.SourceInterpreter);
+
+  // 演奏位置ハイライト用の MML 対応情報 (コンパイル成功時に更新)
+  const [playbackInfo, setPlaybackInfo] = useState<PlaybackMapInfo | null>(null);
+
+  // MmlEditor のアクティブファイルの最新ソース (BUILD / EXPORT で使用)
+  const mmlSourceRef = useRef<{ source: string; fileName: string }>({ source: '', fileName: 'main.mml' });
+
+  // 演奏ファサード (初回 PLAY 時に生成、unmount 時に破棄)
+  const playerRef = useRef<Player | null>(null);
 
   // システムコンソールログ
   const [logs, setLogs] = useState<string[]>([
@@ -160,36 +209,82 @@ function App() {
     isPlayingRef.current = isPlaying;
   }, [isPlaying]);
 
-  // PLAY ハンドラ (ビルド ➜ 再生開始)
-  const handlePlay = useCallback(() => {
-    setIsPlaying(true);
+  // システムコンソールへ 1 行追記する
+  const appendLog = useCallback((message: string) => {
     const time = new Date().toLocaleTimeString();
-    setLogs(prev => [
-      ...prev,
-      `[${time}] [BUILD] Compiling MML active file...`,
-      `[${time}] [BUILD] Parsing channels (${enableYM2151 ? '17 CH: FM+DCSG+BEEP' : '9 CH: MZ-1500 BASICS'})...`,
-      `[${time}] [BUILD] Loop mode: ${isLoopEnabled ? 'ENABLED (L infinite loop)' : 'DISABLED (Play once)'}.`,
-      `[${time}] [BUILD] SUCCESS: QuickDisk Image binary generated (64 KB).`,
-      `[${time}] [AUDIO] Playback started (Web Audio Engine).`
-    ]);
-  }, [enableYM2151, isLoopEnabled]);
+    setLogs(prev => [...prev, `[${time}] ${message}`]);
+  }, []);
+
+  // MmlEditor から通知されるアクティブソースを保持する
+  const handleActiveSourceChange = useCallback((source: string, fileName: string) => {
+    mmlSourceRef.current = { source, fileName };
+  }, []);
+
+  // 演奏ファサードを遅延生成する (AudioContext はユーザ操作内の play 時に生成される)
+  const ensurePlayer = useCallback((): Player => {
+    if (playerRef.current === null) {
+      const player = new Player();
+      player.onPlaybackFinished = () => {
+        setIsPlaying(false);
+        appendLog('[AUDIO] Playback finished.');
+      };
+      playerRef.current = player;
+    }
+
+    return playerRef.current;
+  }, [appendLog]);
+
+  // unmount 時に演奏ファサードを破棄する
+  useEffect(() => {
+    return () => {
+      void playerRef.current?.dispose();
+      playerRef.current = null;
+    };
+  }, []);
+
+  // PLAY ハンドラ (MML コンパイル ➜ 再生開始)
+  const handlePlay = useCallback(async () => {
+    const { source, fileName } = mmlSourceRef.current;
+    appendLog(`[BUILD] Compiling ${fileName}...`);
+
+    const result = new MmlCompiler().compile(source);
+    setCompileErrors(toCompileErrorItems(result.diagnostics, fileName));
+
+    if (!result.success || result.musicData === null) {
+      const errorCount = result.diagnostics.filter(d => d.severity === DiagnosticSeverity.Error).length;
+      appendLog(`[BUILD] FAILED: ${errorCount} error(s). See the PROBLEMS panel.`);
+      return;
+    }
+
+    appendLog(
+      `[BUILD] SUCCESS: ${(result.totalFrames / 60).toFixed(2)} sec / ${result.tracks.length} tracks / ` +
+      `${isLoopEnabled ? 'LOOP ENABLED' : 'PLAY ONCE'}.`
+    );
+
+    const player = ensurePlayer();
+    try {
+      appendLog(`[AUDIO] Playback started (${playbackModeLabel(playbackMode)} / Web Audio).`);
+      await player.play(result.musicData, isLoopEnabled, playbackMode);
+      setPlaybackInfo({ map: result.map, source });
+      setIsPlaying(true);
+    } catch (err) {
+      appendLog(`[AUDIO] ERROR: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }, [appendLog, ensurePlayer, isLoopEnabled, playbackMode]);
 
   // STOP ハンドラ (停止)
   const handleStop = useCallback(() => {
+    playerRef.current?.stop();
     setIsPlaying(false);
-    const time = new Date().toLocaleTimeString();
-    setLogs(prev => [
-      ...prev,
-      `[${time}] [AUDIO] Playback stopped.`
-    ]);
-  }, []);
+    appendLog('[AUDIO] Playback stopped.');
+  }, [appendLog]);
 
   // PLAY/STOP トグルハンドラ (再生中なら停止、停止中なら再生)
   const handleTogglePlay = useCallback(() => {
     if (isPlayingRef.current) {
       handleStop();
     } else {
-      handlePlay();
+      void handlePlay();
     }
   }, [handleStop, handlePlay]);
 
@@ -205,15 +300,57 @@ function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleTogglePlay]);
 
-  // EXPORT ハンドラ (.qdf エクスポート)
-  const handleExport = () => {
-    const time = new Date().toLocaleTimeString();
-    setLogs(prev => [
-      ...prev,
-      `[${time}] [EXPORT] Generating MZ-1500 QuickDisk Image (.qdf)...`,
-      `[${time}] [EXPORT] SUCCESS: Exported "song.qdf" (64 KB). Ready for emulator or physical QD write.`
-    ]);
-  };
+  // トラックのプレビューミュートを Player に反映 (プレビュー専用・コンパイル非連動)
+  const handleTrackMuteChange = useCallback((trackIndex: number, muted: boolean) => {
+    playerRef.current?.setTrackVolume(trackIndex, 0.8, muted);
+  }, []);
+
+  // マスター音量 / ミュートを Player に反映 (プレビュー専用・コンパイル非連動)
+  const handleMasterVolumeChange = useCallback((volume: number, muted: boolean) => {
+    playerRef.current?.setMasterVolume(muted ? 0 : volume);
+  }, []);
+
+  // EXPORT ハンドラ (.qdf エクスポート: コンパイル ➜ QuickDisk イメージ生成 ➜ ダウンロード)
+  const handleExport = useCallback(() => {
+    const { source, fileName } = mmlSourceRef.current;
+    appendLog(`[BUILD] Compiling ${fileName} for export...`);
+
+    const result = new MmlCompiler().compile(source);
+    setCompileErrors(toCompileErrorItems(result.diagnostics, fileName));
+    if (!result.success || result.musicData === null) {
+      const errorCount = result.diagnostics.filter(d => d.severity === DiagnosticSeverity.Error).length;
+      appendLog(`[BUILD] FAILED: export aborted (${errorCount} error(s)). See the PROBLEMS panel.`);
+      return;
+    }
+
+    try {
+      const baseName =
+        sanitizeFileName(songMetadata.title) ||
+        sanitizeFileName(fileName.replace(/\.mml$/i, '')) ||
+        'song';
+
+      // 実機で演奏できるよう、ドライバ (0x1200〜) の music_data 位置へ MZSD データを
+      // 埋め込んだ起動イメージを QuickDisk に格納する (Z80DriverMachine.load と同一の配置)
+      const executableImage = Z80DriverImage.buildExecutableImage(
+        Z80DriverImage.defaultDriver,
+        result.musicData,
+      );
+      const image = buildQuickDiskImage(baseName, executableImage);
+
+      const blob = new Blob([image.slice()], { type: 'application/octet-stream' });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `${baseName}.qdf`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+
+      appendLog(`[EXPORT] SUCCESS: Exported "${baseName}.qdf" (${image.length.toLocaleString()} bytes).`);
+      setPlaybackInfo({ map: result.map, source });
+    } catch (err) {
+      appendLog(`[EXPORT] ERROR: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }, [appendLog, songMetadata.title]);
 
   // ドラッグ開始ハンドラ
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -366,6 +503,7 @@ function App() {
             onRequestNewVolEnv={handleRequestNewVolEnv}
             onRequestNewPitchEnv={handleRequestNewPitchEnv}
             onEditorMount={(editorInstance) => { monacoEditorRef.current = editorInstance; }}
+            onActiveSourceChange={handleActiveSourceChange}
           />
         </div>
 
@@ -502,7 +640,16 @@ function App() {
             {/* Right Pane Content (タブコンテンツ切替) */}
             <div className="flex-grow flex flex-col overflow-hidden min-h-0">
               {activeRightTab === 'track' && (
-                <TrackMonitor enableYM2151={enableYM2151} />
+                <TrackMonitor
+                  enableYM2151={enableYM2151}
+                  isPlaying={isPlaying}
+                  getTrackLevel={(trackIndex) => playerRef.current?.getTrackLevel(trackIndex) ?? 0}
+                  getMasterLevel={() => playerRef.current?.getMasterLevel() ?? 0}
+                  getTrackOffset={(trackIndex) => playerRef.current?.getTrackOffset(trackIndex) ?? -1}
+                  onTrackMuteChange={handleTrackMuteChange}
+                  onMasterVolumeChange={handleMasterVolumeChange}
+                  playbackMap={playbackInfo}
+                />
               )}
 
               {activeRightTab === 'tone' && (
@@ -560,7 +707,14 @@ function App() {
               )}
 
               {activeRightTab === 'settings' && (
-                <SettingsPanel onGoToSongSetup={() => setActiveRightTab('song_setup')} />
+                <SettingsPanel
+                  onGoToSongSetup={() => setActiveRightTab('song_setup')}
+                  playbackMode={playbackMode}
+                  onChangePlaybackMode={(mode) => {
+                    setPlaybackMode(mode);
+                    appendLog(`[SETTINGS] Playback engine set to ${playbackModeLabel(mode)}.`);
+                  }}
+                />
               )}
             </div>
           </div>

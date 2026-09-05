@@ -1,5 +1,14 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Volume2, VolumeX } from 'lucide-react';
+import { allTracks } from '../core/mml/TrackId';
+import type { MmlMap } from '../core/mml/MmlMap';
+
+/** 演奏位置 → MML 対応情報 (コンパイル成功時に App から渡される)。 */
+export interface PlaybackMapInfo {
+  map: MmlMap | null;
+
+  source: string;
+}
 
 interface ChannelState {
   id: string;
@@ -15,7 +24,7 @@ interface ChannelState {
 
 const generateInitialChannels = (): ChannelState[] => {
   const channels: ChannelState[] = [];
-  
+
   // YM2151 (8ch): F1 FM1 ～ F8 FM8
   for (let i = 1; i <= 8; i++) {
     channels.push({
@@ -23,11 +32,10 @@ const generateInitialChannels = (): ChannelState[] => {
       trackId: `F${i}`,
       subLabel: `FM${i}`,
       type: 'FM',
-      note: i === 1 ? 'O4 C ' : (i === 2 ? 'O3 G ' : '---  '),
-      level: i === 1 ? 85 : (i === 2 ? 60 : 0),
-      active: i === 1 || i === 2,
+      note: '---  ',
+      level: 0,
+      active: false,
       previewEnabled: true,
-      extra: `ALG:${Math.floor(Math.random() * 8)}`
     });
   }
 
@@ -38,9 +46,9 @@ const generateInitialChannels = (): ChannelState[] => {
       trackId: `P${i}`,
       subLabel: `PSG${i}`,
       type: 'DCSG',
-      note: i === 1 ? 'O5 E ' : '---  ',
-      level: i === 1 ? 70 : 0,
-      active: i === 1,
+      note: '---  ',
+      level: 0,
+      active: false,
       previewEnabled: true,
     });
   }
@@ -50,10 +58,9 @@ const generateInitialChannels = (): ChannelState[] => {
     subLabel: `Noise1`,
     type: 'NOISE',
     note: '---  ',
-    level: 40,
-    active: true,
+    level: 0,
+    active: false,
     previewEnabled: true,
-    extra: 'WHITE'
   });
 
   // DCSG 2 (SN76489): P4 PSG4 ～ P6 PSG6, N2 Noise2
@@ -79,7 +86,6 @@ const generateInitialChannels = (): ChannelState[] => {
     level: 0,
     active: false,
     previewEnabled: true,
-    extra: 'PERIOD'
   });
 
   // BEEP: B1 BEEP
@@ -96,6 +102,42 @@ const generateInitialChannels = (): ChannelState[] => {
 
   return channels;
 };
+
+/** トラック記号 (P1, N1, B1, F1 等) → 17 トラックのインデックス (0-16)。 */
+function trackIndexOf(trackId: string): number {
+  return allTracks.find((track) => track.id === trackId)?.index ?? -1;
+}
+
+/** 演奏位置 (データオフセット) に対応する MML 上のノート文字列を取り出す。 */
+function resolveTrackNote(
+  info: PlaybackMapInfo | null | undefined,
+  trackId: string,
+  offset: number,
+): string | null {
+  if (!info?.map || offset < 0) {
+    return null;
+  }
+
+  const mapTrack = info.map.tracks.find((track) => track.id === trackId);
+  if (!mapTrack || mapTrack.events.length === 0) {
+    return null;
+  }
+
+  const relative = offset - mapTrack.offset;
+  let current = mapTrack.events[0];
+  for (const event of mapTrack.events) {
+    if (event.offset > relative) {
+      break;
+    }
+
+    current = event;
+  }
+
+  const line = info.source.split(/\r?\n/)[current.line - 1] ?? '';
+  const start = Math.max(0, current.column - 1);
+  const text = line.slice(start, start + current.length).trim();
+  return text !== '' ? text : null;
+}
 
 interface ChannelRowProps {
   ch: ChannelState;
@@ -175,48 +217,105 @@ const ChannelRow = ({ ch, onTogglePreview }: ChannelRowProps) => {
 
 interface TrackMonitorProps {
   enableYM2151?: boolean;
+  /** 演奏中か (Player の再生状態)。 */
+  isPlaying?: boolean;
+  /** トラックの VU レベル取得 (0-1)。 */
+  getTrackLevel?: (trackIndex: number) => number;
+  /** マスターの VU レベル取得 (0-1)。 */
+  getMasterLevel?: () => number;
+  /** トラックの現在データオフセット取得 (演奏位置ハイライト用、停止中は -1)。 */
+  getTrackOffset?: (trackIndex: number) => number;
+  /** トラックのプレビュー ON/OFF (ミュート) を Player へ反映する。 */
+  onTrackMuteChange?: (trackIndex: number, muted: boolean) => void;
+  /** マスター音量 / ミュートを Player へ反映する (プレビュー専用・コンパイル非連動)。 */
+  onMasterVolumeChange?: (volume: number, muted: boolean) => void;
+  /** 演奏位置 → MML 対応情報。 */
+  playbackMap?: PlaybackMapInfo | null;
 }
 
-export function TrackMonitor({ enableYM2151 = true }: TrackMonitorProps) {
+export function TrackMonitor({
+  enableYM2151 = true,
+  isPlaying = false,
+  getTrackLevel,
+  getMasterLevel,
+  getTrackOffset,
+  onTrackMuteChange,
+  onMasterVolumeChange,
+  playbackMap = null,
+}: TrackMonitorProps) {
   const [channels, setChannels] = useState<ChannelState[]>(generateInitialChannels());
   const [masterVolume, setMasterVolume] = useState<number>(80);
   const [isMuted, setIsMuted] = useState<boolean>(false);
-  const [masterVU, setMasterVU] = useState<{ l: number; r: number }>({ l: 72, r: 68 });
+  const [masterVU, setMasterVU] = useState<{ l: number; r: number }>({ l: 0, r: 0 });
+
+  // ポーリング内で参照する最新 props (stale closure 回避)
+  const providersRef = useRef({ isPlaying, getTrackLevel, getMasterLevel, getTrackOffset, playbackMap });
+  useEffect(() => {
+    providersRef.current = { isPlaying, getTrackLevel, getMasterLevel, getTrackOffset, playbackMap };
+  });
+
+  // マスター音量 / ミュートを Player へ反映 (プレビュー専用パラメータ、コンパイル・エクスポートには影響しない)
+  useEffect(() => {
+    onMasterVolumeChange?.(masterVolume / 100, isMuted);
+  }, [masterVolume, isMuted, onMasterVolumeChange]);
+
+  // VU / 演奏位置を Player からポーリングして反映 (100ms 間隔)
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const providers = providersRef.current;
+      if (!providers.isPlaying || !providers.getTrackLevel) {
+        // 停止中: メーターを沈静化する (すでに沈静化済みなら再レンダリングしない)
+        setChannels(prev => {
+          if (!prev.some(ch => ch.level !== 0 || ch.active || ch.note !== '---  ')) {
+            return prev;
+          }
+
+          return prev.map(ch => ({ ...ch, level: 0, active: false, note: '---  ' }));
+        });
+        setMasterVU(prev => (prev.l === 0 && prev.r === 0 ? prev : { l: 0, r: 0 }));
+        return;
+      }
+
+      const trackLevel = providers.getTrackLevel;
+      setChannels(prev => prev.map(ch => {
+        const trackIndex = trackIndexOf(ch.trackId);
+        if (trackIndex < 0) return ch;
+        const level01 = trackLevel(trackIndex);
+        const offset = providers.getTrackOffset?.(trackIndex) ?? -1;
+        const note = resolveTrackNote(providers.playbackMap, ch.trackId, offset) ?? '---  ';
+        return { ...ch, level: Math.round(level01 * 100), active: level01 >= 0.01, note };
+      }));
+
+      const master01 = providers.getMasterLevel?.() ?? 0;
+      const meter = Math.round(Math.min(1, master01) * 100);
+      setMasterVU({ l: meter, r: meter });
+    }, 100);
+    return () => clearInterval(timer);
+  }, []);
 
   const handleTogglePreview = (id: string) => {
-    setChannels(prev => prev.map(ch => 
-      ch.id === id ? { ...ch, previewEnabled: !ch.previewEnabled } : ch
-    ));
+    setChannels(prev => prev.map(ch => {
+      if (ch.id !== id) return ch;
+      const nextEnabled = !ch.previewEnabled;
+      const trackIndex = trackIndexOf(ch.trackId);
+      if (trackIndex >= 0) {
+        onTrackMuteChange?.(trackIndex, !nextEnabled);
+      }
+      return { ...ch, previewEnabled: nextEnabled };
+    }));
   };
 
   const setAllPreview = (enabled: boolean, typeFilter?: 'FM' | 'DCSG_GROUP') => {
     setChannels(prev => prev.map(ch => {
       if (typeFilter === 'FM' && ch.type !== 'FM') return ch;
       if (typeFilter === 'DCSG_GROUP' && ch.type === 'FM') return ch;
+      const trackIndex = trackIndexOf(ch.trackId);
+      if (trackIndex >= 0) {
+        onTrackMuteChange?.(trackIndex, !enabled);
+      }
       return { ...ch, previewEnabled: enabled };
     }));
   };
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setChannels(prev => prev.map(ch => {
-        if (!ch.active || !ch.previewEnabled || (ch.type === 'FM' && !enableYM2151)) return ch;
-        const newLevel = Math.max(12, Math.min(100, ch.level + (Math.random() * 36 - 18)));
-        return { ...ch, level: newLevel };
-      }));
-
-      if (isMuted) {
-        setMasterVU({ l: 0, r: 0 });
-      } else {
-        const factor = masterVolume / 100;
-        setMasterVU({
-          l: Math.round(Math.max(5, Math.min(98, (70 + (Math.random() * 24 - 12)) * factor))),
-          r: Math.round(Math.max(5, Math.min(98, (66 + (Math.random() * 24 - 12)) * factor)))
-        });
-      }
-    }, 100);
-    return () => clearInterval(timer);
-  }, [isMuted, masterVolume, enableYM2151]);
 
   const fmChannels = channels.filter(ch => ch.type === 'FM');
   const dcsg1Channels = channels.filter(ch => ['P1', 'P2', 'P3', 'N1'].includes(ch.trackId));

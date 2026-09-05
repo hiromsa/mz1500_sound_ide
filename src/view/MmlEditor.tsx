@@ -144,6 +144,8 @@ interface MmlEditorProps {
   onRequestNewPitchEnv?: (newId: number) => void;
   /** MMLスニペットをカーソル位置に挿入するためのエディタインスタンス取得コールバック */
   onEditorMount?: (editorInstance: editor.IStandaloneCodeEditor) => void;
+  /** アクティブファイルの MML ソースが変化したときに通知する (BUILD / EXPORT 用) */
+  onActiveSourceChange?: (source: string, fileName: string) => void;
 }
 
 export function MmlEditor({ 
@@ -170,6 +172,7 @@ export function MmlEditor({
   onRequestNewVolEnv,
   onRequestNewPitchEnv,
   onEditorMount,
+  onActiveSourceChange,
 }: MmlEditorProps) {
   const [files, setFiles] = useState<MmlFile[]>(DUMMY_FILES);
   const [activeFileId, setActiveFileId] = useState<string>(DUMMY_FILES[0].id);
@@ -481,6 +484,16 @@ export function MmlEditor({
   }, [handleCut, handleCopy, handlePaste]);
 
   const activeFile = files.find(f => f.id === activeFileId) || files[0];
+
+  // アクティブファイルの MML ソース変化を App へ通知 (BUILD / EXPORT で使用)
+  const onActiveSourceChangeRef = useRef(onActiveSourceChange);
+  useEffect(() => {
+    onActiveSourceChangeRef.current = onActiveSourceChange;
+  });
+
+  useEffect(() => {
+    onActiveSourceChangeRef.current?.(activeFile.content, activeFile.name);
+  }, [activeFile.content, activeFile.name]);
 
 
   // SongSetupPanel から songMetadata が変更された時に MML ファイル内容を同期
