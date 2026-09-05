@@ -5,6 +5,11 @@
 ---
 
 ## 1. 直近の完了作業（最新）
+- **MCP による自動ブラウザ操作 & デバッグ環境の構築 (chrome-devtools-mcp)**:
+  - Cline の MCP 設定 (`%APPDATA%\Code\User\globalStorage\saoudrizwan.claude-dev\settings\cline_mcp_settings.json`) に **chrome-devtools-mcp** (Google ChromeDevTools 公式) を追加。Gemini Antigravity の MCP Store「Frontend & Design」と同じ Chrome DevTools 系を採用 (コンソールログ収集・ネットワーク検査・パフォーマンストレースなどデバッグ機能が豊富)。
+  - Windows 向けに `cmd /c npx -y chrome-devtools-mcp@latest` 形式で設定 (初回パッケージ DL を考慮し timeout 100 秒)。`autoApprove` は空 = 全ツール呼び出しでユーザー承認 (安全優先)。
+  - 仕様ドキュメント [`docs/specification/mcp-browser-debug.md`](./specification/mcp-browser-debug.md) を新設し、索引 [`docs/specification/README.md`](./specification/README.md) を新規作成。
+  - **実ブラウザでの動作確認は未実施** (ユーザー指示により仕組みのみ整備)。次回ブラウザデバッグが必要になった際に初回動作確認を実施すること (ToDo 参照)。
 - **GitHub Pages 公開対応・モックのデプロイ (gh-pages ブランチ方式) ([`vite.config.ts`](./vite.config.ts), [`package.json`](./package.json))**:
   - `vite.config.ts` に `base: '/mz1500_sound_ide/'` を設定 (GitHub Pages プロジェクトページのサブパス対応)。
   - `package.json` に `predeploy` (`npm run build`) / `deploy` (`gh-pages -d dist`) スクリプトを追加。**`npm run deploy` 一発でビルド〜gh-pagesブランチ公開まで完結**。
@@ -396,3 +401,5 @@
   - 現状は `npm run deploy` (gh-pages ブランチ方式) の手動デプロイ。main push 時の自動デプロイ (actions/deploy-pages) への移行候補。
 - [ ] **`<title>` タグの更新**
   - 現状ビルド出力のタイトルが `temp_vite` のまま → `MZ-1500 Sound IDE` 等への変更候補。
+- [ ] **MCP chrome-devtools-mcp の初回動作確認**
+  - 設定済み・未検証 ([`docs/specification/mcp-browser-debug.md`](./specification/mcp-browser-debug.md))。次回ブラウザデバッグが必要になった際、`npm run dev` → `http://localhost:5173/mz1500_sound_ide/` を Chrome で起動 → コンソールログ / スクリーンショット取得の一連の流れを確認する。
