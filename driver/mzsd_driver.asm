@@ -664,11 +664,10 @@ ev_tone:
         ld      a,(CB_FMCNT)
         or      a
         jr      z,ev_tone_n             ; 音色テーブル無し
-        dec     a
-        ld      b,a                     ; b = 最大音色番号
+        ld      b,a                     ; b = 音色数 (C# fmTones.length と同一)
         ld      a,e
         cp      b
-        jr      nc,ev_tone_n            ; 範囲外 -> スキップ (C# 同一)
+        jr      nc,ev_tone_n            ; 番号 >= 音色数 -> スキップ (C# 同一)
         ld      a,e
         call    apply_fm_tone
 ev_tone_n:
@@ -1454,8 +1453,8 @@ aft_op:
         and     0x1F
         ld      c,a
         push    bc
-        ld      bc,9
-        add     hl,bc
+        ld      bc,7
+        add     hl,bc                   ; p2 + 7 = p9
         ld      a,(hl)
         and     0x03
         add     a,a
@@ -1509,6 +1508,7 @@ aft_op:
 ; ---- レジスタ番号計算: a = b + op*8 + ch (b = ベース、e = op、d = ch)
 aft_reg:
         ld      a,e
+        add     a,a
         add     a,a
         add     a,a
         add     a,b

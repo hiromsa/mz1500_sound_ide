@@ -311,8 +311,9 @@ describe('Z80Driver 等価性 (SourceInterpreter vs Z80Driver)', () => {
     runBoth(builder, 25, false, 'トランスポーズ / FM トラック');
   });
 
-  // C# 版も同一理由 (Z80 apply_fm_tone のレジスタマッピング未一致) でスキップしている
-  it.skip('FM 音色 / ノート / 音量がリファレンスと一致する (TODO: Z80 apply_fm_tone のレジスタマッピング)', () => {
+  // C# 版では同一理由 (Z80 apply_fm_tone のレジスタマッピング未一致) でスキップされていたが、
+  // ドライバのバグ修正 (音色範囲チェック / op アドレス倍率 / DT2 オフセット) により解消した。
+  it('FM 音色 / ノート / 音量がリファレンスと一致する', () => {
     const builder = new SongBuilder();
     // @FM0: ALG4 / FB3 (パラメータ差がレジスタへ反映されることを確認)
     const tone0 = new Uint8Array(FmToneParameterCount);
@@ -429,8 +430,8 @@ describe('Z80Driver 等価性 (SourceInterpreter vs Z80Driver)', () => {
     runBoth(builder, 28, false, 'FM ピッチクランプ境界');
   });
 
-  // C# 版も同一理由 (@FM 音色レジスタマッピング未一致、上記 skip と同一原因) でスキップしている
-  it.skip('MML コンパイル曲がリファレンスと一致する (TODO: @FM 音色レジスタマッピング)', () => {
+  // C# 版では同一原因 (上記と同一の apply_fm_tone バグ) でスキップされていたが、修正により解消した。
+  it('MML コンパイル曲がリファレンスと一致する', () => {
     // MML → コンパイラで生成した実データで両エンジンを比較 (エンベロープ / ノイズ / BEEP / FM / L ループ含む)
     const mml = [
       '@v0 = {15, 12, 9, |, 6, 3}',
