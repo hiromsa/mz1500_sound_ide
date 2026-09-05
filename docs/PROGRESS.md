@@ -123,7 +123,8 @@ Konamiman氏の `Z80.Net` をTypeScriptへ移植するにあたり、以下の�
  * 
  * Copyright (C) 2014 Konamiman ([www.konamiman.com](https://www.konamiman.com))
  * [ここにライセンスのPermission条文を併記]
- */  
+ */
+```
 
 ---
 
