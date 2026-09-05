@@ -5,7 +5,65 @@
 ---
 
 ## 1. 直近の完了作業（最新）
-- **公式 MZ-1500 SVG ロゴの assets 配置 & ヘッダー「Sound IDE」バッジ化 ([`src/assets/mz1500logo.svg`](./src/assets/mz1500logo.svg), [`public/assets/mz1500logo.svg`](./public/assets/mz1500logo.svg), [`src/App.tsx`](./src/App.tsx), [`docs/specification/ui.md`](./docs/specification/ui.md))**:
+- **C# 版コア (内部機能) の TypeScript への移植開始・アセンブラ+MML コンパイラ完了 (`src/core/`, `driver/`, [`docs/specification/web_core_port.md`](./specification/web_core_port.md))**:
+  - **背景**: 別プロジェクト `C:\tools\mz1500_sound_devenv` (C# 版 MZ-1500 サウンド開発環境) の
+    内部機能 (UI 以外: MML コンパイラ / Z80 アセンブラ / 演奏コア / Z80 ドライバ) を本プロジェクトへ移植。
+    UI は本プロジェクトの既存実装 (React + Monaco + Tailwind) を最優先。
+  - **プロジェクト構成の再編** (モックからの本格実装移行):
+    - `src/components` → `src/view` (UI コンポーネント層)
+    - `src/App.tsx` → `src/app/App.tsx` (アプリシェル層)、`src/main.tsx` の import 更新
+    - `src/core/` (ロジック層・UI 非依存) を新設
+    - `src/core/fm/FmTone.ts` に FmTone 型とアルゴリズム純粋ロジックを抽出し、
+      `src/utils/virtualSynth.ts` → `src/components/FmToneEditor` の **UI 逆依存を解消**
+  - **Z80 2 パスアセンブラを移植** (`src/core/assembler/`、移植元: `MzSound.DriverAssembler`):
+    - `Z80Assembler.ts` (2 パス / org / equ / db / dw / dctbl / beeptbl)、`Z80Encoding.ts` (命令エンコーダ)、
+      `OperandParser.ts`、`ExpressionEvaluator.ts`、`Z80Operand.ts`、`AssembleResult.ts` の 6 モジュール。
+    - enum 非使用 (`erasableSyntaxOnly` 対応のため const オブジェクト + union 型で実装)。
+  - **MML コンパイラを移植** (`src/core/mml/`、移植元: `MzSound.MmlCompiler`):
+    - `MmlCompiler.ts` (マクロ抽出 → パース → MZSD バイナリ組立)、`MmlCompilerMacros.ts` (@v/@EP/@FM)、
+      `MmlCompilerAssemble.ts`、`parser/MmlParser.ts` (C# partial class を 1 クラスに統合)、
+      `TrackId.ts`、`Envelopes.ts`、`MmlMap.ts`、`parser/MmlParserTypes.ts`。
+  - **Z80 ドライバ実ソースの取り込み** (`driver/mzsd_driver.asm`、C# 版 v1.2 = FM 対応版 1945 行):
+    - C# 版 `Z80DriverImage.Build` と同一契約 (origin = 0x1200、`music_data` ラベル、org パディング除去) を
+      vitest で検証するテストを追加。**実ドライバ 1945 行が TypeScript 版アセンブラで正常にアセンブルできることを確認**。
+  - **テスト基盤の導入と C# テストの移植** (vitest、`npm test`):
+    - アセンブラ 51 テスト (エンコード 45 パターン + ラベル解決 / db・dw / ノートテーブル式 / 範囲エラー / 行番号)、
+      MML 24 テスト (基本 7 + 高度 13 + マクロ複数行 4)、実ドライバ検証 3 テスト → **計 85 テスト全合格**。
+    - C# 版と同一の期待値 (オペコード列・フレーム数・DCSG/8253 周波数テーブル式) をビット単位で検証。
+  - **npm ライブラリ選定調査**: Z80 CPU エミュレータは npm に実用レベルのものが存在しないことを確認
+    (`jsz80` / `z80-cpu` は 404、`z80` は v0.0.1 のみ)。**Z80dotNet 相当のコアを TypeScript で内製移植する**方針を確定
+    (移植元との挙動一致・等価テスト流用のため)。
+  - **仕様ドキュメント新設**: [`docs/specification/web_core_port.md`](./specification/web_core_port.md)
+    (移植アーキテクチャ・フォルダ構成・C#↔TS 対応表・検証方針)。
+  - 検証: `npx tsc -b` エラーゼロ / `npm run build` 成功 / `npm run lint` エラーゼロ / `npm test` 85/85 合格。
+
+## 2. 次のフェーズ (Web コア移植の続き)
+- [ ] **Phase 2: 音源エミュレーション移植** (`src/core/chips/` ← `MzSound.Player/Chips`)
+  - `DcsgChip.ts` (SN76489AN 相当 ×2) / `BeepChip.ts` (8253 PIT) / `ChipBank.ts`
+  - YM2151 (OPM) フル実装: `Ym2151` / `Opm` (LFO/Mix/Registers) / `FmOperator` (Calc/Eg/Params) /
+    `FmChannel4` (Calc) / `FmTables` (Build/Envelopes) / `FmTimer` (fmgen 由来の C# 実装からの移植)
+  - C# Player テスト (37+5skip) のうちチップ単体分の移植
+- [ ] **Phase 3: 演奏エンジン移植** (`src/core/player/` ← `MzSound.Player`)
+  - `MzsdSong.ts` (MZSD 解析) / `TrackSequencer.ts` (C# リファレンス実装) / `MzsdSequencer.ts` (17ch 60Hz)
+  - `AudioEngine.ts` (NAudio → Web Audio API 化、AudioWorklet / 60Hz フレーム駆動 / ミックス / VU)
+  - `Player.ts` ファサード (UI 連携: 再生 / 停止 / ミキサーゲイン / 演奏位置 GetTrackOffset)
+- [ ] **Phase 4: Z80 コア移植 + ドライバ実行** (`src/core/z80/` + `src/core/player/Z80DriverMachine.ts`)
+  - Z80dotNet 相当の TS コア (全命令セット / 16bit ポート `UseExtendedPortsSpace` 相当 / T-state 精度 / HALT)
+  - `Z80DriverImage.ts` (ドライバビルド + MZSD 配置) / `Z80DriverMachine.ts` (E008h bit7 H-BLANK 同期)
+  - **等価性テスト**: SourceInterpreter vs Z80Driver の全フレーム音源レジスタ比較 (C# `Z80DriverEquivalenceTests` 相当)
+- [ ] **Phase 5: UI 接続** (本プロジェクト既存 UI とコアの統合)
+  - MML エディタ BUILD → `MmlCompiler` 実行 (コンパイルエラー→ CompileErrorPanel / システムコンソール)
+  - PLAY → `Player` (SourceInterpreter 先行、Z80Driver 切替) / トラックモニターへの VU・演奏位置反映
+  - エクスポート (.MZT) ・楽曲セットアップパネルとの連携
+- [ ] **@FM 音色レジスタマッピングの課題引き継ぎ** (C# 版の持ち越し: Z80 `apply_fm_tone` の 0x98/0xA0 系が C# とズレる、
+  C# 版 skip 2 テストの原因。Phase 4 の等価テスト実装時に解消を目指す)
+
+---
+
+## 3. 過去の完了作業 (モック期)
+
+- **公式 MZ-1500 SVG ロゴの assets 配置 & ヘッダー「Sound IDE」バッジ化 ([`src/assets/mz1500logo.svg`](./../src/assets/mz1500logo.svg), [`public/assets/mz1500logo.svg`](./../public/assets/mz1500logo.svg), [`src/app/App.tsx`](./../src/app/App.tsx), [`docs/specification/ui.md`](./specification/ui.md))**:
+
   - **SVG ロゴファイルの配置**:
     - 実機公式デザイン準拠のベクターロゴファイル（`mz1500logo.svg`: 縦3本バーM、シャープなZ、中空アウトライン1500）を `src/assets/` および `public/assets/` 配下に格納。
   - **ヘッダーロゴ・バッジの刷新**:
@@ -416,7 +474,7 @@
 
 ---
 
-## 3. 次回・未着手の作業候補 (ToDo)
+## 4. その他の ToDo (UI・環境まわり)
 - [x] **システムコンソールのMMLエディタ下部移設 & 右ペイン開閉ボタン** (完了)
 - [x] **右ペインタブの直感的アイコン追加** (完了)
 - [x] **YM2151 音色エディタのエンベロープグラフ改善** (完了: グラデーション廃止、QDブルー統一、ノード拡大、判定改善、カーソル対応、OP間配線矢印削除)
