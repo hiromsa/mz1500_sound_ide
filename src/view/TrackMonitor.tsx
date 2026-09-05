@@ -15,7 +15,6 @@ interface ChannelState {
   trackId: string;        // F1, P1, N1, B1 など
   subLabel: string;       // FM1, PSG1, Noise1, BEEP など
   type: 'FM' | 'DCSG' | 'NOISE' | 'BEEP';
-  note: string;
   level: number;          // 0-100 (VUメーター)
   active: boolean;        // 現在音が鳴っているか
   previewEnabled: boolean;// プレビュー発音ON/OFF (MMLコンパイル非連動)
@@ -31,7 +30,6 @@ const generateInitialChannels = (): ChannelState[] => {
       trackId: `F${i}`,
       subLabel: `FM${i}`,
       type: 'FM',
-      note: '---  ',
       level: 0,
       active: false,
       previewEnabled: true,
@@ -45,7 +43,6 @@ const generateInitialChannels = (): ChannelState[] => {
       trackId: `P${i}`,
       subLabel: `PSG${i}`,
       type: 'DCSG',
-      note: '---  ',
       level: 0,
       active: false,
       previewEnabled: true,
@@ -56,7 +53,6 @@ const generateInitialChannels = (): ChannelState[] => {
     trackId: `N1`,
     subLabel: `Noise1`,
     type: 'NOISE',
-    note: '---  ',
     level: 0,
     active: false,
     previewEnabled: true,
@@ -70,7 +66,6 @@ const generateInitialChannels = (): ChannelState[] => {
       trackId: `P${pNum}`,
       subLabel: `PSG${pNum}`,
       type: 'DCSG',
-      note: '---  ',
       level: 0,
       active: false,
       previewEnabled: true,
@@ -81,7 +76,6 @@ const generateInitialChannels = (): ChannelState[] => {
     trackId: `N2`,
     subLabel: `Noise2`,
     type: 'NOISE',
-    note: '---  ',
     level: 0,
     active: false,
     previewEnabled: true,
@@ -93,7 +87,6 @@ const generateInitialChannels = (): ChannelState[] => {
     trackId: `B1`,
     subLabel: `BEEP`,
     type: 'BEEP',
-    note: '---  ',
     level: 0,
     active: false,
     previewEnabled: true,
@@ -105,37 +98,6 @@ const generateInitialChannels = (): ChannelState[] => {
 /** トラック記号 (P1, N1, B1, F1 等) → 17 トラックのインデックス (0-16)。 */
 function trackIndexOf(trackId: string): number {
   return allTracks.find((track) => track.id === trackId)?.index ?? -1;
-}
-
-/** 演奏位置 (データオフセット) に対応する MML 上のノート文字列を取り出す。 */
-function resolveTrackNote(
-  info: PlaybackMapInfo | null | undefined,
-  trackId: string,
-  offset: number,
-): string | null {
-  if (!info?.map || offset < 0) {
-    return null;
-  }
-
-  const mapTrack = info.map.tracks.find((track) => track.id === trackId);
-  if (!mapTrack || mapTrack.events.length === 0) {
-    return null;
-  }
-
-  const relative = offset - mapTrack.offset;
-  let current = mapTrack.events[0];
-  for (const event of mapTrack.events) {
-    if (event.offset > relative) {
-      break;
-    }
-
-    current = event;
-  }
-
-  const line = info.source.split(/\r?\n/)[current.line - 1] ?? '';
-  const start = Math.max(0, current.column - 1);
-  const text = line.slice(start, start + current.length).trim();
-  return text !== '' ? text : null;
 }
 
 interface ChannelRowProps {
@@ -185,15 +147,6 @@ const ChannelRow = ({ ch, onTogglePreview }: ChannelRowProps) => {
         </span>
       </div>
 
-      {/* ノート/音程 */}
-      <div className={`w-12 text-xs font-mono font-medium tracking-tight ${
-        isPlaying 
-          ? 'text-zinc-100 font-semibold' 
-          : 'text-zinc-500'
-      }`}>
-        {ch.previewEnabled ? ch.note : 'MUTE '}
-      </div>
-      
       {/* VUメーター: 発音時のみクリアブルー、無音時は暗いグレーに沈静化 */}
       <div className="flex-1 h-2.5 bg-[#181818] rounded overflow-hidden flex items-center border border-[#353535]">
         <div 
@@ -217,13 +170,13 @@ interface TrackMonitorProps {
   getTrackLevel?: (trackIndex: number) => number;
   /** マスターの VU レベル取得 (0-1)。 */
   getMasterLevel?: () => number;
-  /** トラックの現在データオフセット取得 (演奏位置ハイライト用、停止中は -1)。 */
-  getTrackOffset?: (trackIndex: number) => number;
   /** トラックのプレビュー ON/OFF (ミュート) を Player へ反映する。 */
   onTrackMuteChange?: (trackIndex: number, muted: boolean) => void;
   /** マスター音量 / ミュートを Player へ反映する (プレビュー専用・コンパイル非連動)。 */
   onMasterVolumeChange?: (volume: number, muted: boolean) => void;
-  /** 演奏位置 → MML 対応情報。 */
+  /** 演奏位置ハイライト用の旧prop (後方互換用) */
+  getTrackOffset?: (trackIndex: number) => number;
+  /** 演奏位置 → MML 対応情報の旧prop (後方互換用) */
   playbackMap?: PlaybackMapInfo | null;
 }
 
@@ -232,10 +185,8 @@ export function TrackMonitor({
   isPlaying = false,
   getTrackLevel,
   getMasterLevel,
-  getTrackOffset,
   onTrackMuteChange,
   onMasterVolumeChange,
-  playbackMap = null,
 }: TrackMonitorProps) {
   const [channels, setChannels] = useState<ChannelState[]>(generateInitialChannels());
   const [masterVolume, setMasterVolume] = useState<number>(80);
@@ -243,9 +194,9 @@ export function TrackMonitor({
   const [masterVU, setMasterVU] = useState<{ l: number; r: number }>({ l: 0, r: 0 });
 
   // ポーリング内で参照する最新 props (stale closure 回避)
-  const providersRef = useRef({ isPlaying, getTrackLevel, getMasterLevel, getTrackOffset, playbackMap });
+  const providersRef = useRef({ isPlaying, getTrackLevel, getMasterLevel });
   useEffect(() => {
-    providersRef.current = { isPlaying, getTrackLevel, getMasterLevel, getTrackOffset, playbackMap };
+    providersRef.current = { isPlaying, getTrackLevel, getMasterLevel };
   });
 
   // マスター音量 / ミュートを Player へ反映 (プレビュー専用パラメータ、コンパイル・エクスポートには影響しない)
@@ -253,18 +204,18 @@ export function TrackMonitor({
     onMasterVolumeChange?.(masterVolume / 100, isMuted);
   }, [masterVolume, isMuted, onMasterVolumeChange]);
 
-  // VU / 演奏位置を Player からポーリングして反映 (100ms 間隔)
+  // VU を Player からポーリングして反映 (100ms 間隔)
   useEffect(() => {
     const timer = setInterval(() => {
       const providers = providersRef.current;
       if (!providers.isPlaying || !providers.getTrackLevel) {
         // 停止中: メーターを沈静化する (すでに沈静化済みなら再レンダリングしない)
         setChannels(prev => {
-          if (!prev.some(ch => ch.level !== 0 || ch.active || ch.note !== '---  ')) {
+          if (!prev.some(ch => ch.level !== 0 || ch.active)) {
             return prev;
           }
 
-          return prev.map(ch => ({ ...ch, level: 0, active: false, note: '---  ' }));
+          return prev.map(ch => ({ ...ch, level: 0, active: false }));
         });
         setMasterVU(prev => (prev.l === 0 && prev.r === 0 ? prev : { l: 0, r: 0 }));
         return;
@@ -275,9 +226,7 @@ export function TrackMonitor({
         const trackIndex = trackIndexOf(ch.trackId);
         if (trackIndex < 0) return ch;
         const level01 = trackLevel(trackIndex);
-        const offset = providers.getTrackOffset?.(trackIndex) ?? -1;
-        const note = resolveTrackNote(providers.playbackMap, ch.trackId, offset) ?? '---  ';
-        return { ...ch, level: Math.round(level01 * 100), active: level01 >= 0.01, note };
+        return { ...ch, level: Math.round(level01 * 100), active: level01 >= 0.01 };
       }));
 
       const master01 = providers.getMasterLevel?.() ?? 0;

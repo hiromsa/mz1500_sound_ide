@@ -5,11 +5,20 @@
 ---
 
 ## 1. 直近の完了作業（最新）
+- **TRACK MONITOR から不要なノート表示列 (`---`) を削除 (`src/view/TrackMonitor.tsx`, [`docs/specification/ui.md`](./specification/ui.md))**:
+  - **背景・ユーザー意図**:
+    - `extra` 欄削除に続き、未発音・停止時に `---` が並ぶノート表示欄も不要として削除し、トラックモニターを「ミュートトグル ＋ トラックID/名 ＋ VUメーター」のシンプルな構成へ整理。
+  - **削除内容**:
+    - `ChannelState` から `note` フィールドを削除、`generateInitialChannels` の初期化を整理。
+    - `ChannelRow` 内のノート表示要素 (`w-12 text-xs ...`) を削除し、VUメーターの可視幅を拡張。
+    - 演奏位置からノート文字列を逆引きしていた `resolveTrackNote` 関数および毎 100ms の不要なノート計算処理を削除し、ポーリングを軽量化。
+  - **仕様書更新**: `docs/specification/ui.md` にノート表示列削除の決定事項を反映。
+  - **検証**: `npm test` 全合格 (238 passed + 2 skipped) / `npm run lint` エラーゼロ / `npm run build` 成功。
+
 - **TRACK MONITOR から不要な extra 欄 (付加情報) を削除 (`src/view/TrackMonitor.tsx`, [`docs/specification/ui.md`](./specification/ui.md))**:
   - **削除内容**:
     - `ChannelState` インターフェースから未実装の `extra?: string` フィールドを削除。
     - `ChannelRow` 内の不要な付加情報レンダリング要素 (`w-12 text-right ... {ch.extra || ''}`) を削除。
-    - ノート表示欄 (`ch.note` / `resolveTrackNote`) は、MML 上の演奏位置表示として正常に機能しているため維持。
   - **仕様書更新**: `docs/specification/ui.md` のエクストラ情報欄のステータスを「削除済み」に更新。
   - **検証**: `npm test` 全合格 (238 passed + 2 skipped) / `npm run lint` エラーゼロ / `npm run build` 成功。
 
