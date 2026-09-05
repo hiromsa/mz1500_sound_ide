@@ -17,6 +17,18 @@
 - **会話言語**: 原則として**日本語**でやりとりを行うこと。
 - **プロジェクト参照制限**: 指示がない限り、**他のプロジェクトフォルダ等は参照しない**こと。
 
+## 開発環境と役割分担 (VSCode+Cline / Antigravity)
+- **開発環境**: 本プロジェクトは **VSCode + Cline** または **Google Antigravity** のいずれかで開発を進める。
+- **役割分担**:
+  - **VSCode + Cline** = **内部実装** (ロジック・機能実装・リファクタリング等)
+  - **Antigravity** = **デザイン・UI** (UI 実装・デザイン調整)
+- **ブラウザ操作用 MCP 設定 ([`docs/specification/mcp-browser-debug.md`](./docs/specification/mcp-browser-debug.md)) について**:
+  - 本設定は **Cline 用**に整備したものであり、**Antigravity では原則不要** (Antigravity には組み込み Browser 機能があるため)。
+  - Antigravity 側へ同じ MCP 設定を流し込まないこと。必要になった時点で改めて検討する。
+- **`.clinerules` の参照に関する制約 (重要・必ず遵守)**:
+  - `.clinerules` は [`GEMINI.md`](./GEMINI.md) 経由で **Antigravity からも間接的に参照される**ため、Antigravity が参照できる状態を維持すること。
+  - **`.clinerules` の読み取り拒否・除外 (.gitignore 等への追加) や、参照をブロックする設定を一切行ってはいけない。**
+
 ## コミットメッセージ形式 (決定)
 - Conventional Commits 形式: `<type>(<scope>): <要約>` (要約は日本語可)
 - type: `feat` / `fix` / `docs` / `test` / `refactor` / `perf` / `chore`

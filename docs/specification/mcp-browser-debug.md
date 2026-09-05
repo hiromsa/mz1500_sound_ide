@@ -4,6 +4,17 @@ Cline から **MCP (Model Context Protocol)** 経由で Chrome ブラウザを�
 
 ---
 
+## ⚠ 適用範囲に関する重要な注意 (Cline 専用)
+
+- 本 MCP 設定は **VSCode + Cline 用**に整備したものである。
+- 本プロジェクトの役割分担: **VSCode + Cline = 内部実装 / Antigravity = デザイン・UI**。
+- **Antigravity には独自の組み込み Browser 機能があるため、本設定は Antigravity では原則不要**。
+  Antigravity 側へ同じ MCP 設定を流し込む必要はない (必要になった時点で改めて検討すること)。
+- `.clinerules` は [`GEMINI.md`](../../GEMINI.md) 経由で **Antigravity からも間接的に参照される**。
+  **その参照を拒否・除外 (.gitignore 追加等) やブロックする設定を行ってはいけない。**
+
+---
+
 ## 1. 採用ツールと採用理由
 
 | 項目 | 内容 |

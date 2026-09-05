@@ -5,6 +5,10 @@
 ---
 
 ## 1. 直近の完了作業（最新）
+- **開発環境の役割分担・MCP 設定の適用範囲に関する注意点をドキュメント化 ([.clinerules](./.clinerules), [`docs/specification/mcp-browser-debug.md`](./specification/mcp-browser-debug.md))**:
+  - 開発環境の役割分担を `.clinerules` に新規セクションとして追加: **VSCode + Cline = 内部実装 / Antigravity = デザイン・UI** (`.clinerules` は GEMINI.md 経由で Antigravity にも共有される)。
+  - **chrome-devtools-mcp の MCP 設定は Cline 専用**である旨を明記 (Antigravity は組み込み Browser を使用するため原則不要・Antigravity 側への流し込みはしない)。
+  - **`.clinerules` は GEMINI.md 経由で Antigravity からも参照されるため、読み取り拒否・除外・参照ブロックの設定を一切行ってはいけない**旨を規定。
 - **MCP による自動ブラウザ操作 & デバッグ環境の構築 (chrome-devtools-mcp)**:
   - Cline の MCP 設定 (`%APPDATA%\Code\User\globalStorage\saoudrizwan.claude-dev\settings\cline_mcp_settings.json`) に **chrome-devtools-mcp** (Google ChromeDevTools 公式) を追加。Gemini Antigravity の MCP Store「Frontend & Design」と同じ Chrome DevTools 系を採用 (コンソールログ収集・ネットワーク検査・パフォーマンストレースなどデバッグ機能が豊富)。
   - Windows 向けに `cmd /c npx -y chrome-devtools-mcp@latest` 形式で設定 (初回パッケージ DL を考慮し timeout 100 秒)。`autoApprove` は空 = 全ツール呼び出しでユーザー承認 (安全優先)。
