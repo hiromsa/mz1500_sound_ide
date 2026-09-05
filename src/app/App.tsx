@@ -159,8 +159,8 @@ function App() {
   // 無限ループ (Lコマンド) 有効/無効ステート (デフォルト ON)
   const [isLoopEnabled, setIsLoopEnabled] = useState<boolean>(true);
 
-  // 演奏エンジン (SourceInterpreter = リファレンス実装 / Z80Driver = 内蔵 Z80 コアでドライバ実行)
-  const [playbackMode, setPlaybackMode] = useState<AudioEngineMode>(AudioEngineMode.SourceInterpreter);
+  // 演奏エンジン (既定 = Z80Driver: 内蔵 Z80 コアでドライバ実行 / SourceInterpreter = リファレンス実装)
+  const [playbackMode, setPlaybackMode] = useState<AudioEngineMode>(AudioEngineMode.Z80Driver);
 
   // 演奏位置ハイライト用の MML 対応情報 (コンパイル成功時に更新)
   const [playbackInfo, setPlaybackInfo] = useState<PlaybackMapInfo | null>(null);

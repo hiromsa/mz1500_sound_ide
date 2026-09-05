@@ -5,6 +5,19 @@
 ---
 
 ## 1. 直近の完了作業（最新）
+- **TRACK MONITOR 発音メーターの FM VU 不具合修正 & 既定演奏エンジンを Z80 DRIVER に変更 (`src/core/chips/fm/Ym2151.ts`, `src/core/chips/ChipBank.ts`, `src/app/App.tsx`, [`docs/specification/ui.md`](./specification/ui.md))**:
+  - **FM VU 不具合修正 (複数チャンネル同時発音で VU が消える)**:
+    - KEYON レジスタ ($08) は全 FM チャンネル共有のため、従来の「書き戻し値 (`tryGetRegister(0x08)`) の直接参照」では最後に操作した 1 チャンネルしか判定できず、TRACK MONITOR の FM 発音メーターが 1 ch 分しか点灯しない (他チャンネルが無音扱いで消える) 不具合があった。
+    - `Ym2151` が $08 への書き込み (bit0-2 = ch / bit3-6 = slot、slot 0 = キーオフ) を監視してチャンネル毎のキーオン状態を追跡する `isKeyOn(channel)` を新設。`ChipBank.getFmLevel` はこれを参照するよう変更。reset 時は全チャンネルクリア。
+    - 既存テスト `'reports the FM level only while key on'` (`ChipBank.test.ts`) は旧 (バグ) 挙動を固定していたため修正後の仕様に更新し、同時発音・キーオフ・ミュートの各ケースを拡充。`Ym2151.test.ts` にキーオン状態追跡テストを新設。
+  - **既定演奏エンジンを Z80 DRIVER に変更**:
+    - `App.tsx` の `playbackMode` 初期値を `AudioEngineMode.Z80Driver` に変更 (実機ドライバと同一経路を既定に)。
+    - `SOURCE INTERPRETER` は SETTINGS から切替可能なまま維持 (リファレンス実装・Z80DriverEquivalence テスト等の比較基準として必要)。
+  - **TRACK MONITOR 拡張 (現在の音のオクターブ/音名表示・ノイズ種別表示) は不採用**:
+    - チップレジスタからの音程逆算は、スイープ / デチューン / ピッチエンベロープ / KF 等で実際の発音が MML 上の音符とズレるため、MML トークン表示 (`MmlMap` ベース) と矛盾を生じる見込み → 見送り。
+    - 「エクストラ情報」欄 (ノイズ種別等) は未実装のまま常に空欄のため、UI 側で削除対象とすることを `ui.md` に記録。
+  - **検証**: `npm test` 全合格 / `npm run lint` エラーゼロ / `npm run build` 成功。
+
 - **MMLシンタックスハイライト機能の実装 (`src/utils/mmlLanguage.ts`, `src/utils/mmlLanguage.test.ts`, `src/view/MmlEditor.tsx`, [`docs/PROGRESS.md`](./PROGRESS.md))**:
   - **Monaco Monarch 言語定義の実装**:
     - `docs/specification/mml_reference.md` に準拠した MML 専用言語 `mz1500-mml` および Monaco 言語設定（コメント `;` / `/* */`、括弧オートクローズ等）を新設。
