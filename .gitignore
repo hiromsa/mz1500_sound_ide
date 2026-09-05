@@ -12,6 +12,11 @@ dist
 dist-ssr
 *.local
 
+# C# リファレンス値ダンプツール (tools/cs-probe) のビルド出力・生成物
+tools/cs-probe/bin/
+tools/cs-probe/obj/
+tools/cs-probe/out/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

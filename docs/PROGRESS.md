@@ -5,6 +5,34 @@
 ---
 
 ## 1. 直近の完了作業（最新）
+- **Phase 2 完了: C# 版音源エミュレーション (Chips) の TypeScript 移植 (`src/core/chips/`, [`docs/specification/web_core_port.md`](./specification/web_core_port.md))**:
+  - **移植元**: `MzSound.Player/Chips/*` (DCSG / BEEP 8253 / YM2151)。C# partial class は
+    1 ファイル 1 クラスへ統合 (FmTables 3 → 1、FmOperator 4 → 1、FmChannel4 2 → 1、Opm 4 → 1、Ym2151 2 → 1)。
+  - **DCSG ×2 (`DcsgChip.ts`)**: SN76489AN 相当。トーン 3ch + ノイズ 1ch (15bit LFSR)、
+    2dB/step 減衰、周期/減衰のクランプ、VU 用 ChannelLevel、チャンネルゲイン (UI 連携)。
+  - **BEEP (`BeepChip.ts`)**: Intel 8253 PIT Ch.0 相当。クロック 894,886.25Hz (PHI/16)、
+    mode 3 矩形波、PC0 SOUNDMSK 相当の ON/OFF ゲート。
+  - **YM2151 (OPM) フル実装 (`chips/fm/`)**: fmgen (cisc 1998, 2003) 由来の C# 実装からの移植。
+    `FmTables.ts` (サイン/対数→線形/LFO 深度/KF/エンベロープテーブルの実行時構築)、
+    `FmTimer.ts` (Timer A/B + CSM)、`FmChip.ts` (比率/LFO 深度共有)、
+    `FmOperator.ts` (位相/EG/サイン検索)、`FmChannel4.ts` (8 アルゴリズム接続 + FB + KC/KF)、
+    `Opm.ts` (レジスタ 0x00-0xFF デコード、LFO 4 波形 + ノイズ LFO、8ch ステレオ合成)、
+    `Ym2151.ts` (MZ-1E14 風ボード層: 0708h/0709h ポート、8μs busy、タイマ IRQ イベント、
+    クロック切替 4MHz/3.58MHz)、`ISoundChip.ts`、`SystemRandom.ts`。
+  - **C# 乱数の完全再現 (`SystemRandom.ts`)**: OPM の LFO ノイズ波形は `Random(1234)` に依存するため、
+    .NET の Knuth 減算法を忠実に移植し乱数列を一致させた (これにより C# との出力ビット一致が成立)。
+  - **uint 系の再現**: `lfoCount` / `pgCount` / `noise` 等 C# uint の 32bit ラップ挙動を
+    `>>> 0` / `Math.imul(... ) >>> 0` で再現。`Span<int>` は `Int32Array` + offset 引数で代替。
+  - **C# リファレンス値ダンプツール (`tools/cs-probe/`)**: .NET コンソールツールで C# 版の
+    実出力を JSON にダンプし、vitest とビット単位照合。検証対象: 乱数列 16 値 / DCSG トーン・ノイズ /
+    BEEP の連続標本 (double 完全一致) / YM2151 キーオン出力 (部分最大・総和・先頭 48 int 完全一致) /
+    YM2151 + saw LFO / noise LFO 出力 (完全一致)。**FM エンジン全体が C# 版とビット一致することを確認**。
+  - **テスト移植**: C# `DcsgChipTests` (3 ケースの C# テスト) + `Ym2151_ProducesOutputAfterKeyOn` +
+    ChipBank/Beep/SystemRandom 契約テスト → 新規 25 テスト (**合計 110/110 合格**)。
+  - 検証: `npx tsc -b` エラーゼロ / `npm run build` 成功 / `npm run lint` エラーゼロ (既存 UI 警告 5 のみ) /
+    `npm test` 110/110 合格。
+  - 備考: ChipBank の FM チップクロックは C# 版と同じ既定 4MHz (ReferenceClockHz)。cpuClock (3579545) は
+    busy 期間 (8μs → 29 T-state) の計算にのみ使用。
 - **Z80 CPU コアの外部ライブラリ選定評価 → 既存方針 (内製移植) を再確定**:
   - 別 AI からの提案で `lkesteloot/z80-emulator` (TypeScript 製・MIT・z80-test 1356 テスト合格) を評価。
   - **依存ライブラリとしての採用は見送り**: GitHub リポジトリは 2024/1/5 にアーカイブ、npm パッケージも
@@ -50,15 +78,11 @@
   - 検証: `npx tsc -b` エラーゼロ / `npm run build` 成功 / `npm run lint` エラーゼロ / `npm test` 85/85 合格。
 
 ## 2. 次のフェーズ (Web コア移植の続き)
-- [ ] **Phase 2: 音源エミュレーション移植** (`src/core/chips/` ← `MzSound.Player/Chips`)
-  - `DcsgChip.ts` (SN76489AN 相当 ×2) / `BeepChip.ts` (8253 PIT) / `ChipBank.ts`
-  - YM2151 (OPM) フル実装: `Ym2151` / `Opm` (LFO/Mix/Registers) / `FmOperator` (Calc/Eg/Params) /
-    `FmChannel4` (Calc) / `FmTables` (Build/Envelopes) / `FmTimer` (fmgen 由来の C# 実装からの移植)
-  - C# Player テスト (37+5skip) のうちチップ単体分の移植
 - [ ] **Phase 3: 演奏エンジン移植** (`src/core/player/` ← `MzSound.Player`)
   - `MzsdSong.ts` (MZSD 解析) / `TrackSequencer.ts` (C# リファレンス実装) / `MzsdSequencer.ts` (17ch 60Hz)
   - `AudioEngine.ts` (NAudio → Web Audio API 化、AudioWorklet / 60Hz フレーム駆動 / ミックス / VU)
   - `Player.ts` ファサード (UI 連携: 再生 / 停止 / ミキサーゲイン / 演奏位置 GetTrackOffset)
+  - C# Player テストのうちシーケンサ分 (MzsdSequencerTests) の移植
 - [ ] **Phase 4: Z80 コア移植 + ドライバ実行** (`src/core/z80/` + `src/core/player/Z80DriverMachine.ts`)
   - Z80dotNet 相当の TS コア (全命令セット / 16bit ポート `UseExtendedPortsSpace` 相当 / T-state 精度 / HALT)
   - 検証: `lkesteloot/trs80` モノレポの `z80-test` (1356 テスト) を内製コアの命令セット検証に活用 (web_core_port.md §1.1)
@@ -70,6 +94,36 @@
   - エクスポート (.MZT) ・楽曲セットアップパネルとの連携
 - [ ] **@FM 音色レジスタマッピングの課題引き継ぎ** (C# 版の持ち越し: Z80 `apply_fm_tone` の 0x98/0xA0 系が C# とズレる、
   C# 版 skip 2 テストの原因。Phase 4 の等価テスト実装時に解消を目指す)
+
+---
+
+
+# Z80.Net (TypeScript移植版) ライセンス対応タスク
+
+Konamiman氏の `Z80.Net` をTypeScriptへ移植するにあたり、以下のライセンス条件（改変版MITライセンス）を満たす必要がある。
+
+## 1. ドキュメント類の整備
+- [ ] `LICENSE` ファイルの作成
+  - 元の著作権表示（`Copyright (C) 2014 Konamiman...`）およびライセンス全文をそのままコピーして配置する。追記でいいかな。
+- [ ] `README.md` への記載
+  - Konamiman氏の `Z80.Net` を元に、C#からTypeScriptへ移植（改変）した旨を明記する。
+  - `README.md` 内にも著作権表示とライセンス文を併記する。
+
+## 2. ソースコードヘッダーへの記載
+- [ ] 移植した各 `.ts` ファイルの先頭に、以下の内容を含むコメントブロックを追記する。
+  - 元の著作権表示（`Copyright (C) 2014 Konamiman...`）
+  - 「Konamiman氏のコードをTypeScriptに移植・改変した」という明確な宣言
+  - 改変者（自分）の名前と改変日
+
+**▼ ソースコード用ヘッダーのテンプレート**
+```typescript
+/*
+ * This file is a TypeScript port of Z80.Net originally written by Konamiman.
+ * Modified by [あなたの名前/アカウント名] on [YYYY-MM-DD].
+ * 
+ * Copyright (C) 2014 Konamiman ([www.konamiman.com](https://www.konamiman.com))
+ * [ここにライセンスのPermission条文を併記]
+ */  
 
 ---
 

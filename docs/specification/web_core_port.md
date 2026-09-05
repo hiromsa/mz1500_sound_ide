@@ -62,9 +62,11 @@ mz1500_sound_ide/
 │  │  │  ├─ TrackId.ts / Envelopes.ts / MmlMap.ts
 │  │  │  ├─ parser/MmlParser.ts / MmlParserTypes.ts
 │  │  │  └─ __tests__/         (基本 7 + 高度 13 + マクロ複数行 4)
-│  │  ├─ chips/             … 音源エミュレーション (← MzSound.Player/Chips) 【次フェーズ】
+│  │  ├─ chips/             … 音源エミュレーション (← MzSound.Player/Chips) ✅
 │  │  │  ├─ DcsgChip.ts / BeepChip.ts / ChipBank.ts
-│  │  │  └─ fm/ (Ym2151.ts / Opm.ts / FmOperator.ts / FmChannel4.ts / FmTables.ts / FmTimer.ts)
+│  │  │  ├─ fm/ (Ym2151.ts / Opm.ts / FmOperator.ts / FmChannel4.ts / FmTables.ts / FmTimer.ts /
+│  │  │  │        FmChip.ts / ISoundChip.ts / SystemRandom.ts)
+│  │  │  └─ __tests__/        (DCSG 7 + BEEP 4 + Ym2151 8 + ChipBank 4 + SystemRandom 2)
 │  │  ├─ player/            … 演奏エンジン (← MzSound.Player) 【次フェーズ】
 │  │  │  ├─ MzsdSong.ts / TrackSequencer.ts / MzsdSequencer.ts
 │  │  │  ├─ AudioEngine.ts (Web Audio 化) / Player.ts
@@ -78,14 +80,40 @@ mz1500_sound_ide/
 
 | C# (mz1500_sound_devenv) | TypeScript (本プロジェクト) | 状態 |
 |---|---|---|
-| `src/MzSound.DriverAssembler/*` | `src/core/assembler/*` | ✅ 移植済 (85 テスト全合格) |
+| `src/MzSound.DriverAssembler/*` | `src/core/assembler/*` | ✅ 移植済 |
 | `src/MzSound.MmlCompiler/*` | `src/core/mml/*` | ✅ 移植済 |
 | `driver/mzsd_driver.asm` | `driver/mzsd_driver.asm` | ✅ 取り込み済 (アセンブル検証済み) |
-| `src/MzSound.Player/Chips/*` | `src/core/chips/*` | ⏳ 次フェーズ |
+| `src/MzSound.Player/Chips/DcsgChip.cs` | `src/core/chips/DcsgChip.ts` | ✅ 移植済 (標本レベルで C# 一致) |
+| `src/MzSound.Player/Chips/BeepChip.cs` | `src/core/chips/BeepChip.ts` | ✅ 移植済 (標本レベルで C# 一致) |
+| `src/MzSound.Player/Chips/ChipBank.cs` | `src/core/chips/ChipBank.ts` | ✅ 移植済 |
+| `src/MzSound.Player/Chips/Fm/*` (fmgen 由来) | `src/core/chips/fm/*` | ✅ 移植済 (FM 出力をビット単位で C# 一致検証済み) |
 | `src/MzSound.Player/Sequencer/*` | `src/core/player/*` | ⏳ 次フェーズ |
 | `src/MzSound.Player/Audio/AudioEngine.cs` (NAudio) | `src/core/player/AudioEngine.ts` (Web Audio) | ⏳ 次フェーズ |
 | `src/MzSound.Player/Driver/Z80DriverMachine.cs` (Z80dotNet) | `src/core/player/Z80DriverMachine.ts` + `src/core/z80/*` | ⏳ 次フェーズ |
-| `tests/MzSound.*.Tests/*` (xUnit, 136 テスト) | `src/core/**/__tests__/*` (vitest) | 🔶 アセンブラ 51 + MML 24 相当は移植済、Player/等価テストは次フェーズ |
+| `tests/MzSound.*.Tests/*` (xUnit) | `src/core/**/__tests__/*` (vitest) | 🔶 アセンブラ 51 + MML 24 + チップ 25 相当を移植済、Player/等価テストは次フェーズ |
+
+### 3.1 C# partial class の統合対応
+
+C# の partial class (1 クラス複数ファイル) は、TS では 1 ファイル 1 クラスへ統合した。
+
+| C# ファイル群 | TS 1 ファイル |
+|---|---|
+| `FmTables.cs` + `FmTables.Build.cs` + `FmTables.Envelopes.cs` | `chips/fm/FmTables.ts` |
+| `FmOperator.cs` + `.Calc.cs` + `.Eg.cs` + `.Params.cs` | `chips/fm/FmOperator.ts` |
+| `FmChannel4.cs` + `.Calc.cs` | `chips/fm/FmChannel4.ts` |
+| `Opm.cs` + `.Registers.cs` + `.Lfo.cs` + `.Mix.cs` | `chips/fm/Opm.ts` |
+| `Ym2151.cs` + `Ym2151.Ports.cs` | `chips/fm/Ym2151.ts` |
+
+その他の移植上の対応:
+
+- C# `enum` は `erasableSyntaxOnly` 対応のため const オブジェクト + union 型で実装
+  (`FmOpType` / `EgPhase`)。
+- C# `uint` の 32bit ラップが必要な箇所 (`lfoCount` / `pgCount` / `noise` 等) は
+  `>>> 0` / `Math.imul(...) >>> 0` で再現。
+- `Span<int>` は `Int32Array` + offset 引数で代替。
+- `Random(1234)` (Knuth 減算法) は `chips/fm/SystemRandom.ts` として完全再現
+  (OPM の LFO ノイズ波形が乱数に依存するため、C# とのビット一致には乱数列の一致が必須)。
+- `Ym2151.IrqChanged` イベントは `setIrqChanged(handler)` コールバックで代替。
 
 ## 4. 検証方針
 
@@ -96,6 +124,16 @@ mz1500_sound_ide/
    実ドライバ 1945 行が TypeScript アセンブラでアセンブルできることが回帰防止になる。
 3. **等価性テスト (次フェーズ)**: C# 版 `Z80DriverEquivalenceTests` と同様に、
    SourceInterpreter と Z80Driver の全フレーム音源レジスタ (PSG×2 / BEEP / FM 全レジスタ) を比較する。
+4. **C# リファレンス値ダンプ (`tools/cs-probe/`)**: chips 移植の検証のため、C# 版
+   `MzSound.Player` を参照する .NET コンソールツールを用意した。
+   `dotnet run --project tools/cs-probe -c Release` で以下を `out/reference.json` へ出力し、
+   vitest (`chips/__tests__/referenceLoader.ts` 経由) でビット単位照合する。
+   - `System.Random(1234).Next(32768)` の先頭 16 値 (乱数列の一致)
+   - DcsgChip トーン / ノイズの連続 RenderSample 値 (double 完全一致)
+   - BeepChip の連続 RenderSample 値 (double 完全一致)
+   - Ym2151 キーオン後の出力 (部分最大値・総和・先頭 48 int 値 → 完全一致)
+   - Ym2151 + saw LFO / noise LFO 出力 (総和・先頭 int 値 → 完全一致)
+   bin / obj / out は .gitignore 済み (ソース `Program.cs` / `.csproj` のみ管理)。
 
 ## 5. 履歴
 
@@ -103,3 +141,4 @@ mz1500_sound_ide/
 |---|---|
 | 2026/09/05 | 初版作成。アセンブラ・MML コンパイラ移植完了 (85 テスト全合格)。フォルダ再編 (view/app/core) 実施。 |
 | 2026/09/05 | §1.1 追加: Z80 コア外部ライブラリ (`lkesteloot/z80-emulator`) を評価。依存採用は見送り、Z80dotNet 内製移植方針を再確定 (`z80-test` は検証基盤として活用)。 |
+| 2026/09/05 | Phase 2 完了: 音源エミュレーション (DCSG ×2 / BEEP 8253 / YM2151 fmgen 由来) を移植。`tools/cs-probe` による C# リファレンス値とのビット一致検証を導入 (§3.1、§4.4 追加)。テスト合計 110 (アセンブラ 51 + MML 24 + チップ 25 + 実ドライバ 3 + …)。 |

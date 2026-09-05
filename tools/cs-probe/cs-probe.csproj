@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- チップ移植 (TypeScript) とのビット一致検証用の一時ツール。
+         C# 版 MzSound.Player を参照してリファレンス値を JSON へダンプする。 -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\mz1500_sound_devenv\src\MzSound.Player\MzSound.Player.csproj" />
+  </ItemGroup>
+
+</Project>
