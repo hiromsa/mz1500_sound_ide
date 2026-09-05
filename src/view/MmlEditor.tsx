@@ -26,7 +26,7 @@ import { VirtualKeyboard, type ActiveTabContext } from './VirtualKeyboard';
 import { parseMmlCaretContext, type MmlCaretContext } from '../utils/mmlCaretParser';
 import { analyzeMmlLine, collectUsedIds, nextAvailableId } from '../utils/mmlContextParser';
 import { MmlContextMenu, type MmlContextMenuEntry } from './MmlContextMenu';
-import type { FmToneData } from './FmToneEditor';
+import type { FmToneData } from '../core/fm/FmTone';
 
 interface MmlFile {
   id: string;

@@ -1,4 +1,8 @@
-import { type FmToneData, isOpCarrier, OP_MODULATION_TARGETS } from '../components/FmToneEditor';
+import {
+  type FmToneData,
+  isOpCarrier,
+  OP_MODULATION_TARGETS,
+} from '../core/fm/FmTone';
 
 // MIDIノート番号から周波数 (Hz) を計算
 export function midiNoteToFrequency(midiNote: number, detuneCents: number = 0): number {

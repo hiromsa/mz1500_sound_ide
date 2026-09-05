@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Volume2, VolumeX, Hand } from 'lucide-react';
 import { virtualSynth, type SoundEngineType, type SynthPlayOptions } from '../utils/virtualSynth';
 import type { MmlCaretContext } from '../utils/mmlCaretParser';
-import type { FmToneData } from './FmToneEditor';
+import type { FmToneData } from '../core/fm/FmTone';
 
 // プリセットFM音色
 const DEFAULT_PRESET_FM_TONES: Record<number, string> = {

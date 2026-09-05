@@ -11,17 +11,18 @@ import {
   Settings,
   Repeat 
 } from 'lucide-react';
-import { MmlEditor } from './components/MmlEditor';
-import { TrackMonitor } from './components/TrackMonitor';
-import { SettingsPanel } from './components/SettingsPanel';
-import { SongSetupPanel, type SongMetadata } from './components/SongSetupPanel';
-import { VolEnvelopeEditor } from './components/VolEnvelopeEditor';
-import { PitchEnvelopeEditor } from './components/PitchEnvelopeEditor';
-import { FmToneEditor, type FmToneData } from './components/FmToneEditor';
-import type { CompileErrorItem } from './components/CompileErrorPanel';
-import type { ActiveTabContext } from './components/VirtualKeyboard';
+import { MmlEditor } from '../view/MmlEditor';
+import { TrackMonitor } from '../view/TrackMonitor';
+import { SettingsPanel } from '../view/SettingsPanel';
+import { SongSetupPanel, type SongMetadata } from '../view/SongSetupPanel';
+import { VolEnvelopeEditor } from '../view/VolEnvelopeEditor';
+import { PitchEnvelopeEditor } from '../view/PitchEnvelopeEditor';
+import { FmToneEditor } from '../view/FmToneEditor';
+import type { FmToneData } from '../core/fm/FmTone';
+import type { CompileErrorItem } from '../view/CompileErrorPanel';
+import type { ActiveTabContext } from '../view/VirtualKeyboard';
 import type { editor } from 'monaco-editor';
-import mz1500Logo from './assets/mz1500logo.svg';
+import mz1500Logo from '../assets/mz1500logo.svg';
 
 type RightTab = 'track' | 'tone' | 'vol_envelope' | 'pitch_envelope' | 'song_setup' | 'settings';
 

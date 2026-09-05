@@ -29,6 +29,10 @@
   - `.clinerules` は [`GEMINI.md`](./GEMINI.md) 経由で **Antigravity からも間接的に参照される**ため、Antigravity が参照できる状態を維持すること。
   - **`.clinerules` の読み取り拒否・除外 (.gitignore 等への追加) や、参照をブロックする設定を一切行ってはいけない。**
 
+## コミットの単位
+- なるべく課題ごとにコミットします。
+- 修正が終わって自動テスト終わったらコミットしてokです。
+
 ## コミットメッセージ形式 (決定)
 - Conventional Commits 形式: `<type>(<scope>): <要約>` (要約は日本語可)
 - type: `feat` / `fix` / `docs` / `test` / `refactor` / `perf` / `chore`

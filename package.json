@@ -1,34 +1,36 @@
 {
-  "name": "mz1500_sound_ide",
-  "private": true,
-  "version": "0.0.0",
-  "type": "module",
-  "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
-    "lint": "oxlint",
-    "preview": "vite preview",
-    "predeploy": "npm run build",
-    "deploy": "gh-pages -d dist"
-  },
-  "dependencies": {
-    "@monaco-editor/react": "^4.7.0",
-    "@tailwindcss/vite": "^4.3.3",
-    "lucide-react": "^1.41.0",
-    "react": "^19.2.8",
-    "react-dom": "^19.2.8"
-  },
-  "devDependencies": {
-    "@types/node": "^24.13.3",
-    "@types/react": "^19.2.18",
-    "@types/react-dom": "^19.2.4",
-    "@vitejs/plugin-react": "^6.1.0",
-    "autoprefixer": "^10.5.5",
-    "gh-pages": "^6.3.0",
-    "oxlint": "^1.79.0",
-    "postcss": "^8.5.28",
-    "tailwindcss": "^4.3.3",
-    "typescript": "~6.0.2",
-    "vite": "^8.2.2"
-  }
+    "name":  "mz1500_sound_ide",
+    "private":  true,
+    "version":  "0.0.0",
+    "type":  "module",
+    "scripts":  {
+                    "dev":  "vite",
+                    "build":  "tsc -b \u0026\u0026 vite build",
+                    "lint":  "oxlint",
+                    "preview":  "vite preview",
+                    "predeploy":  "npm run build",
+                    "deploy":  "gh-pages -d dist",
+                    "test":  "vitest run"
+                },
+    "dependencies":  {
+                         "@monaco-editor/react":  "^4.7.0",
+                         "@tailwindcss/vite":  "^4.3.3",
+                         "lucide-react":  "^1.41.0",
+                         "react":  "^19.2.8",
+                         "react-dom":  "^19.2.8"
+                     },
+    "devDependencies":  {
+                            "@types/node":  "^24.13.3",
+                            "@types/react":  "^19.2.18",
+                            "@types/react-dom":  "^19.2.4",
+                            "@vitejs/plugin-react":  "^6.1.0",
+                            "autoprefixer":  "^10.5.5",
+                            "gh-pages":  "^6.3.0",
+                            "oxlint":  "^1.79.0",
+                            "postcss":  "^8.5.28",
+                            "tailwindcss":  "^4.3.3",
+                            "typescript":  "~6.0.2",
+                            "vite":  "^8.2.2",
+                            "vitest":  "^5.0.0"
+                        }
 }
