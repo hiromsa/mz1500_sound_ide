@@ -5,6 +5,25 @@
 ---
 
 ## 1. 直近の完了作業（最新）
+- **MML リファレンス準拠の全面修正: マクロ定義の全書式対応・`|` / `>` マーカー統一・FM音色 46 パラメータ・ヘッダディレクティブ対応 (`src/core/mml/MmlCompiler.ts`, `src/core/mml/parser/MmlParser.ts`, `src/view/FmToneEditor.tsx`, `src/view/VolEnvelopeEditor.tsx`, `src/view/PitchEnvelopeEditor.tsx`, `src/view/MmlEditor.tsx`, `src/app/App.tsx`, [`docs/specification/mml_reference.md`](./specification/mml_reference.md), [`docs/specification/ui.md`](./specification/ui.md))**:
+  - **コンパイラのマクロ定義認識を `mml_reference.md` 4章の全書式へ拡張** (`MmlCompiler.ts`):
+    - 従来 `@v / @EP / @FM` のみだった定義行認識を、`@v / @VE` (音量エンベロープ)・`@EP / @PE` (ピッチエンベロープ)・`@FM / @<n>` (FM音色) の全エイリアス + `=` 必須書式 (`@<種別><番号> = { ... }`) に対応 (`parseMacroHeader` で正規化)。
+    - これまで `@1 = { ... }` / `@PE1 = { ... }` がマクロ除去されず本体パーサへ流れ、「トラック指定がありません」と誤検出されていた問題を解消。
+    - **ヘッダディレクティブ行 (`#TITLE` / `#COMPOSER` / `#OCTAVE` / `#OPM` / `#FM`) をコンパイル前に除去** (1章準拠)。サンプル main.mml がヘッダ行でコンパイルエラーになる潜在バグも解消。
+    - 適用コマンドも `@VE<n>` / `@PE<n>` / `@FM<n>` エイリアスに対応 (`MmlParser.processAt` 拡張、FM 音色処理は `processTone` として切り出し)。
+  - **エンベロープのループ / リリースマーカーを `|` / `>` に統一** (ユーザー確定仕様。旧 `|L` / `|R` はモック期の誤記のため廃止):
+    - VOL ENV / PITCH ENV エディタの MML 出力・マーカーレーン表示・ガイドを `|` / `>` に変更。
+    - `|L` / `|R` は仕様外記述として「無効なエンベロープ要素」エラーのまま (テストで明示)。
+  - **TONE エディタの「MMLに反映」を 46 パラメータ書式に修正** (`FmToneEditor.generateMmlSnippet`):
+    - `@N /* 音色名 */ {` (「=」なし・38パラメータ) → `@N = { /* 音色名 */ ... }` (「=」あり・`ALG, FB + OP1〜OP4 各 11 値: AR, D1R, D2R, RR, D1L, TL, KS, MUL, DT1, DT2, AME`)。
+    - TONE エディタ反映 → そのまま PLAY がコンパイル可能に (旧出力は「46 個必要」エラー)。
+  - **サンプル main.mml をリファレンス準拠に更新** (`MmlEditor.tsx`): FM音色定義を 46 パラメータへ、エンベロープを `|` / `>` 表記へ。
+  - **PROBLEMS の初期モック警告を廃止** (`App.tsx`): 実コンパイル結果のみを表示するよう初期値を空に。
+  - **ドキュメント更新**: `mml_reference.md` 4.1 / 4.2 をユーザー確定仕様に書き換え、4.3 / 5節を 46 パラメータ書式に更新。`ui.md` の MML 出力書式・マーカー表記を同期。
+  - **検証**: `npx tsc -b` エラーゼロ / **`npm test` 230 合格 + 2 skip (合計 232、+8)** / `npm run lint` エラーゼロ (既存 UI 警告 5 のみ) / `npm run build` 成功。
+    新規テスト: MmlCompilerAdvanced に「MML reference compliance」8件 (`@1 = {}` / `@FM1 = {}` 定義・適用、`@VE1` / `@PE1` 定義・適用、`|` / `>` マーカー位置解析、`|L`/`|R` 不合格、サンプル main.mml 全文コンパイル)。
+  - **判明事項 / 次の予定**: `@PE` のリリース (`>`) は MZSD データ形式の penv テーブル拡張 (C# 版ドライバと一体で変更が必要) のため未対応 (現行は警告して無視)。リファレンス 4.2 には「リリース `>` は `@v` のみ対応」と明記済み。
+
 - **Phase 5 完了: UI 接続 (`src/core/player/FrameDriver.ts` / `Z80DriverPlayback.ts`, `src/core/export/QdfImageBuilder.ts`, `src/app/App.tsx`, `src/view/*`, [`docs/specification/web_core_port.md`](./specification/web_core_port.md), [`docs/specification/quickdisk_export.md`](./specification/quickdisk_export.md))**:
   - **Z80Driver モード接続**: `FrameDriver` (tick / isFinished / getTrackOffset の共通契約) を新設し、
     `MzsdSequencer` と `Z80DriverPlayback` (内蔵 Z80 コアでドライバを 60Hz フレーム駆動) を同一視。

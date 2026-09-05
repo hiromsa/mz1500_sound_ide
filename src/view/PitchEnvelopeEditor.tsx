@@ -656,15 +656,15 @@ export function PitchEnvelopeEditor({ onChangeEnvData, loadEnvId, onApplyToMml }
     playbackTimerRef.current = timer;
   };
 
-  // MMLスニペット生成 (mml_reference.md の @PEN = { } 書式に準拠)
+  // MMLスニペット生成 (mml_reference.md の @PEN = { } 書式に準拠。ループ `|`、リリース `>`)
   const generateMmlSnippet = (): string => {
     const parts: string[] = [];
     for (let i = 0; i < envData.length; i++) {
       if (i === loopPoint) {
-        parts.push('|L');
+        parts.push('|');
       }
       if (i === releasePoint) {
-        parts.push('|R');
+        parts.push('>');
       }
       parts.push(envData[i].toString());
     }
@@ -761,7 +761,7 @@ export function PitchEnvelopeEditor({ onChangeEnvData, loadEnvId, onApplyToMml }
 
           <div className="flex items-center gap-3 text-xs ml-auto">
             <div className="flex items-center gap-1.5">
-              <span className="text-zinc-500 font-medium text-[10px]">|L LOOP:</span>
+              <span className="text-zinc-500 font-medium text-[10px]">| LOOP:</span>
               {loopPoint >= 0 ? (
                 <span className="px-2 h-5 rounded bg-cyan-950/40 text-cyan-300 border border-cyan-500/40 font-medium flex items-center gap-1 text-[10px]">
                   STEP {loopPoint}
@@ -779,7 +779,7 @@ export function PitchEnvelopeEditor({ onChangeEnvData, loadEnvId, onApplyToMml }
             </div>
 
             <div className="flex items-center gap-1.5">
-              <span className="text-zinc-500 font-medium text-[10px]">|R RELEASE:</span>
+              <span className="text-zinc-500 font-medium text-[10px]">{'>'} RELEASE:</span>
               {releasePoint >= 0 ? (
                 <span className="px-2 h-5 rounded bg-amber-950/40 text-amber-300 border border-amber-500/40 font-medium flex items-center gap-1 text-[10px]">
                   STEP {releasePoint}
@@ -1042,12 +1042,12 @@ export function PitchEnvelopeEditor({ onChangeEnvData, loadEnvId, onApplyToMml }
             </div>
           </div>
 
-          {/* 上部: L (ループ) / R (リリース) 直接指定レーン */}
+          {/* 上部: | (ループ) / > (リリース) 直接指定レーン */}
           <div className="flex flex-col gap-1 z-20 pb-2 border-b border-white/[0.06] mb-2">
-            {/* |L LOOP 直接指定レーン */}
+            {/* | LOOP 直接指定レーン */}
             <div className="flex items-center gap-2">
               <span className="w-18 text-[9px] font-semibold text-cyan-400 tracking-wider text-right shrink-0">
-                |L LOOP:
+                | LOOP:
               </span>
               <div className="flex-1 flex gap-1">
                 {envData.map((_, idx) => {
@@ -1068,17 +1068,17 @@ export function PitchEnvelopeEditor({ onChangeEnvData, loadEnvId, onApplyToMml }
                       }`}
                       title={`Click to set/clear LOOP point at Step ${idx}`}
                     >
-                      {isLoop ? 'L' : '·'}
+                      {isLoop ? '|' : '·'}
                     </button>
                   );
                 })}
               </div>
             </div>
 
-            {/* |R RELEASE 直接指定レーン */}
+            {/* > RELEASE 直接指定レーン */}
             <div className="flex items-center gap-2">
               <span className="w-18 text-[9px] font-semibold text-amber-400 tracking-wider text-right shrink-0">
-                |R RELEASE:
+                {'>'} RELEASE:
               </span>
               <div className="flex-1 flex gap-1">
                 {envData.map((_, idx) => {
@@ -1099,7 +1099,7 @@ export function PitchEnvelopeEditor({ onChangeEnvData, loadEnvId, onApplyToMml }
                       }`}
                       title={`Click to set/clear RELEASE point at Step ${idx}`}
                     >
-                      {isRelease ? 'R' : '·'}
+                      {isRelease ? '>' : '·'}
                     </button>
                   );
                 })}

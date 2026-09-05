@@ -1424,19 +1424,20 @@ export function FmToneEditor({ onChangeToneData, loadToneId, onApplyToMml }: FmT
     };
   };
 
-  // MMLスニペット生成 (mml_reference.md の @N { } 書式に準拠)
+  // MMLスニペット生成 (mml_reference.md 4.3 の @N = { } 46 パラメータ書式に準拠)
   const generateMmlSnippet = (): string => {
     const id = toneData.id;
     const { alg, fb, ops } = toneData;
     const opLines = ops.map((op, i) => {
       const carrier = isOpCarrier(alg, i) ? ' ; Carrier' : '';
-      return `  ${op.ar}, ${op.d1r}, ${op.d1l}, ${op.d2r}, ${op.rr}, ${op.tl}, ${op.mul}, ${op.dt1}, ${op.dt2}${carrier}`;
+      return `  ${op.ar}, ${op.d1r}, ${op.d2r}, ${op.rr}, ${op.d1l}, ${op.tl}, ${op.ks}, ${op.mul}, ${op.dt1}, ${op.dt2}, ${op.ame ? 1 : 0}${carrier}`;
     });
     return [
-      `@${id} /* ${toneData.name} */ {`,
+      `@${id} = {`,
+      `  /* ${toneData.name} */`,
       `  /* ALG=${alg}, FB=${fb} */`,
       `  ${alg}, ${fb},`,
-      `  /* OP1: AR, D1R, D1L, D2R, RR, TL, MUL, DT1, DT2 */`,
+      `  /* OP1: AR, D1R, D2R, RR, D1L, TL, KS, MUL, DT1, DT2, AME */`,
       opLines[0] + ',',
       `  /* OP2 */`,
       opLines[1] + ',',

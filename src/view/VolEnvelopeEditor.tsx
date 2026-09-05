@@ -598,13 +598,13 @@ export function VolEnvelopeEditor({ onChangeEnvData, loadEnvId, onApplyToMml }: 
     }
   };
 
-  // MMLスニペット生成 (mml_reference.md の @vN = { } 書式に準拠)
+  // MMLスニペット生成 (mml_reference.md の @vN = { } 書式に準拠。ループ `|` / リリース `>`)
   const generateMmlSnippet = (): string => {
     const parts: string[] = [];
     envData.forEach((vol, idx) => {
       let prefix = '';
-      if (idx === loopPoint) prefix += '|L ';
-      if (idx === releasePoint) prefix += '|R ';
+      if (idx === loopPoint) prefix += '| ';
+      if (idx === releasePoint) prefix += '> ';
       parts.push(`${prefix}${vol}`);
     });
     return `@v${envNumber} = { ${parts.join(', ')} }`;
@@ -715,7 +715,7 @@ export function VolEnvelopeEditor({ onChangeEnvData, loadEnvId, onApplyToMml }: 
 
           <div className="flex items-center gap-3 text-xs">
             <div className="flex items-center gap-1.5">
-              <span className="text-zinc-500 font-medium text-[10px]">|L LOOP:</span>
+              <span className="text-zinc-500 font-medium text-[10px]">| LOOP:</span>
               {loopPoint >= 0 ? (
                 <span className="px-2 h-5 rounded bg-cyan-950/40 text-cyan-300 border border-cyan-500/40 font-medium flex items-center gap-1 text-[10px]">
                   STEP {loopPoint}
@@ -733,7 +733,7 @@ export function VolEnvelopeEditor({ onChangeEnvData, loadEnvId, onApplyToMml }: 
             </div>
 
             <div className="flex items-center gap-1.5">
-              <span className="text-zinc-500 font-medium text-[10px]">|R RELEASE:</span>
+              <span className="text-zinc-500 font-medium text-[10px]">{'>'} RELEASE:</span>
               {releasePoint >= 0 ? (
                 <span className="px-2 h-5 rounded bg-amber-950/40 text-amber-300 border border-amber-500/40 font-medium flex items-center gap-1 text-[10px]">
                   STEP {releasePoint}
@@ -993,12 +993,12 @@ export function VolEnvelopeEditor({ onChangeEnvData, loadEnvId, onApplyToMml }: 
             </div>
           </div>
 
-          {/* 上部: L (ループ) / R (リリース) 直接指定レーン */}
+          {/* 上部: | (ループ) / > (リリース) 直接指定レーン */}
           <div className="flex flex-col gap-1 z-20 pb-2 border-b border-white/[0.06] mb-2">
-            {/* |L LOOP 直接指定レーン */}
+            {/* | LOOP 直接指定レーン */}
             <div className="flex items-center gap-2">
               <span className="w-16 text-[9px] font-semibold text-cyan-400 tracking-wider text-right shrink-0">
-                |L LOOP:
+                | LOOP:
               </span>
               <div className="flex-1 flex gap-1">
                 {envData.map((_, idx) => {
@@ -1019,17 +1019,17 @@ export function VolEnvelopeEditor({ onChangeEnvData, loadEnvId, onApplyToMml }: 
                       }`}
                       title={`Click to set/clear LOOP point at Step ${idx}`}
                     >
-                      {isLoop ? 'L' : '·'}
+                      {isLoop ? '|' : '·'}
                     </button>
                   );
                 })}
               </div>
             </div>
 
-            {/* |R RELEASE 直接指定レーン */}
+            {/* > RELEASE 直接指定レーン */}
             <div className="flex items-center gap-2">
               <span className="w-16 text-[9px] font-semibold text-amber-400 tracking-wider text-right shrink-0">
-                |R RELEASE:
+                {'>'} RELEASE:
               </span>
               <div className="flex-1 flex gap-1">
                 {envData.map((_, idx) => {
@@ -1050,7 +1050,7 @@ export function VolEnvelopeEditor({ onChangeEnvData, loadEnvId, onApplyToMml }: 
                       }`}
                       title={`Click to set/clear RELEASE point at Step ${idx}`}
                     >
-                      {isRelease ? 'R' : '·'}
+                      {isRelease ? '>' : '·'}
                     </button>
                   );
                 })}
@@ -1219,7 +1219,7 @@ export function VolEnvelopeEditor({ onChangeEnvData, loadEnvId, onApplyToMml }: 
           <div className="pt-2 mt-2 border-t border-white/[0.05] flex justify-between items-center text-[9px] text-zinc-500">
             <div className="flex items-center gap-3">
               <span className="text-cyan-400/90">● Click/Drag bar to paint volume</span>
-              <span>● |L / |R: Direct Toggle</span>
+              <span>● | / {'>'}: Direct Toggle</span>
               <span className="text-zinc-400 font-mono">● Zoom: Ctrl + Wheel</span>
               <span className="text-zinc-400 font-mono">● Pan: Space + Drag</span>
             </div>

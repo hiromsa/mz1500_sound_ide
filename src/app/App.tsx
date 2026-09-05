@@ -178,18 +178,8 @@ function App() {
     'READY.'
   ]);
 
-  // コンパイルエラー・問題一覧 (モック)
-  const [compileErrors, setCompileErrors] = useState<CompileErrorItem[]>([
-    {
-      id: 'err-1',
-      severity: 'warning',
-      track: 'P1',
-      line: 20,
-      column: 15,
-      message: 'Track volume exceeds standard DCSG headroom (consider @v12 or lower)',
-      sourceFile: 'main.mml',
-    }
-  ]);
+  // コンパイルエラー・問題一覧 (BUILD / PLAY 実行時にコンパイル結果で更新)
+  const [compileErrors, setCompileErrors] = useState<CompileErrorItem[]>([]);
 
   // 楽曲メタデータ・ヘッダー設定 (#TITLE, #COMPOSER, #OCTAVE, #OPM)
   const [songMetadata, setSongMetadata] = useState<SongMetadata>({

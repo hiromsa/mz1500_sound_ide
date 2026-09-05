@@ -38,7 +38,7 @@ const DUMMY_FILES: MmlFile[] = [
   {
     id: '1',
     name: 'main.mml',
-    content: '; MZ-1500 MML Example\n\n#TITLE "Theme of MZ"\n#COMPOSER "User"\n#OPM OFF\n#OCTAVE NORMAL\n\n; FM音色定義 (#OPM ON 時に F1〜F8 トラックで @1 を指定して使用)\n@1 = {\n  4, 6,\n  31, 12, 3, 0, 15, 24, 1, 0, 0,\n  31, 18, 5, 0, 12, 18, 2, 3, 0,\n  31, 10, 2, 0, 15, 30, 1, 0, 0,\n  31,  8, 4, 0,  8,  0, 1, 0, 0\n}\n@v1 = { 15, 14, 13, |L 12, 12, |R 8, 5, 2, 0 }\n@PE1 = { |L 0, 2, 4, 6, 8, 6, 4, 2 }\n\n; 各行を右クリックすると対応エディタで編集できます\nP1 t120 l8 o4 @v1 @PE1\nP1 c e g > c < g e c r\nP1 L [c d e f g2]2\n'
+    content: '; MZ-1500 MML Example\n\n#TITLE "Theme of MZ"\n#COMPOSER "User"\n#OPM OFF\n#OCTAVE NORMAL\n\n; FM音色定義 (#OPM ON 時に F1〜F8 トラックで @1 を指定して使用)\n@1 = {\n  4, 6,\n  31, 12, 0, 15, 3, 24, 0, 1, 0, 0, 0,\n  31, 18, 0, 12, 5, 18, 0, 2, 3, 0, 0,\n  31, 10, 0, 15, 2, 30, 0, 1, 0, 0, 0,\n  31,  8, 0,  8, 4,  0, 0, 1, 0, 0, 0\n}\n@v1 = { 15, 14, 13, |, 12, 11, >, 8, 5, 2, 0 }\n@PE1 = { |, 0, 2, 4, 6, 8, 6, 4, 2 }\n\n; 各行を右クリックすると対応エディタで編集できます\nP1 t120 l8 o4 @v1 @PE1\nP1 c e g > c < g e c r\nP1 L [c d e f g2]2\n'
   },
   {
     id: '2',
