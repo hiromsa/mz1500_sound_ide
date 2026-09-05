@@ -30,3 +30,12 @@ If you are developing a production application, we recommend enabling type-aware
 ```
 
 See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+
+## Credits (Z80 CPU コア)
+
+`src/core/z80/` は Konamiman 氏の **[Z80dotNet (Z80.Net)](https://github.com/Konamiman/Z80dotNet)** を
+C# から TypeScript へ移植・改変したものです。
+
+- Based on Z80dotNet, Copyright (C) 2014 Konamiman, www.konamiman.com.
+- Z80dotNet のライセンス (改変版 MIT) の条項に従い、著作権表示・許諾表示の保持と改変の明示を行っています。
+  ライセンス全文は [LICENSE](./LICENSE) を、移植ファイルのヘッダーは各 `.ts` ファイルの冒頭を参照してください。
