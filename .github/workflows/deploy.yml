@@ -1,0 +1,64 @@
+# GitHub Pages への自動デプロイ (main ブランチ push 時)
+#
+# 注意: `npm test` (vitest) のうちチップ照合テストは、C# リファレンスツール
+# (tools/cs-probe / net9.0-windows・リポジトリ外の MzSound.Player を参照) が
+# 生成する out/reference.json を必要とするため、CI では実行できない。
+# よって本ワークフローでは lint + build のみを実行してデプロイする。
+# (単体テストはローカルで `npm test` を実行して確認すること)
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 連続 push 時に古いデプロイを打ち切る
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+      - name: Setup GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
