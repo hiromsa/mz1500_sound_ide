@@ -6,10 +6,11 @@
 
 ## 1. 直近の完了作業（最新）
 - **MMLエディタ 右クリックコンテキストメニュー & 各エディタ⇔MML連携の実装 ([`src/components/MmlEditor.tsx`](./src/components/MmlEditor.tsx), [`src/utils/mmlContextParser.ts`](./src/utils/mmlContextParser.ts), [`src/components/FmToneEditor.tsx`](./src/components/FmToneEditor.tsx), [`src/components/VolEnvelopeEditor.tsx`](./src/components/VolEnvelopeEditor.tsx), [`src/components/PitchEnvelopeEditor.tsx`](./src/components/PitchEnvelopeEditor.tsx), [`src/App.tsx`](./src/App.tsx), [`docs/specification/ui.md`](./docs/specification/ui.md))**:
-  - **Monaco右クリックコンテキストメニュー (計6アクション)**:
-    - `📊 FM TONE (@) を編集...` / `📊 VOL ENV (@VE) を編集...` / `📈 PITCH ENV (@PE) を編集...`: 右クリックした行を解析し、記述済みの `@N` / `@FMN`、`@vN` / `@VEN`、`@PEN` を対応エディタで開く (右ペインタブ自動切替・非表示時は自動オープン)。
-    - `✨ 新規 FM TONE / VOL ENV / PITCH ENV を作成...`: MML全文から既存IDを収集し、**最大ID+1の未使用ID**で各エディタを新規作成状態で開く。
-    - 「編集...」系は対象IDが行に存在しない場合、安全ガードにより何もしない。
+  - **カスタム右クリックコンテキストメニュー (計6アクション・overlay方式)**:
+    - `@N を TONE エディタで編集` / `@VEN を VOL ENV エディタで編集` / `@PEN を PITCH ENV エディタで編集`: 右クリックした行を解析し、記述済みの `@N` / `@FMN`、`@vN` / `@VEN`、`@PEN` を対応エディタで開く (右ペインタブ自動切替・非表示時は自動オープン)。
+    - `新規 FM TONE を挿入...` / `新規 VOL ENV を挿入...` / `新規 PITCH ENV を挿入...`: MML全文から既存IDを収集し、**最大ID+1の未使用ID**で各エディタを新規作成状態で開く。
+    - **メニューアイコンは右ペインタブ (TONE / VOL ENV / PITCH ENV) と同一の Lucide SVG** (`AudioWaveform` / `TrendingUp` / `ChartLine`)。Monaco 内蔵メニューは Lucide アイコンを表示できないため、新設コンポーネント [`src/components/MmlContextMenu.tsx`](./src/components/MmlContextMenu.tsx) による **overlay 方式** (Monaco `contextmenu: false` 化 + エディタラッパー `onContextMenu` で `preventDefault`) を採用。
+    - 「編集」系は対象IDを含む行でのみ表示し、区切り線を挟んで「新規」3種を常時表示。外クリック / `Esc` / ウィンドウ非活性で閉じ、画面端では表示位置を自動補正。`getTargetAtClientPoint` によりカーソル位置に依存しない行特定を実装。
   - **MMLパーサーユーティリティの新設 (`src/utils/mmlContextParser.ts`)**:
     - `analyzeMmlLine` (1行解析) / `collectUsedIds` (全文ID収集) / `nextAvailableId` (未使用ID採番) をUIと切り離した純粋関数として分離 (高凝集・疎結合)。
     - コメント (`;` / `//`) 以降の除外、`@WN` / `@SW` / `@q` 等の他コマンドの音色ID誤検出防止を実装。

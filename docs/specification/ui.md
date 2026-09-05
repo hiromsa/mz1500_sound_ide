@@ -139,10 +139,12 @@ FlexboxおよびCSS Gridを活用し、解像度変化に追従するペイン�
 - **タイポグラフィ**: カスケードコード/等幅フォント、フォントサイズ 12.5px、行高 20px（情報密度向上）、行ハイライト、ミニマップ非表示、Ctrl+マウスホイールによるズーム対応、Monaco上での `Ctrl+Enter` 再生/停止キーバインド登録。
 - **右クリックコンテキストメニュー & 各エディタ連携 (`MmlEditor.tsx` / `src/utils/mmlContextParser.ts`)**:
   - Monaco Editor のネイティブコンテキストメニューへ、`MML_NAVIGATION` / `MML_NEW` の2グループ・計6アクションを登録:
-    - `📊 FM TONE (@) を編集...`: 右クリックした行を解析し `@N` / `@FMN` があれば、右ペインをYM2151 TONEに自動切替（非表示時は自動オープン）して該当IDをロード。
-    - `📊 VOL ENV (@VE) を編集...`: 行内の `@vN` / `@VEN` を解析し、VOL ENVタブへ切替して該当IDをロード。
-    - `📈 PITCH ENV (@PE) を編集...`: 行内の `@PEN` を解析し、PITCH ENVタブへ切替して該当IDをロード。
-    - `✨ 新規 FM TONE / VOL ENV / PITCH ENV を作成...`: MML全文から既存IDを収集し、**最大ID+1の未使用ID**で各エディタを新規作成状態で開く。
+    - `@N を TONE エディタで編集`: 右クリックした行を解析し `@N` / `@FMN` があれば、右ペインをYM2151 TONEに自動切替（非表示時は自動オープン）して該当IDをロード。
+    - `@VEN を VOL ENV エディタで編集`: 行内の `@vN` / `@VEN` を解析し、VOL ENVタブへ切替して該当IDをロード。
+    - `@PEN を PITCH ENV エディタで編集`: 行内の `@PEN` を解析し、PITCH ENVタブへ切替して該当IDをロード。
+    - `新規 FM TONE を挿入...` / `新規 VOL ENV を挿入...` / `新規 PITCH ENV を挿入...`: MML全文から既存IDを収集し、**最大ID+1の未使用ID**で各エディタを新規作成状態で開く。
+    - **メニューアイコンは右ペインタブと同一の Lucide SVG**（`AudioWaveform` / `TrendingUp` / `ChartLine`）。Monaco 内蔵メニューは Lucide アイコンを表示できないため、**カスタムコンテキストメニューコンポーネント（[`src/components/MmlContextMenu.tsx`](./src/components/MmlContextMenu.tsx)）による overlay 方式**を採用（Monaco `contextmenu: false` 化 + エディタラッパーの `onContextMenu` で `preventDefault`）。
+    - メニューは「編集」系を対象IDを含む行でのみ表示し、区切り線を挟んで「新規〜を挿入...」3種を常時表示。外クリック / `Esc` / ウィンドウ非活性で閉じ、画面端では表示位置を自動補正。
   - 行解析ユーティリティは `src/utils/mmlContextParser.ts` に純粋関数として分離:
     - `analyzeMmlLine`: 1行から `@N` / `@FMN`、`@vN` / `@VEN`、`@PEN` のIDを抽出。コメント (`;` / `//`) 以降は解析対象外。他コマンド (`@WN`, `@SW`, `@q` 等) を音色IDへ誤検出しない。
     - `collectUsedIds`: MML全文から3種類のID使用済みセットを収集。
