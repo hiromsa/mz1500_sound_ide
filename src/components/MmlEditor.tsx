@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { 
   PanelLeftClose, 
   PanelLeftOpen, 
@@ -8,12 +8,18 @@ import {
   X, 
   Plus, 
   Terminal,
-  AlertCircle 
+  AlertCircle,
+  Music 
 } from 'lucide-react';
-import Editor from '@monaco-editor/react';
+import Editor, { type Monaco } from '@monaco-editor/react';
+import type { editor } from 'monaco-editor';
 import { FileExplorer } from './FileExplorer';
 import { CompileErrorPanel, type CompileErrorItem } from './CompileErrorPanel';
 import type { SongMetadata } from './SongSetupPanel';
+import { VirtualKeyboard, type ActiveTabContext } from './VirtualKeyboard';
+import { parseMmlCaretContext, type MmlCaretContext } from '../utils/mmlCaretParser';
+import { analyzeMmlLine, collectUsedIds, nextAvailableId } from '../utils/mmlContextParser';
+import type { FmToneData } from './FmToneEditor';
 
 interface MmlFile {
   id: string;
@@ -102,7 +108,7 @@ function applyMetadataToContent(content: string, meta: SongMetadata): string {
   return res;
 }
 
-export type BottomTab = 'problems' | 'console';
+export type BottomTab = 'problems' | 'console' | 'keyboard';
 
 interface MmlEditorProps {
   songMetadata: SongMetadata;
@@ -115,6 +121,22 @@ interface MmlEditorProps {
   onClearErrors?: () => void;
   onSelectError?: (error: CompileErrorItem) => void;
   onTogglePlay?: () => void;
+  // バーチャルキーボード連携用 props
+  activeTabContext?: ActiveTabContext;
+  activeFmTone?: FmToneData;
+  activePitchEnv?: number[];
+  activePitchEnvLoop?: number;
+  activeVolEnv?: number[];
+  activeVolEnvLoop?: number;
+  // 右クリックコンテキストメニューから各エディタへの遷移コールバック
+  onRequestEditTone?: (id: number) => void;
+  onRequestEditVolEnv?: (id: number) => void;
+  onRequestEditPitchEnv?: (id: number) => void;
+  onRequestNewTone?: (newId: number) => void;
+  onRequestNewVolEnv?: (newId: number) => void;
+  onRequestNewPitchEnv?: (newId: number) => void;
+  /** MMLスニペットをカーソル位置に挿入するためのエディタインスタンス取得コールバック */
+  onEditorMount?: (editorInstance: editor.IStandaloneCodeEditor) => void;
 }
 
 export function MmlEditor({ 
@@ -127,7 +149,20 @@ export function MmlEditor({
   errors,
   onClearErrors,
   onSelectError,
-  onTogglePlay
+  onTogglePlay,
+  activeTabContext = 'mml',
+  activeFmTone,
+  activePitchEnv,
+  activePitchEnvLoop,
+  activeVolEnv,
+  activeVolEnvLoop,
+  onRequestEditTone,
+  onRequestEditVolEnv,
+  onRequestEditPitchEnv,
+  onRequestNewTone,
+  onRequestNewVolEnv,
+  onRequestNewPitchEnv,
+  onEditorMount,
 }: MmlEditorProps) {
   const [files, setFiles] = useState<MmlFile[]>(DUMMY_FILES);
   const [activeFileId, setActiveFileId] = useState<string>(DUMMY_FILES[0].id);
@@ -135,15 +170,172 @@ export function MmlEditor({
   const [explorerWidth, setExplorerWidth] = useState<number>(240);
   const [isDraggingExplorer, setIsDraggingExplorer] = useState<boolean>(false);
 
-  // 下部エリア タブ化 & 上下リサイズ用ステート
-  const [activeBottomTab, setActiveBottomTab] = useState<BottomTab>('problems');
-  const [bottomHeight, setBottomHeight] = useState<number>(160);
+  // 下部エリア タブ化 & 上下リサイズ用ステート (デフォルトで KEYBOARD タブを選択可能に)
+  const [activeBottomTab, setActiveBottomTab] = useState<BottomTab>('keyboard');
+  const [bottomHeight, setBottomHeight] = useState<number>(180);
   const [isDraggingBottomSplitter, setIsDraggingBottomSplitter] = useState<boolean>(false);
+
+  // MMLキャレットコンテキスト
+  const [mmlCaretContext, setMmlCaretContext] = useState<MmlCaretContext | undefined>(undefined);
 
   const editorContainerRef = useRef<HTMLDivElement>(null);
   const isUpdatingFromExternalRef = useRef<boolean>(false);
 
+  // Monaco Editor インスタンスの参照 (MMLスニペット挿入用)
+  const monacoEditorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
+
+  // 右クリックコンテキストメニュー コールバックの ref (stale closure 回避)
+  const onRequestEditToneRef = useRef(onRequestEditTone);
+  const onRequestEditVolEnvRef = useRef(onRequestEditVolEnv);
+  const onRequestEditPitchEnvRef = useRef(onRequestEditPitchEnv);
+  const onRequestNewToneRef = useRef(onRequestNewTone);
+  const onRequestNewVolEnvRef = useRef(onRequestNewVolEnv);
+  const onRequestNewPitchEnvRef = useRef(onRequestNewPitchEnv);
+
+  // コールバック更新時にrefを同期
+  useEffect(() => { onRequestEditToneRef.current = onRequestEditTone; }, [onRequestEditTone]);
+  useEffect(() => { onRequestEditVolEnvRef.current = onRequestEditVolEnv; }, [onRequestEditVolEnv]);
+  useEffect(() => { onRequestEditPitchEnvRef.current = onRequestEditPitchEnv; }, [onRequestEditPitchEnv]);
+  useEffect(() => { onRequestNewToneRef.current = onRequestNewTone; }, [onRequestNewTone]);
+  useEffect(() => { onRequestNewVolEnvRef.current = onRequestNewVolEnv; }, [onRequestNewVolEnv]);
+  useEffect(() => { onRequestNewPitchEnvRef.current = onRequestNewPitchEnv; }, [onRequestNewPitchEnv]);
+
+  /** Monaco editor onMount: コンテキストメニューアクションを登録する */
+  const handleEditorMount = useCallback((editorInstance: editor.IStandaloneCodeEditor, _monaco: Monaco) => {
+    monacoEditorRef.current = editorInstance;
+    onEditorMount?.(editorInstance);
+
+    // Ctrl + Enter で再生/停止トグル
+    editorInstance.addCommand(_monaco.KeyMod.CtrlCmd | _monaco.KeyCode.Enter, () => {
+      onTogglePlay?.();
+    });
+
+    // カーソル位置変更時にMMLキャレットコンテキストを更新
+    editorInstance.onDidChangeCursorPosition((e) => {
+      const model = editorInstance.getModel();
+      if (model) {
+        const content = model.getValue();
+        const ctx = parseMmlCaretContext(content, e.position.lineNumber, e.position.column);
+        setMmlCaretContext(ctx);
+      }
+    });
+
+    // 初期マウント時のカーソル位置解析
+    const model = editorInstance.getModel();
+    if (model) {
+      const pos = editorInstance.getPosition() || { lineNumber: 1, column: 1 };
+      setMmlCaretContext(parseMmlCaretContext(model.getValue(), pos.lineNumber, pos.column));
+    }
+
+    // ──────────────────────────────────────────
+    // 右クリックコンテキストメニュー: FM TONE 編集
+    // ──────────────────────────────────────────
+    editorInstance.addAction({
+      id: 'mml-edit-tone',
+      label: '🎹 FM TONE (@N) を編集...',
+      contextMenuGroupId: 'mml_navigation',
+      contextMenuOrder: 1,
+      run: (ed) => {
+        const pos = ed.getPosition();
+        if (!pos) return;
+        const line = ed.getModel()?.getLineContent(pos.lineNumber) ?? '';
+        const analysis = analyzeMmlLine(line);
+        if (analysis.toneId == null) {
+          // この行に @N がなければ何もしない
+          return;
+        }
+        onRequestEditToneRef.current?.(analysis.toneId);
+      },
+    });
+
+    // ──────────────────────────────────────────
+    // 右クリックコンテキストメニュー: VOL ENV 編集
+    // ──────────────────────────────────────────
+    editorInstance.addAction({
+      id: 'mml-edit-vol-env',
+      label: '📊 VOL ENV (@VE) を編集...',
+      contextMenuGroupId: 'mml_navigation',
+      contextMenuOrder: 2,
+      run: (ed) => {
+        const pos = ed.getPosition();
+        if (!pos) return;
+        const line = ed.getModel()?.getLineContent(pos.lineNumber) ?? '';
+        const analysis = analyzeMmlLine(line);
+        if (analysis.volEnvId == null) return;
+        onRequestEditVolEnvRef.current?.(analysis.volEnvId);
+      },
+    });
+
+    // ──────────────────────────────────────────
+    // 右クリックコンテキストメニュー: PITCH ENV 編集
+    // ──────────────────────────────────────────
+    editorInstance.addAction({
+      id: 'mml-edit-pitch-env',
+      label: '📈 PITCH ENV (@PE) を編集...',
+      contextMenuGroupId: 'mml_navigation',
+      contextMenuOrder: 3,
+      run: (ed) => {
+        const pos = ed.getPosition();
+        if (!pos) return;
+        const line = ed.getModel()?.getLineContent(pos.lineNumber) ?? '';
+        const analysis = analyzeMmlLine(line);
+        if (analysis.pitchEnvId == null) return;
+        onRequestEditPitchEnvRef.current?.(analysis.pitchEnvId);
+      },
+    });
+
+    // ──────────────────────────────────────────
+    // 右クリックコンテキストメニュー: 新規 FM TONE
+    // ──────────────────────────────────────────
+    editorInstance.addAction({
+      id: 'mml-new-tone',
+      label: '✨ 新規 FM TONE を作成...',
+      contextMenuGroupId: 'mml_new',
+      contextMenuOrder: 1,
+      run: (ed) => {
+        const content = ed.getModel()?.getValue() ?? '';
+        const { toneIds } = collectUsedIds(content);
+        const newId = nextAvailableId(toneIds);
+        onRequestNewToneRef.current?.(newId);
+      },
+    });
+
+    // ──────────────────────────────────────────
+    // 右クリックコンテキストメニュー: 新規 VOL ENV
+    // ──────────────────────────────────────────
+    editorInstance.addAction({
+      id: 'mml-new-vol-env',
+      label: '✨ 新規 VOL ENV を作成...',
+      contextMenuGroupId: 'mml_new',
+      contextMenuOrder: 2,
+      run: (ed) => {
+        const content = ed.getModel()?.getValue() ?? '';
+        const { volEnvIds } = collectUsedIds(content);
+        const newId = nextAvailableId(volEnvIds);
+        onRequestNewVolEnvRef.current?.(newId);
+      },
+    });
+
+    // ──────────────────────────────────────────
+    // 右クリックコンテキストメニュー: 新規 PITCH ENV
+    // ──────────────────────────────────────────
+    editorInstance.addAction({
+      id: 'mml-new-pitch-env',
+      label: '✨ 新規 PITCH ENV を作成...',
+      contextMenuGroupId: 'mml_new',
+      contextMenuOrder: 3,
+      run: (ed) => {
+        const content = ed.getModel()?.getValue() ?? '';
+        const { pitchEnvIds } = collectUsedIds(content);
+        const newId = nextAvailableId(pitchEnvIds);
+        onRequestNewPitchEnvRef.current?.(newId);
+      },
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const activeFile = files.find(f => f.id === activeFileId) || files[0];
+
 
   // SongSetupPanel から songMetadata が変更された時に MML ファイル内容を同期
   const prevMetadataRef = useRef<SongMetadata>(songMetadata);
@@ -418,12 +610,7 @@ export function MmlEditor({
             theme="vs-dark"
             value={activeFile.content}
             onChange={handleEditorChange}
-            onMount={(editor, monaco) => {
-              // Ctrl + Enter (または Cmd + Enter) で再生/停止トグル
-              editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
-                onTogglePlay?.();
-              });
-            }}
+            onMount={handleEditorMount}
             options={{
               minimap: { enabled: false },
               fontSize: 12.5,
@@ -502,7 +689,19 @@ export function MmlEditor({
                 </span>
               </button>
 
-              {/* ※ 今後ユーザーから指定される追加エリア用スロット */}
+              {/* 3. VIRTUAL KEYBOARD タブ */}
+              <button
+                onClick={() => setActiveBottomTab('keyboard')}
+                className={`h-full px-2.5 text-[11px] font-semibold flex items-center gap-1.5 transition-colors cursor-pointer border-b-2 ${
+                  activeBottomTab === 'keyboard'
+                    ? 'text-zinc-100 bg-[#1E1E1E] border-b-[#00A8FF]'
+                    : 'text-zinc-400 hover:text-zinc-200 hover:bg-[#2C2C2C] border-b-transparent'
+                }`}
+                title="バーチャルキーボードを表示"
+              >
+                <Music className={`w-3.5 h-3.5 ${activeBottomTab === 'keyboard' ? 'text-[#00A8FF]' : 'text-zinc-400'}`} />
+                <span>KEYBOARD</span>
+              </button>
             </div>
 
             {/* タブ右側 アクションボタン */}
@@ -530,6 +729,18 @@ export function MmlEditor({
 
           {/* タブコンテンツ */}
           <div className="flex-1 overflow-hidden relative">
+            {activeBottomTab === 'keyboard' && (
+              <VirtualKeyboard
+                activeTabContext={activeTabContext}
+                mmlContext={mmlCaretContext}
+                activeFmTone={activeFmTone}
+                activePitchEnv={activePitchEnv}
+                activePitchEnvLoop={activePitchEnvLoop}
+                activeVolEnv={activeVolEnv}
+                activeVolEnvLoop={activeVolEnvLoop}
+              />
+            )}
+
             {activeBottomTab === 'problems' && (
               <CompileErrorPanel 
                 errors={errors}

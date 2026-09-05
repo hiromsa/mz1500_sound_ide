@@ -5,6 +5,25 @@
 ---
 
 ## 1. 直近の完了作業（最新）
+- **MMLエディタ 右クリックコンテキストメニュー & 各エディタ⇔MML連携の実装 ([`src/components/MmlEditor.tsx`](./src/components/MmlEditor.tsx), [`src/utils/mmlContextParser.ts`](./src/utils/mmlContextParser.ts), [`src/components/FmToneEditor.tsx`](./src/components/FmToneEditor.tsx), [`src/components/VolEnvelopeEditor.tsx`](./src/components/VolEnvelopeEditor.tsx), [`src/components/PitchEnvelopeEditor.tsx`](./src/components/PitchEnvelopeEditor.tsx), [`src/App.tsx`](./src/App.tsx), [`docs/specification/ui.md`](./docs/specification/ui.md))**:
+  - **Monaco右クリックコンテキストメニュー (計6アクション)**:
+    - `📊 FM TONE (@) を編集...` / `📊 VOL ENV (@VE) を編集...` / `📈 PITCH ENV (@PE) を編集...`: 右クリックした行を解析し、記述済みの `@N` / `@FMN`、`@vN` / `@VEN`、`@PEN` を対応エディタで開く (右ペインタブ自動切替・非表示時は自動オープン)。
+    - `✨ 新規 FM TONE / VOL ENV / PITCH ENV を作成...`: MML全文から既存IDを収集し、**最大ID+1の未使用ID**で各エディタを新規作成状態で開く。
+    - 「編集...」系は対象IDが行に存在しない場合、安全ガードにより何もしない。
+  - **MMLパーサーユーティリティの新設 (`src/utils/mmlContextParser.ts`)**:
+    - `analyzeMmlLine` (1行解析) / `collectUsedIds` (全文ID収集) / `nextAvailableId` (未使用ID採番) をUIと切り離した純粋関数として分離 (高凝集・疎結合)。
+    - コメント (`;` / `//`) 以降の除外、`@WN` / `@SW` / `@q` 等の他コマンドの音色ID誤検出防止を実装。
+    - ロジック検証スクリプト [`scripts/verify-mml-parser.mjs`](./scripts/verify-mml-parser.mjs) (**全17ケース自動アサート、全パス**)。`node scripts/verify-mml-parser.mjs` で実行可能。
+  - **各エディタに「▶ MMLに反映」ボタンを新設 (エディタ⇔MML双方向連携)**:
+    - FM TONE: `@N /* 音色名 */ { ALG, FB, OP1〜OP4パラメータ }` 複数行ブロック / VOL ENV: `@vN = { |L, |R マーカー付き音量列 }` / PITCH ENV: `@PEN = { ... }` を、Monaco Editor のカーソル位置に挿入 (選択範囲があれば置換)。
+    - 3エディタのMML生成ロジックを `generateMmlSnippet` に統一。FM TONE の「GENERATED FM TONE MML」プレビューも擬似表記から実コマンド形式 (`mml_reference.md` 準拠) に刷新。
+    - エディタ側は `loadToneId` / `loadEnvId` props を監視し、右クリックメニュー指定IDをIDセレクタへ即時反映。
+  - **App.tsx 連携ハンドラ**:
+    - `handleRequestEdit*` / `handleRequestNew*` (6種) + `handleApplyToMml` を実装。`onEditorMount` による Monaco インスタンスの共有で右ペインからMMLへの挿入を実現。
+  - **ビルド & ロジックテスト通過**:
+    - `npm run build` エラーゼロ通過。`npm run lint` (oxlint) エラーゼロ。パーサーロジック全17テストパス。
+    - 実機ブラウザでの右クリック操作・スニペット挿入のE2E確認は次セッションで実施推奨 (自動化MCP未接続環境のため)。
+
 - **PLAYボタンのトグル停止化、`Ctrl + Enter` 再生ショートカット、無限ループ（`LOOP`）ON/OFFスイッチ、および下部エリア（PROBLEMS / CONSOLE）のタブ化 ([`src/App.tsx`](./src/App.tsx), [`src/components/MmlEditor.tsx`](./src/components/MmlEditor.tsx), [`src/components/CompileErrorPanel.tsx`](./src/components/CompileErrorPanel.tsx), [`docs/specification/ui.md`](./docs/specification/ui.md))**:
   - **PLAYボタンのトグル停止動作**:
     - 再生中（`PLAYING...` / `STOP / PLAYING`）にもう一度 PLAY ボタンを押すと停止するトグル動作を実装（`STOP` ボタンも引き続き配置）。

@@ -119,7 +119,15 @@ const createInitialPitchData = (): number[] => {
   ];
 };
 
-export function PitchEnvelopeEditor() {
+export interface PitchEnvelopeEditorProps {
+  onChangeEnvData?: (data: number[], loopPoint: number) => void;
+  /** MML右クリックメニューから指定されたID。変化したらenvNumberを更新する。 */
+  loadEnvId?: number | null;
+  /** 「MMLに反映」ボタン押下時に呼び出されるコールバック。 */
+  onApplyToMml?: (mmlSnippet: string, id: number) => void;
+}
+
+export function PitchEnvelopeEditor({ onChangeEnvData, loadEnvId, onApplyToMml }: PitchEnvelopeEditorProps = {}) {
   // ピッチエンベロープデータ (各フレームの周波数/ピッチオフセット値)
   const [envData, setEnvData] = useState<number[]>(createInitialPitchData());
 
@@ -129,11 +137,22 @@ export function PitchEnvelopeEditor() {
   // ループポイント (-1 はループなし)
   const [loopPoint, setLoopPoint] = useState<number>(0);
 
+  // エンベロープデータ・ループ変更時に外部通知
+  useEffect(() => {
+    onChangeEnvData?.(envData, loopPoint);
+  }, [envData, loopPoint, onChangeEnvData]);
+
   // リリースポイント (-1 はなし)
   const [releasePoint, setReleasePoint] = useState<number>(-1);
 
   // エンベロープ定義番号 (例: @p1)
   const [envNumber, setEnvNumber] = useState<number>(1);
+
+  // loadEnvId の変化を監視: 右クリックメニューからIDが指定されたらenvNumberを更新
+  useEffect(() => {
+    if (loadEnvId == null) return;
+    setEnvNumber(loadEnvId);
+  }, [loadEnvId]);
 
   // ズーム倍率 (0.6x 〜 3.5x, デフォルト 1.0x)
   const [zoomLevel, setZoomLevel] = useState<number>(1.0);
@@ -637,8 +656,8 @@ export function PitchEnvelopeEditor() {
     playbackTimerRef.current = timer;
   };
 
-  // MML テキスト生成
-  const generateMml = () => {
+  // MMLスニペット生成 (mml_reference.md の @PEN = { } 書式に準拠)
+  const generateMmlSnippet = (): string => {
     const parts: string[] = [];
     for (let i = 0; i < envData.length; i++) {
       if (i === loopPoint) {
@@ -650,6 +669,12 @@ export function PitchEnvelopeEditor() {
       parts.push(envData[i].toString());
     }
     return `@PE${envNumber} = { ${parts.join(', ')} }`;
+  };
+
+  // 「MMLに反映」ボタン処理
+  const handleApplyToMml = () => {
+    const snippet = generateMmlSnippet();
+    onApplyToMml?.(snippet, envNumber);
   };
 
   return (
@@ -680,7 +705,7 @@ export function PitchEnvelopeEditor() {
           </div>
         </div>
 
-        {/* 試聴トランスポート */}
+        {/* 試聴トランスポート & MMLに反映ボタン */}
         <div className="flex items-center gap-2">
           {!isPlaying ? (
             <button
@@ -699,6 +724,16 @@ export function PitchEnvelopeEditor() {
             >
               <Square className="w-3 h-3 fill-current" />
               <span>STOP</span>
+            </button>
+          )}
+          {/* MMLに反映ボタン (onApplyToMml が設定されている場合のみ表示) */}
+          {onApplyToMml && (
+            <button
+              onClick={handleApplyToMml}
+              className="h-6 px-3 rounded bg-emerald-900/50 hover:bg-emerald-800/60 text-emerald-300 border border-emerald-600/60 hover:border-emerald-400 font-medium transition-colors flex items-center gap-1.5 text-xs cursor-pointer shadow-xs"
+              title={`@PE${envNumber} の MML定義をカーソル位置に挿入`}
+            >
+              <span>▶ MMLに反映</span>
             </button>
           )}
         </div>
@@ -1260,15 +1295,15 @@ export function PitchEnvelopeEditor() {
             GENERATED PITCH ENVELOPE MML
           </span>
           <button
-            onClick={() => navigator.clipboard.writeText(generateMml())}
+            onClick={() => navigator.clipboard.writeText(generateMmlSnippet())}
             className="h-6 px-2.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-zinc-100 border border-white/10 transition-colors text-[10px] cursor-pointer shadow-xs flex items-center gap-1"
           >
             <Copy className="w-3 h-3 text-zinc-400" />
             <span>COPY TO CLIPBOARD</span>
           </button>
         </div>
-        <div className="bg-[#0c0d12] p-2.5 rounded border border-white/[0.06] font-mono text-cyan-300 text-xs tracking-wide select-all overflow-x-auto shadow-inner">
-          {generateMml()}
+        <div className="bg-[#0c0d12] p-2.5 rounded border border-white/[0.06] font-mono text-cyan-300 text-xs tracking-wide select-all overflow-x-auto shadow-inner whitespace-pre-wrap">
+          {generateMmlSnippet()}
         </div>
       </div>
     </div>

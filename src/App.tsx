@@ -17,8 +17,10 @@ import { SettingsPanel } from './components/SettingsPanel';
 import { SongSetupPanel, type SongMetadata } from './components/SongSetupPanel';
 import { VolEnvelopeEditor } from './components/VolEnvelopeEditor';
 import { PitchEnvelopeEditor } from './components/PitchEnvelopeEditor';
-import { FmToneEditor } from './components/FmToneEditor';
+import { FmToneEditor, type FmToneData } from './components/FmToneEditor';
 import type { CompileErrorItem } from './components/CompileErrorPanel';
+import type { ActiveTabContext } from './components/VirtualKeyboard';
+import type { editor } from 'monaco-editor';
 
 type RightTab = 'track' | 'tone' | 'vol_envelope' | 'pitch_envelope' | 'song_setup' | 'settings';
 
@@ -33,6 +35,84 @@ function App() {
 
   // 右ペインのアクティブタブ
   const [activeRightTab, setActiveRightTab] = useState<RightTab>('track');
+
+  // 各エディタの最新データ (バーチャルキーボード共有用)
+  const [activeFmTone, setActiveFmTone] = useState<FmToneData | undefined>(undefined);
+  const [activePitchEnv, setActivePitchEnv] = useState<number[] | undefined>(undefined);
+  const [activePitchEnvLoop, setActivePitchEnvLoop] = useState<number | undefined>(undefined);
+  const [activeVolEnv, setActiveVolEnv] = useState<number[] | undefined>(undefined);
+  const [activeVolEnvLoop, setActiveVolEnvLoop] = useState<number | undefined>(undefined);
+
+  // MML右クリックメニューから各エディタに渡す「ロードID」 (null = リセット)
+  const [loadToneId, setLoadToneId] = useState<number | null>(null);
+  const [loadVolEnvId, setLoadVolEnvId] = useState<number | null>(null);
+  const [loadPitchEnvId, setLoadPitchEnvId] = useState<number | null>(null);
+
+  // Monaco Editor インスタンス参照 (MMLスニペット挿入用)
+  const monacoEditorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
+
+  // 右クリックメニュー: FM TONE 編集リクエスト
+  const handleRequestEditTone = useCallback((id: number) => {
+    setLoadToneId(id);
+    setActiveRightTab('tone');
+    setShowRightPane(true);
+  }, []);
+
+  // 右クリックメニュー: VOL ENV 編集リクエスト
+  const handleRequestEditVolEnv = useCallback((id: number) => {
+    setLoadVolEnvId(id);
+    setActiveRightTab('vol_envelope');
+    setShowRightPane(true);
+  }, []);
+
+  // 右クリックメニュー: PITCH ENV 編集リクエスト
+  const handleRequestEditPitchEnv = useCallback((id: number) => {
+    setLoadPitchEnvId(id);
+    setActiveRightTab('pitch_envelope');
+    setShowRightPane(true);
+  }, []);
+
+  // 右クリックメニュー: 新規作成 (新IDをそのままロードする)
+  const handleRequestNewTone = useCallback((newId: number) => {
+    setLoadToneId(newId);
+    setActiveRightTab('tone');
+    setShowRightPane(true);
+  }, []);
+
+  const handleRequestNewVolEnv = useCallback((newId: number) => {
+    setLoadVolEnvId(newId);
+    setActiveRightTab('vol_envelope');
+    setShowRightPane(true);
+  }, []);
+
+  const handleRequestNewPitchEnv = useCallback((newId: number) => {
+    setLoadPitchEnvId(newId);
+    setActiveRightTab('pitch_envelope');
+    setShowRightPane(true);
+  }, []);
+
+  // 「MMLに反映」ボタン: カーソル位置にスニペットを挿入
+  const handleApplyToMml = useCallback((mmlSnippet: string, _id: number) => {
+    const ed = monacoEditorRef.current;
+    if (!ed) return;
+    const selection = ed.getSelection();
+    const pos = ed.getPosition();
+    if (!pos) return;
+    const range = selection && !selection.isEmpty()
+      ? selection
+      : { startLineNumber: pos.lineNumber, startColumn: pos.column, endLineNumber: pos.lineNumber, endColumn: pos.column };
+    ed.executeEdits('apply-mml', [{ range, text: '\n' + mmlSnippet + '\n' }]);
+    ed.focus();
+  }, []);
+
+
+  // 現在フォーカスされている領域 ('mml' | 'rightPane')
+  const [focusedPane, setFocusedPane] = useState<'mml' | 'rightPane'>('mml');
+
+  // 現在のアクティブコンテキスト判定 (MMLエディタ選択時は常にMMLコンテキスト、右ペイン選択時はそのエディタ)
+  const activeTabContext: ActiveTabContext = (focusedPane === 'mml' || !showRightPane || activeRightTab === 'track' || activeRightTab === 'song_setup' || activeRightTab === 'settings')
+    ? 'mml'
+    : (activeRightTab as ActiveTabContext);
 
   // 再生ステート (PLAY / STOP モック連動)
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
@@ -254,6 +334,7 @@ function App() {
         <div 
           style={{ width: showRightPane ? `${leftWidthPercent}%` : '100%' }}
           className="h-full flex flex-col z-0 shrink-0 overflow-hidden bg-[#1E1E1E]"
+          onMouseDownCapture={() => setFocusedPane('mml')}
         >
           <MmlEditor 
             songMetadata={songMetadata}
@@ -269,6 +350,19 @@ function App() {
               setLogs(prev => [...prev, `[${time}] [NAVIGATE] Jump to ${item.sourceFile} Ln ${item.line}, Col ${item.column}`]);
             }}
             onTogglePlay={handleTogglePlay}
+            activeTabContext={activeTabContext}
+            activeFmTone={activeFmTone}
+            activePitchEnv={activePitchEnv}
+            activePitchEnvLoop={activePitchEnvLoop}
+            activeVolEnv={activeVolEnv}
+            activeVolEnvLoop={activeVolEnvLoop}
+            onRequestEditTone={handleRequestEditTone}
+            onRequestEditVolEnv={handleRequestEditVolEnv}
+            onRequestEditPitchEnv={handleRequestEditPitchEnv}
+            onRequestNewTone={handleRequestNewTone}
+            onRequestNewVolEnv={handleRequestNewVolEnv}
+            onRequestNewPitchEnv={handleRequestNewPitchEnv}
+            onEditorMount={(editorInstance) => { monacoEditorRef.current = editorInstance; }}
           />
         </div>
 
@@ -293,12 +387,16 @@ function App() {
           <div 
             style={{ width: `${100 - leftWidthPercent}%` }}
             className="h-full flex flex-col bg-[#1E1E1E] z-0 flex-1 overflow-hidden border-l border-[#3C3C3C]"
+            onMouseDownCapture={() => setFocusedPane('rightPane')}
           >
             {/* Right Pane Tabs */}
             <div className="h-9 flex flex-row bg-[#282828] border-b border-[#3C3C3C] shrink-0 overflow-x-auto items-stretch">
               {/* タブ 1: TRACK MONITOR */}
               <button
-                onClick={() => setActiveRightTab('track')}
+                onClick={() => {
+                  setActiveRightTab('track');
+                  setFocusedPane('rightPane');
+                }}
                 className={`px-3.5 text-xs font-mono font-medium focus:outline-none transition-colors border-b-2 flex items-center gap-1.5 select-none shrink-0 cursor-pointer ${
                   activeRightTab === 'track'
                     ? 'bg-[#1E1E1E] text-zinc-100 border-[#00A8FF] font-semibold'
@@ -311,7 +409,10 @@ function App() {
 
               {/* タブ 2: YM2151 TONE */}
               <button
-                onClick={() => setActiveRightTab('tone')}
+                onClick={() => {
+                  setActiveRightTab('tone');
+                  setFocusedPane('rightPane');
+                }}
                 className={`px-3.5 text-xs font-mono font-medium focus:outline-none transition-colors border-b-2 flex items-center gap-1.5 select-none shrink-0 cursor-pointer ${
                   activeRightTab === 'tone'
                     ? 'bg-[#1E1E1E] text-zinc-100 border-[#00A8FF] font-semibold'
@@ -329,7 +430,10 @@ function App() {
 
               {/* タブ 3: VOL ENV */}
               <button
-                onClick={() => setActiveRightTab('vol_envelope')}
+                onClick={() => {
+                  setActiveRightTab('vol_envelope');
+                  setFocusedPane('rightPane');
+                }}
                 className={`px-3.5 text-xs font-mono font-medium focus:outline-none transition-colors border-b-2 flex items-center gap-1.5 select-none shrink-0 cursor-pointer ${
                   activeRightTab === 'vol_envelope'
                     ? 'bg-[#1E1E1E] text-zinc-100 border-[#00A8FF] font-semibold'
@@ -343,7 +447,10 @@ function App() {
 
               {/* タブ 4: PITCH ENV */}
               <button
-                onClick={() => setActiveRightTab('pitch_envelope')}
+                onClick={() => {
+                  setActiveRightTab('pitch_envelope');
+                  setFocusedPane('rightPane');
+                }}
                 className={`px-3.5 text-xs font-mono font-medium focus:outline-none transition-colors border-b-2 flex items-center gap-1.5 select-none shrink-0 cursor-pointer ${
                   activeRightTab === 'pitch_envelope'
                     ? 'bg-[#1E1E1E] text-zinc-100 border-[#00A8FF] font-semibold'
@@ -357,7 +464,10 @@ function App() {
 
               {/* タブ 5: SONG SETUP */}
               <button
-                onClick={() => setActiveRightTab('song_setup')}
+                onClick={() => {
+                  setActiveRightTab('song_setup');
+                  setFocusedPane('rightPane');
+                }}
                 className={`px-3.5 text-xs font-mono font-medium focus:outline-none transition-colors border-b-2 flex items-center gap-1.5 select-none shrink-0 cursor-pointer ${
                   activeRightTab === 'song_setup'
                     ? 'bg-[#1E1E1E] text-zinc-100 border-[#00A8FF] font-semibold'
@@ -371,7 +481,10 @@ function App() {
 
               {/* タブ 6: SETTINGS */}
               <button
-                onClick={() => setActiveRightTab('settings')}
+                onClick={() => {
+                  setActiveRightTab('settings');
+                  setFocusedPane('rightPane');
+                }}
                 className={`px-3.5 text-xs font-mono font-medium focus:outline-none transition-colors border-b-2 flex items-center gap-1.5 select-none shrink-0 ml-auto cursor-pointer ${
                   activeRightTab === 'settings'
                     ? 'bg-[#1E1E1E] text-zinc-100 border-[#00A8FF] font-semibold'
@@ -391,7 +504,11 @@ function App() {
 
               {activeRightTab === 'tone' && (
                 enableYM2151 ? (
-                  <FmToneEditor />
+                  <FmToneEditor
+                    onChangeToneData={setActiveFmTone}
+                    loadToneId={loadToneId}
+                    onApplyToMml={handleApplyToMml}
+                  />
                 ) : (
                   <div className="flex-grow p-6 flex flex-col items-center justify-center text-slate-400 font-mono text-xs">
                     <div className="text-center p-6 border border-dashed border-slate-800 rounded bg-slate-950/40 max-w-md">
@@ -411,11 +528,25 @@ function App() {
               )}
 
               {activeRightTab === 'vol_envelope' && (
-                <VolEnvelopeEditor />
+                <VolEnvelopeEditor
+                  onChangeEnvData={(data, loop) => {
+                    setActiveVolEnv(data);
+                    setActiveVolEnvLoop(loop);
+                  }}
+                  loadEnvId={loadVolEnvId}
+                  onApplyToMml={handleApplyToMml}
+                />
               )}
 
               {activeRightTab === 'pitch_envelope' && (
-                <PitchEnvelopeEditor />
+                <PitchEnvelopeEditor
+                  onChangeEnvData={(data, loop) => {
+                    setActivePitchEnv(data);
+                    setActivePitchEnvLoop(loop);
+                  }}
+                  loadEnvId={loadPitchEnvId}
+                  onApplyToMml={handleApplyToMml}
+                />
               )}
 
               {activeRightTab === 'song_setup' && (

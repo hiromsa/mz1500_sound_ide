@@ -1183,9 +1183,28 @@ function OperatorPanel({
 // ==========================================
 // メインコンポーネント: FmToneEditor
 // ==========================================
-export function FmToneEditor() {
+export interface FmToneEditorProps {
+  onChangeToneData?: (data: FmToneData) => void;
+  /** MML右クリックメニューから「編集」または「新規」で指定されたID。変化したらエディタのIDを更新する。 */
+  loadToneId?: number | null;
+  /** 「MMLに反映」ボタン押下時に呼ばれるコールバック。生成されたMMLスニペットとIDを渡す。 */
+  onApplyToMml?: (mmlSnippet: string, id: number) => void;
+}
+
+export function FmToneEditor({ onChangeToneData, loadToneId, onApplyToMml }: FmToneEditorProps = {}) {
   // 現在編集中の音色データ
   const [toneData, setToneData] = useState<FmToneData>(PRESET_TONES[0]);
+
+  // 音色データ変更時に外部通知
+  useEffect(() => {
+    onChangeToneData?.(toneData);
+  }, [toneData, onChangeToneData]);
+
+  // loadToneId の変化を監視: 右クリックメニューからIDが指定されたらエディタのIDを更新
+  useEffect(() => {
+    if (loadToneId == null) return;
+    setToneData(prev => ({ ...prev, id: loadToneId }));
+  }, [loadToneId]);
 
   // 各OPのミュート・ソロ状態 (試聴プレビュー用)
   const [opMute, setOpMute] = useState<[boolean, boolean, boolean, boolean]>([false, false, false, false]);
@@ -1456,17 +1475,34 @@ export function FmToneEditor() {
     };
   };
 
-  // MMLテキスト生成
-  const generateMml = () => {
-    const parts: string[] = [];
-    parts.push(`ALG:${toneData.alg}`);
-    parts.push(`FB:${toneData.fb}`);
-    toneData.ops.forEach((op, idx) => {
-      parts.push(
-        `OP${idx + 1}={TL:${op.tl},AR:${op.ar},D1R:${op.d1r},D1L:${op.d1l},D2R:${op.d2r},RR:${op.rr},MUL:${op.mul},DT1:${op.dt1}}`
-      );
+  // MMLスニペット生成 (mml_reference.md の @N { } 書式に準拠)
+  const generateMmlSnippet = (): string => {
+    const id = toneData.id;
+    const { alg, fb, ops } = toneData;
+    const opLines = ops.map((op, i) => {
+      const carrier = isOpCarrier(alg, i) ? ' ; Carrier' : '';
+      return `  ${op.ar}, ${op.d1r}, ${op.d1l}, ${op.d2r}, ${op.rr}, ${op.tl}, ${op.mul}, ${op.dt1}, ${op.dt2}${carrier}`;
     });
-    return `@${toneData.id} /* "${toneData.name}" */ = { ${parts.join(', ')} }`;
+    return [
+      `@${id} /* ${toneData.name} */ {`,
+      `  /* ALG=${alg}, FB=${fb} */`,
+      `  ${alg}, ${fb},`,
+      `  /* OP1: AR, D1R, D1L, D2R, RR, TL, MUL, DT1, DT2 */`,
+      opLines[0] + ',',
+      `  /* OP2 */`,
+      opLines[1] + ',',
+      `  /* OP3 */`,
+      opLines[2] + ',',
+      `  /* OP4 (Carrier) */`,
+      opLines[3],
+      '}',
+    ].join('\n');
+  };
+
+  // 「MMLに反映」ボタン処理
+  const handleApplyToMml = () => {
+    const snippet = generateMmlSnippet();
+    onApplyToMml?.(snippet, toneData.id);
   };
 
   return (
@@ -1485,6 +1521,26 @@ export function FmToneEditor() {
 
         {/* プリセット選択 & 試聴ボタン */}
         <div className="flex items-center gap-3">
+          {/* 音色番号 (@ID) 指定 */}
+          <div className="flex items-center gap-1.5 text-xs">
+            <span className="text-zinc-500 text-[10px] font-medium">ID:</span>
+            <div className="flex items-center">
+              <span className="text-cyan-400 font-bold text-xs mr-0.5">@</span>
+              <input
+                type="number"
+                min={0}
+                max={255}
+                value={toneData.id}
+                onChange={(e) => {
+                  const val = parseInt(e.target.value, 10);
+                  setToneData(prev => ({ ...prev, id: isNaN(val) ? 0 : Math.max(0, Math.min(255, val)) }));
+                }}
+                className="w-11 h-6 px-1 rounded bg-[#0c0d12] border border-white/10 text-cyan-300 text-xs font-bold focus:outline-none focus:border-cyan-400"
+                title="FM音色番号 (@0〜@255)"
+              />
+            </div>
+          </div>
+
           <div className="flex items-center gap-1.5 text-xs">
             <span className="text-zinc-500 text-[10px] font-medium">PRESET:</span>
             <div className="flex gap-1">
@@ -1504,8 +1560,8 @@ export function FmToneEditor() {
             </div>
           </div>
 
-          {/* プレビュー試聴ボタン */}
-          <div className="flex items-center">
+          {/* プレビュー試聴ボタン & MMLに反映ボタン */}
+          <div className="flex items-center gap-2">
             {!isPlaying ? (
               <button
                 onClick={playPreviewTone}
@@ -1523,6 +1579,16 @@ export function FmToneEditor() {
               >
                 <Square className="w-3 h-3 fill-current" />
                 <span>STOP</span>
+              </button>
+            )}
+            {/* MMLに反映ボタン (onApplyToMml が設定されている場合のみ表示) */}
+            {onApplyToMml && (
+              <button
+                onClick={handleApplyToMml}
+                className="h-6 px-3 rounded bg-emerald-900/50 hover:bg-emerald-800/60 text-emerald-300 border border-emerald-600/60 hover:border-emerald-400 font-medium transition-colors flex items-center gap-1.5 text-xs cursor-pointer shadow-xs"
+                title={`@${toneData.id} の MML定義をカーソル位置に挿入`}
+              >
+                <span>▶ MMLに反映</span>
               </button>
             )}
           </div>
@@ -1686,15 +1752,15 @@ export function FmToneEditor() {
             GENERATED FM TONE MML
           </span>
           <button
-            onClick={() => navigator.clipboard.writeText(generateMml())}
+            onClick={() => navigator.clipboard.writeText(generateMmlSnippet())}
             className="h-6 px-2.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-zinc-100 border border-white/10 transition-colors text-[10px] cursor-pointer shadow-xs flex items-center gap-1"
           >
             <Copy className="w-3 h-3 text-zinc-400" />
             <span>COPY TO CLIPBOARD</span>
           </button>
         </div>
-        <div className="bg-[#0c0d12] p-2.5 rounded border border-white/[0.06] font-mono text-cyan-300 text-xs tracking-wide select-all overflow-x-auto shadow-inner">
-          {generateMml()}
+        <div className="bg-[#0c0d12] p-2.5 rounded border border-white/[0.06] font-mono text-cyan-300 text-xs tracking-wide select-all overflow-x-auto shadow-inner whitespace-pre-wrap">
+          {generateMmlSnippet()}
         </div>
       </div>
     </div>
