@@ -5,6 +5,21 @@
 ---
 
 ## 1. 直近の完了作業（最新）
+- **PITCH ENV エディタからのリリースポイント仕様の削除 (`src/view/PitchEnvelopeEditor.tsx`, [`docs/specification/ui.md`](./specification/ui.md), [`docs/PROGRESS.md`](./PROGRESS.md))**:
+  - **仕様整理**: ピッチエンベロープ（`@PE`）はドライバ・MML言語仕様上リリース（`>`）に対応しておらず未実装であるため、UI側の混乱を防ぐため PITCH ENV エディタから Release ポイント関連の全仕様・UI要素を削除。
+  - **エディタUIの改修** (`PitchEnvelopeEditor.tsx`):
+    - `PitchPreset` インターフェースおよび各プリセットデータから `releasePoint` を削除。
+    - `releasePoint` state、およびフレーム長変更・プリセットロード時のクランプ/リセット処理を削除。
+    - トグルハンドラ `handleToggleReleasePoint` を削除。
+    - ヘッダー部の `> RELEASE: STEP X (Clear)` バッジ表示を削除（`| LOOP` のみ表示）。
+    - タイムライン上部の `> RELEASE 直接指定レーン` を削除。
+    - リージョン表示ブラケットおよびバーグラフ背景カラー帯の `RELEASE` 透過帯を削除（`LOOP` ブラケットおよび背景のみ表示、幅計算を `envData.length - loopPoint` に統一）。
+    - Web Audio リアルタイム試聴処理での `releasePoint` 終了判定を廃止し、`envData.length` に達した際に `loopPoint` へジャンプするようシンプル化。
+    - MML生成処理 (`generateMmlSnippet`) から `>` 出力を削除（`|` ループマーカーのみ出力）。
+  - **UI仕様書の更新** (`docs/specification/ui.md`):
+    - ピッチエンベロープエディタ仕様からリリースポイント（`>`）に関する記載を削除し、`@PE` はリリースポイント対象外である旨を明記。
+  - **検証**: `npm test` 230 合格 + 2 skip (全テストパス) / `npm run lint` 既存警告5件・エラーゼロ / `npm run build` 成功。
+
 - **MML リファレンス準拠の全面修正: マクロ定義の全書式対応・`|` / `>` マーカー統一・FM音色 46 パラメータ・ヘッダディレクティブ対応 (`src/core/mml/MmlCompiler.ts`, `src/core/mml/parser/MmlParser.ts`, `src/view/FmToneEditor.tsx`, `src/view/VolEnvelopeEditor.tsx`, `src/view/PitchEnvelopeEditor.tsx`, `src/view/MmlEditor.tsx`, `src/app/App.tsx`, [`docs/specification/mml_reference.md`](./specification/mml_reference.md), [`docs/specification/ui.md`](./specification/ui.md))**:
   - **コンパイラのマクロ定義認識を `mml_reference.md` 4章の全書式へ拡張** (`MmlCompiler.ts`):
     - 従来 `@v / @EP / @FM` のみだった定義行認識を、`@v / @VE` (音量エンベロープ)・`@EP / @PE` (ピッチエンベロープ)・`@FM / @<n>` (FM音色) の全エイリアス + `=` 必須書式 (`@<種別><番号> = { ... }`) に対応 (`parseMacroHeader` で正規化)。

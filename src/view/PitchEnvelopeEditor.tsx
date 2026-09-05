@@ -33,7 +33,6 @@ interface PitchPreset {
   range: number;
   data: number[];
   loopPoint: number;
-  releasePoint: number;
 }
 
 const PRESETS: Record<string, PitchPreset> = {
@@ -47,7 +46,6 @@ const PRESETS: Record<string, PitchPreset> = {
       0, 1, 2, 3, 2, 1, 0, -1
     ],
     loopPoint: 0,
-    releasePoint: -1,
   },
   vibrato_deep: {
     name: 'VIBRATO (DEEP)',
@@ -59,7 +57,6 @@ const PRESETS: Record<string, PitchPreset> = {
       0, 3, 6, 8, 6, 3, 0, -3
     ],
     loopPoint: 0,
-    releasePoint: -1,
   },
   delayed_vib: {
     name: 'DELAYED VIB',
@@ -71,7 +68,6 @@ const PRESETS: Record<string, PitchPreset> = {
       0, 2, 5, 7, 5, 2, 0, -2
     ],
     loopPoint: 12,
-    releasePoint: -1,
   },
   pitch_drop: {
     name: 'PITCH DROP',
@@ -83,7 +79,6 @@ const PRESETS: Record<string, PitchPreset> = {
       0, 0, 0, 0, 0, 0, 0, 0
     ],
     loopPoint: -1,
-    releasePoint: 10,
   },
   pitch_up: {
     name: 'PITCH UP',
@@ -95,7 +90,6 @@ const PRESETS: Record<string, PitchPreset> = {
       0, 0, 0, 0, 0, 0, 0, 0
     ],
     loopPoint: -1,
-    releasePoint: 8,
   },
   fast_trill: {
     name: 'FAST TRILL',
@@ -106,7 +100,6 @@ const PRESETS: Record<string, PitchPreset> = {
       0, 0, 4, 4, 0, 0, 4, 4, 0, 0, 4, 4, 0, 0, 4, 4
     ],
     loopPoint: 0,
-    releasePoint: -1,
   },
 };
 
@@ -141,9 +134,6 @@ export function PitchEnvelopeEditor({ onChangeEnvData, loadEnvId, onApplyToMml }
   useEffect(() => {
     onChangeEnvData?.(envData, loopPoint);
   }, [envData, loopPoint, onChangeEnvData]);
-
-  // リリースポイント (-1 はなし)
-  const [releasePoint, setReleasePoint] = useState<number>(-1);
 
   // エンベロープ定義番号 (例: @p1)
   const [envNumber, setEnvNumber] = useState<number>(1);
@@ -304,7 +294,6 @@ export function PitchEnvelopeEditor({ onChangeEnvData, loadEnvId, onApplyToMml }
       }
     });
     if (loopPoint >= clamped) setLoopPoint(-1);
-    if (releasePoint >= clamped) setReleasePoint(-1);
   };
 
   // プリセット適用
@@ -314,7 +303,6 @@ export function PitchEnvelopeEditor({ onChangeEnvData, loadEnvId, onApplyToMml }
     setPitchRange(p.range);
     setEnvData([...p.data]);
     setLoopPoint(p.loopPoint);
-    setReleasePoint(p.releasePoint >= 0 ? Math.min(p.releasePoint, p.data.length - 1) : -1);
   };
 
   // ビブラート自動生成ツール (正弦波ビブラート生成)
@@ -556,11 +544,6 @@ export function PitchEnvelopeEditor({ onChangeEnvData, loadEnvId, onApplyToMml }
     setLoopPoint(prev => (prev === stepIdx ? -1 : stepIdx));
   };
 
-  // リリースポイントのトグル
-  const handleToggleReleasePoint = (stepIdx: number) => {
-    setReleasePoint(prev => (prev === stepIdx ? -1 : stepIdx));
-  };
-
   // Web Audio 試聴停止
   const stopAudio = () => {
     if (playbackTimerRef.current) {
@@ -643,9 +626,8 @@ export function PitchEnvelopeEditor({ onChangeEnvData, loadEnvId, onApplyToMml }
       currentStep++;
 
       // ループまたは末尾処理
-      const loopEnd = releasePoint >= 0 ? releasePoint : envData.length;
-      if (currentStep >= loopEnd) {
-        if (loopPoint >= 0 && loopPoint < loopEnd) {
+      if (currentStep >= envData.length) {
+        if (loopPoint >= 0 && loopPoint < envData.length) {
           currentStep = loopPoint;
         } else {
           stopAudio();
@@ -656,15 +638,12 @@ export function PitchEnvelopeEditor({ onChangeEnvData, loadEnvId, onApplyToMml }
     playbackTimerRef.current = timer;
   };
 
-  // MMLスニペット生成 (mml_reference.md の @PEN = { } 書式に準拠。ループ `|`、リリース `>`)
+  // MMLスニペット生成 (mml_reference.md の @PEN = { } 書式に準拠。ループ `|`)
   const generateMmlSnippet = (): string => {
     const parts: string[] = [];
     for (let i = 0; i < envData.length; i++) {
       if (i === loopPoint) {
         parts.push('|');
-      }
-      if (i === releasePoint) {
-        parts.push('>');
       }
       parts.push(envData[i].toString());
     }
@@ -769,24 +748,6 @@ export function PitchEnvelopeEditor({ onChangeEnvData, loadEnvId, onApplyToMml }
                     onClick={() => setLoopPoint(-1)} 
                     className="hover:text-red-400 text-zinc-400 p-0.5 rounded cursor-pointer" 
                     title="Clear Loop Point"
-                  >
-                    <X className="w-2.5 h-2.5" />
-                  </button>
-                </span>
-              ) : (
-                <span className="text-zinc-600 text-[10px]">NONE</span>
-              )}
-            </div>
-
-            <div className="flex items-center gap-1.5">
-              <span className="text-zinc-500 font-medium text-[10px]">{'>'} RELEASE:</span>
-              {releasePoint >= 0 ? (
-                <span className="px-2 h-5 rounded bg-amber-950/40 text-amber-300 border border-amber-500/40 font-medium flex items-center gap-1 text-[10px]">
-                  STEP {releasePoint}
-                  <button 
-                    onClick={() => setReleasePoint(-1)} 
-                    className="hover:text-amber-200 text-zinc-400 p-0.5 rounded cursor-pointer" 
-                    title="Clear Release Point"
                   >
                     <X className="w-2.5 h-2.5" />
                   </button>
@@ -1011,7 +972,7 @@ export function PitchEnvelopeEditor({ onChangeEnvData, loadEnvId, onApplyToMml }
             width: 'max-content',
           }}
         >
-          {/* 上部: リージョン表示ブラケット (DAW風 ループ区間 & リリース区間) */}
+          {/* 上部: リージョン表示ブラケット (DAW風 ループ区間) */}
           <div className="flex items-center gap-2 h-4 mb-1 relative">
             <span className="w-18 text-[9px] text-zinc-500 text-right shrink-0">REGION:</span>
             <div className="flex-1 relative h-full">
@@ -1021,28 +982,16 @@ export function PitchEnvelopeEditor({ onChangeEnvData, loadEnvId, onApplyToMml }
                   className="absolute top-0 bottom-0 border-t-2 border-x border-cyan-400/60 bg-cyan-500/10 rounded-t flex items-center justify-center text-[8px] font-bold text-cyan-300 tracking-wider overflow-hidden"
                   style={{
                     left: `${loopPoint * columnPitch}px`,
-                    width: `${((releasePoint >= 0 ? releasePoint : envData.length) - loopPoint) * columnPitch - 4}px`
+                    width: `${(envData.length - loopPoint) * columnPitch - 4}px`
                   }}
                 >
                   LOOP
                 </div>
               )}
-              {/* リリース区間ブラケット */}
-              {releasePoint >= 0 && (
-                <div 
-                  className="absolute top-0 bottom-0 border-t-2 border-x border-amber-500/50 bg-amber-500/10 rounded-t flex items-center justify-center text-[8px] font-bold text-amber-300 tracking-wider overflow-hidden"
-                  style={{
-                    left: `${releasePoint * columnPitch}px`,
-                    width: `${(envData.length - releasePoint) * columnPitch - 4}px`
-                  }}
-                >
-                  RELEASE
-                </div>
-              )}
             </div>
           </div>
 
-          {/* 上部: | (ループ) / > (リリース) 直接指定レーン */}
+          {/* 上部: | (ループ) 直接指定レーン */}
           <div className="flex flex-col gap-1 z-20 pb-2 border-b border-white/[0.06] mb-2">
             {/* | LOOP 直接指定レーン */}
             <div className="flex items-center gap-2">
@@ -1069,37 +1018,6 @@ export function PitchEnvelopeEditor({ onChangeEnvData, loadEnvId, onApplyToMml }
                       title={`Click to set/clear LOOP point at Step ${idx}`}
                     >
                       {isLoop ? '|' : '·'}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* > RELEASE 直接指定レーン */}
-            <div className="flex items-center gap-2">
-              <span className="w-18 text-[9px] font-semibold text-amber-400 tracking-wider text-right shrink-0">
-                {'>'} RELEASE:
-              </span>
-              <div className="flex-1 flex gap-1">
-                {envData.map((_, idx) => {
-                  const isRelease = idx === releasePoint;
-                  const isHovered = hoveredPos?.step === idx;
-                  return (
-                    <button
-                      key={idx}
-                      type="button"
-                      onClick={() => handleToggleReleasePoint(idx)}
-                      style={{ width: `${stepWidth}px`, minWidth: `${stepWidth}px` }}
-                      className={`h-5 rounded text-[9px] font-bold transition-all flex items-center justify-center border shrink-0 cursor-pointer ${
-                        isRelease
-                          ? 'bg-amber-600 text-amber-50 border-amber-400 shadow-[0_0_6px_rgba(245,158,11,0.3)]'
-                          : isHovered
-                          ? 'bg-zinc-800 text-amber-300 border-amber-700/60'
-                          : 'bg-zinc-900/60 text-zinc-600 border-white/[0.04] hover:bg-zinc-800 hover:text-zinc-300'
-                      }`}
-                      title={`Click to set/clear RELEASE point at Step ${idx}`}
-                    >
-                      {isRelease ? '>' : '·'}
                     </button>
                   );
                 })}
@@ -1136,16 +1054,7 @@ export function PitchEnvelopeEditor({ onChangeEnvData, loadEnvId, onApplyToMml }
                   className="absolute inset-y-0 bg-cyan-500/[0.03] border-x border-cyan-500/20 pointer-events-none z-0"
                   style={{
                     left: `${loopPoint * columnPitch}px`,
-                    width: `${((releasePoint >= 0 ? releasePoint : envData.length) - loopPoint) * columnPitch - 4}px`
-                  }}
-                />
-              )}
-              {releasePoint >= 0 && (
-                <div 
-                  className="absolute inset-y-0 bg-amber-500/[0.03] border-x border-amber-500/20 pointer-events-none z-0"
-                  style={{
-                    left: `${releasePoint * columnPitch}px`,
-                    width: `${(envData.length - releasePoint) * columnPitch - 4}px`
+                    width: `${(envData.length - loopPoint) * columnPitch - 4}px`
                   }}
                 />
               )}
