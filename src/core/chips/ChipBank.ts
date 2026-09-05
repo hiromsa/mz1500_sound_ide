@@ -54,13 +54,9 @@ export class ChipBank {
       return 0;
     }
 
-    // KEYON ($08): bit0-2 = channel、bit3-6 = slot
-    const keyOn = this.fm.tryGetRegister(0x08);
-    if (
-      keyOn === null ||
-      (keyOn.value & 7) !== channel ||
-      (keyOn.value & 0x78) === 0
-    ) {
+    // KEYON ($08) は全チャンネル共有レジスタのため、チャンネル毎に追跡した
+    // キーオン状態を使う (書き戻し値の参照では最後に操作した 1 ch しか判定できない)
+    if (!this.fm.isKeyOn(channel)) {
       return 0;
     }
 

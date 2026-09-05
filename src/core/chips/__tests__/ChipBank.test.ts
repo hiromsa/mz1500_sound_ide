@@ -45,12 +45,21 @@ describe('ChipBank', () => {
     const level = chips.getFmLevel(0);
     expect(level).toBeCloseTo(1 - 40 / 127, 9);
 
-    // channel 1 の KEYON では channel 0 は無音
+    // $08 は共有レジスタだが、channel 1 の KEYON でも channel 0 の発音は維持される
     chips.fm.setReg(0x08, 0x71);
-    expect(chips.getFmLevel(0)).toBe(0);
+    expect(chips.getFmLevel(0)).toBeCloseTo(1 - 40 / 127, 9);
+
+    // channel 1 は TL 未書き込みのため 0
+    expect(chips.getFmLevel(1)).toBe(0);
+    chips.fm.setReg(0x61, 20);
+    expect(chips.getFmLevel(1)).toBeCloseTo(1 - 20 / 127, 9);
+
+    // channel 1 のキーオフ (slot bits 0) では channel 0 は無音にならない
+    chips.fm.setReg(0x08, 0x01);
+    expect(chips.getFmLevel(1)).toBe(0);
+    expect(chips.getFmLevel(0)).toBeCloseTo(1 - 40 / 127, 9);
 
     // ミュート時は常に 0
-    chips.fm.setReg(0x08, 0x78);
     chips.setFmGain(0, 0);
     expect(chips.getFmLevel(0)).toBe(0);
   });

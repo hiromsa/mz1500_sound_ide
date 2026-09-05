@@ -119,6 +119,29 @@ describe('Ym2151', () => {
     expect(fm.tryGetRegister(0x08)).toBeNull();
   });
 
+  it('tracks the key-on state per channel from the shared KEYON register', () => {
+    const fm = new Ym2151(3579545);
+    expect(fm.isKeyOn(0)).toBe(false);
+
+    fm.setReg(0x08, 0x78); // ch0 / 4 op キーオン
+    expect(fm.isKeyOn(0)).toBe(true);
+
+    // $08 は全チャンネル共有のため、別チャンネルの書き込みでも ch0 の状態は維持される
+    fm.setReg(0x08, 0x71); // ch1 キーオン
+    expect(fm.isKeyOn(0)).toBe(true);
+    expect(fm.isKeyOn(1)).toBe(true);
+
+    // slot bits 0 での書き込みは該当チャンネルのみキーオフ
+    fm.setReg(0x08, 0x01);
+    expect(fm.isKeyOn(1)).toBe(false);
+    expect(fm.isKeyOn(0)).toBe(true);
+
+    // reset で全チャンネルクリア
+    fm.reset();
+    expect(fm.isKeyOn(0)).toBe(false);
+    expect(fm.isKeyOn(1)).toBe(false);
+  });
+
   it('reports the busy bit for 8 microseconds after a data write', () => {
     const fm = new Ym2151(3579545);
     // busyTStates = ceil(3579545 * 8 / 1e6) = 29 T-states

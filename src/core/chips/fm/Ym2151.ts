@@ -30,6 +30,9 @@ export class Ym2151 implements ISoundChip {
 
   private readonly registerData = new Uint8Array(0x100);
 
+  /** KEYON ($08) の書き込み履歴から追跡したチャンネル毎のキーオン状態 (VU 表示用)。 */
+  private readonly keyOnChannels = new Array<boolean>(8).fill(false);
+
   private address = 0;
 
   private clockProvider: (() => number) | null = null;
@@ -155,6 +158,11 @@ export class Ym2151 implements ISoundChip {
     return { present: true, value: this.registerData[register] };
   }
 
+  /** チャンネルがキーオン状態か (KEYON $08 は全チャンネル共有のため書き込み履歴から追跡)。 */
+  isKeyOn(channel: number): boolean {
+    return this.keyOnChannels[channel] === true;
+  }
+
   /** レジスタへ直接書き込む (シーケンサ / ドライバエミュレーションパス)。 */
   setReg(register: number, value: number): void {
     this.setRegister(register, value);
@@ -186,6 +194,7 @@ export class Ym2151 implements ISoundChip {
     this.opm.reset();
     this.registerWritten.fill(0);
     this.registerData.fill(0);
+    this.keyOnChannels.fill(false);
     this.busy = false;
     this.updateInterrupt();
   }
@@ -215,6 +224,13 @@ export class Ym2151 implements ISoundChip {
     this.opm.setReg(register, value);
     this.registerWritten[register] = 1;
     this.registerData[register] = value;
+
+    if (register === 0x08) {
+      // KEYON: bit0-2 = channel、bit3-6 = slot (0 = キーオフ)。
+      // $08 は全チャンネル共有レジスタのため、書き戻し値の参照だけでは
+      // 最後に操作した 1 チャンネルしか判定できない。VU 表示のために状態を追跡する。
+      this.keyOnChannels[value & 7] = (value & 0x78) !== 0;
+    }
   }
 
   private updateInterrupt(): void {
