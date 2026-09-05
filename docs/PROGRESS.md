@@ -5,6 +5,18 @@
 ---
 
 ## 1. 直近の完了作業（最新）
+- **Z80 CPU コアの外部ライブラリ選定評価 → 既存方針 (内製移植) を再確定**:
+  - 別 AI からの提案で `lkesteloot/z80-emulator` (TypeScript 製・MIT・z80-test 1356 テスト合格) を評価。
+  - **依存ライブラリとしての採用は見送り**: GitHub リポジトリは 2024/1/5 にアーカイブ、npm パッケージも
+    deprecated (最終版 2.3.0 は 2021-11) でメンテ終了。`Hal` のポート I/O が 8bit 前提で
+    C# 版が使用する Z80dotNet の 16bit ポート空間 (`UseExtendedPortsSpace`) と非互換。
+    IM0 が常に RST 38h 扱い・IM2 ベクタ下位バイトが 0xFF 固定など割り込み精度も不足
+    (EI 後の iff 遅延の実装も未確認)。
+  - **決定**: Z80dotNet 相当コアの TypeScript 内製移植は既存方針どおりとし、lkesteloot 系は
+    **検証基盤として活用** (モノレポ `lkesteloot/trs80` 内の `z80-test` 1356 テストを内製コアの
+    命令セット検証に使用、`GenerateOpcodes.ts` のオペコードデータを表実装の参考に、
+    挙動突き合わせデバッグ用リファレンスに)。詳細は
+    [`docs/specification/web_core_port.md`](./specification/web_core_port.md) §1.1。
 - **C# 版コア (内部機能) の TypeScript への移植開始・アセンブラ+MML コンパイラ完了 (`src/core/`, `driver/`, [`docs/specification/web_core_port.md`](./specification/web_core_port.md))**:
   - **背景**: 別プロジェクト `C:\tools\mz1500_sound_devenv` (C# 版 MZ-1500 サウンド開発環境) の
     内部機能 (UI 以外: MML コンパイラ / Z80 アセンブラ / 演奏コア / Z80 ドライバ) を本プロジェクトへ移植。
@@ -49,6 +61,7 @@
   - `Player.ts` ファサード (UI 連携: 再生 / 停止 / ミキサーゲイン / 演奏位置 GetTrackOffset)
 - [ ] **Phase 4: Z80 コア移植 + ドライバ実行** (`src/core/z80/` + `src/core/player/Z80DriverMachine.ts`)
   - Z80dotNet 相当の TS コア (全命令セット / 16bit ポート `UseExtendedPortsSpace` 相当 / T-state 精度 / HALT)
+  - 検証: `lkesteloot/trs80` モノレポの `z80-test` (1356 テスト) を内製コアの命令セット検証に活用 (web_core_port.md §1.1)
   - `Z80DriverImage.ts` (ドライバビルド + MZSD 配置) / `Z80DriverMachine.ts` (E008h bit7 H-BLANK 同期)
   - **等価性テスト**: SourceInterpreter vs Z80Driver の全フレーム音源レジスタ比較 (C# `Z80DriverEquivalenceTests` 相当)
 - [ ] **Phase 5: UI 接続** (本プロジェクト既存 UI とコアの統合)
