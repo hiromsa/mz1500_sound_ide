@@ -8,10 +8,12 @@
  * (移植元: MzSound.Player/Audio/AudioEngine.cs)
  */
 import type { MzsdSong } from './MzsdSong';
+import type { FrameDriver } from './FrameDriver';
 import { AudioFrameMixer } from './AudioFrameMixer';
 import { DefaultSampleRate } from './AudioFrameMixer';
 import { FramePlaybackWorkletSource } from './FramePlaybackWorklet';
 import { MzsdSequencer } from './MzsdSequencer';
+import { Z80DriverPlayback } from './Z80DriverPlayback';
 
 /** 演奏エンジンの駆動方式。 */
 export const AudioEngineMode = {
@@ -64,7 +66,9 @@ export class AudioEngine {
   /** シーケンサが終端に達した (オーディオ駆動発火)。 */
   sequencerFinished: (() => void) | null = null;
 
-  private sequencer: MzsdSequencer | null = null;
+  private driver: FrameDriver | null = null;
+
+  private currentMode: AudioEngineMode = AudioEngineMode.SourceInterpreter;
 
   private audioContext: AudioContext | null = null;
 
@@ -82,7 +86,7 @@ export class AudioEngine {
 
   /** 現在の駆動方式 (停止中は null)。 */
   get mode(): AudioEngineMode | null {
-    return this.sequencer !== null ? AudioEngineMode.SourceInterpreter : null;
+    return this.driver !== null ? this.currentMode : null;
   }
 
   /** AudioContext と出力ノードを事前に準備する (ユーザ操作内で呼ぶと確実に resume できる)。 */
@@ -101,21 +105,24 @@ export class AudioEngine {
     await this.ensureOutput();
 
     this.mixer.resetLevels();
+    this.currentMode = mode;
     switch (mode) {
-      case AudioEngineMode.SourceInterpreter: {
-        this.sequencer = new MzsdSequencer(song, this.mixer.chips, loop);
-        this.mixer.attachSequencer(this.sequencer);
+      case AudioEngineMode.SourceInterpreter:
+        this.driver = new MzsdSequencer(song, this.mixer.chips, loop);
+        break;
+
+      case AudioEngineMode.Z80Driver: {
+        const playback = new Z80DriverPlayback(this.mixer.chips);
+        playback.play(song.data, loop);
+        this.driver = playback;
         break;
       }
-
-      case AudioEngineMode.Z80Driver:
-        // Phase 4: Z80DriverMachine (内蔵 Z80 コア) の実装後に接続する
-        throw new Error('Z80Driver モードは未実装です (Phase 4 で移植予定)。');
 
       default:
         throw new Error(`未知の駆動方式: ${String(mode)}`);
     }
 
+    this.mixer.attachDriver(this.driver);
     this.bufferedFrames = 0;
     this.startPump();
   }
@@ -169,16 +176,16 @@ export class AudioEngine {
 
   /** 演奏中トラックの現在データオフセット (ハイライト用、停止中は -1)。 */
   getTrackOffset(trackIndex: number): number {
-    if (this.sequencer !== null) {
-      return this.sequencer.tracks[trackIndex].currentOffset;
+    if (this.driver !== null) {
+      return this.driver.getTrackOffset(trackIndex);
     }
 
     return -1;
   }
 
   private stopInternal(): void {
-    this.sequencer = null;
-    this.mixer.attachSequencer(null);
+    this.driver = null;
+    this.mixer.attachDriver(null);
     if (this.pumpTimer !== null) {
       clearInterval(this.pumpTimer);
       this.pumpTimer = null;

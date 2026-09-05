@@ -40,6 +40,22 @@ describe('Z80DriverMachine', () => {
     expect(image.musicDataAddress).toBeLessThanOrEqual(0xf7ff);
   });
 
+  it('buildExecutableImage が music_data 位置へ MZSD データを埋め込む', () => {
+    const image = Z80DriverImage.defaultDriver;
+    const musicData = Uint8Array.from([0x4d, 0x5a, 0x53, 0x44]);
+    const executable = Z80DriverImage.buildExecutableImage(image, musicData);
+
+    // 先頭はドライババイナリと同一
+    expect([...executable.subarray(0, image.binary.length)]).toEqual([...image.binary]);
+
+    // music_data 位置 (絶対アドレス - LoadAddress) に MZSD データが配置される
+    const musicDataOffset = image.musicDataAddress - Z80DriverImage.LoadAddress;
+    expect([...executable.subarray(musicDataOffset, musicDataOffset + musicData.length)]).toEqual([
+      ...musicData,
+    ]);
+    expect(executable.length).toBe(musicDataOffset + musicData.length);
+  });
+
   it('PSG1 ch0 で NOTE を発音する', () => {
     const builder = new SongBuilder();
     builder.addTrack(0, SongBuilder.note(69, 10, 10), SongBuilder.trackEnd()); // A4 10 フレーム

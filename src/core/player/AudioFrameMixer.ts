@@ -6,7 +6,7 @@
  * (移植元: MzSound.Player/Audio/AudioEngine.cs — MixerProvider.Read / UpdateTrackLevels)
  */
 import { ChipBank } from '../chips/ChipBank';
-import type { MzsdSequencer } from './MzsdSequencer';
+import type { FrameDriver } from './FrameDriver';
 import { MzsdSong } from './MzsdSong';
 
 /** 既定の出力サンプルレート (Hz)。C# 版の AudioEngine.SampleRate と同一。 */
@@ -27,7 +27,7 @@ export class AudioFrameMixer {
 
   private readonly samplesPerFrame: number;
 
-  private sequencer: MzsdSequencer | null = null;
+  private sequencer: FrameDriver | null = null;
 
   private readonly trackGains = new Array<number>(MzsdSong.TrackCount).fill(0.8);
 
@@ -48,9 +48,9 @@ export class AudioFrameMixer {
     this.chips.fm.initialize(sampleRate);
   }
 
-  /** 駆動するシーケンサを設定する (null = 停止中)。 */
-  attachSequencer(sequencer: MzsdSequencer | null): void {
-    this.sequencer = sequencer;
+  /** 駆動する FrameDriver を設定する (null = 停止中)。 */
+  attachDriver(driver: FrameDriver | null): void {
+    this.sequencer = driver;
   }
 
   /** UI ミキサーのトラックゲイン (0-1) を設定する (チップ側のチャンネルゲインにも反映)。 */
@@ -108,9 +108,9 @@ export class AudioFrameMixer {
         this.frameAccumulator += 1.0;
         if (this.frameAccumulator >= this.samplesPerFrame) {
           this.frameAccumulator -= this.samplesPerFrame;
-          const sequencer = this.sequencer;
-          sequencer.tick();
-          if (sequencer.isFinished) {
+          const driver = this.sequencer;
+          driver.tick();
+          if (driver.isFinished) {
             this.finishPlayback();
           }
         }

@@ -10,7 +10,7 @@ import { SongBuilder } from './SongBuilder';
 
 function attach(builder: SongBuilder, loop: boolean, mixer: AudioFrameMixer): MzsdSequencer {
   const sequencer = new MzsdSequencer(MzsdSong.parse(builder.build()), mixer.chips, loop);
-  mixer.attachSequencer(sequencer);
+  mixer.attachDriver(sequencer);
   return sequencer;
 }
 

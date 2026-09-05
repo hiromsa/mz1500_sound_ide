@@ -45,6 +45,11 @@ export class MzsdSequencer {
     return this.tracksValue;
   }
 
+  /** 演奏位置ハイライト用: トラックの現在データオフセット。 */
+  getTrackOffset(trackIndex: number): number {
+    return this.tracksValue[trackIndex].currentOffset;
+  }
+
   get isFinished(): boolean {
     return this.finished;
   }

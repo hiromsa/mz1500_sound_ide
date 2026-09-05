@@ -46,6 +46,23 @@ export class Z80DriverImage {
     return Z80DriverImage.defaultInstance;
   }
 
+  /**
+   * ドライバの music_data 位置へ MZSD データを埋め込んだ実機起動イメージ
+   * (LoadAddress = 0x1200 からのバイナリ) を生成する。
+   * QuickDisk エクスポートなど、実機へドライバごと配置する用途で使用する。
+   */
+  static buildExecutableImage(image: Z80DriverImage, musicData: Uint8Array): Uint8Array {
+    const musicDataOffset = image.musicDataAddress - Z80DriverImage.LoadAddress;
+    if (musicDataOffset < 0) {
+      throw new Error('ドライバの music_data 位置がロードアドレスより前にあります。');
+    }
+
+    const data = new Uint8Array(musicDataOffset + musicData.length);
+    data.set(image.binary, 0);
+    data.set(musicData, musicDataOffset);
+    return data;
+  }
+
   /** ドライバソースをアセンブルしてイメージを生成する。 */
   static build(source: string): Z80DriverImage {
     const result = assembleZ80(source);
