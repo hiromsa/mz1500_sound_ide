@@ -19,7 +19,6 @@ interface ChannelState {
   level: number;          // 0-100 (VUメーター)
   active: boolean;        // 現在音が鳴っているか
   previewEnabled: boolean;// プレビュー発音ON/OFF (MMLコンパイル非連動)
-  extra?: string;
 }
 
 const generateInitialChannels = (): ChannelState[] => {
@@ -205,11 +204,6 @@ const ChannelRow = ({ ch, onTogglePreview }: ChannelRowProps) => {
             opacity: isPlaying ? 1 : 0.4
           }}
         />
-      </div>
-      
-      {/* 付加情報 (ALG / NOISEタイプ等) */}
-      <div className="w-12 text-right text-[10px] text-zinc-400 font-mono tracking-tight shrink-0">
-        {ch.extra || ''}
       </div>
     </div>
   );

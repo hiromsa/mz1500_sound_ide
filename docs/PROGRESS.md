@@ -5,6 +5,14 @@
 ---
 
 ## 1. 直近の完了作業（最新）
+- **TRACK MONITOR から不要な extra 欄 (付加情報) を削除 (`src/view/TrackMonitor.tsx`, [`docs/specification/ui.md`](./specification/ui.md))**:
+  - **削除内容**:
+    - `ChannelState` インターフェースから未実装の `extra?: string` フィールドを削除。
+    - `ChannelRow` 内の不要な付加情報レンダリング要素 (`w-12 text-right ... {ch.extra || ''}`) を削除。
+    - ノート表示欄 (`ch.note` / `resolveTrackNote`) は、MML 上の演奏位置表示として正常に機能しているため維持。
+  - **仕様書更新**: `docs/specification/ui.md` のエクストラ情報欄のステータスを「削除済み」に更新。
+  - **検証**: `npm test` 全合格 (238 passed + 2 skipped) / `npm run lint` エラーゼロ / `npm run build` 成功。
+
 - **PSG (DCSG) のプレビューミュートが実音に反映されない & 初期状態で VU が動作しない不具合を修正 (`src/core/chips/DcsgChip.ts`, `src/core/chips/__tests__/DcsgChip.test.ts`)**:
   - **不具合の内容 (TRACK MONITOR での報告)**:
     - P1 等の PSG トラックで発音メーター (VU) が初期状態で動かず、プレビュー OFF → ON を行うと動き出す。
