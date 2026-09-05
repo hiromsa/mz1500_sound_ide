@@ -5,6 +5,39 @@
 ---
 
 ## 1. 直近の完了作業（最新）
+- **Phase 5 完了: UI 接続 (`src/core/player/FrameDriver.ts` / `Z80DriverPlayback.ts`, `src/core/export/QdfImageBuilder.ts`, `src/app/App.tsx`, `src/view/*`, [`docs/specification/web_core_port.md`](./specification/web_core_port.md), [`docs/specification/quickdisk_export.md`](./specification/quickdisk_export.md))**:
+  - **Z80Driver モード接続**: `FrameDriver` (tick / isFinished / getTrackOffset の共通契約) を新設し、
+    `MzsdSequencer` と `Z80DriverPlayback` (内蔵 Z80 コアでドライバを 60Hz フレーム駆動) を同一視。
+    `AudioEngine` に `AudioEngineMode.Z80Driver` を実装 (これまでは throw の未実装)。
+    ドライバブート (STAT_PLAY 待ち・最大 4 フレーム) は Phase 4 の等価テストと同一手順。
+    `AudioFrameMixer` は `attachDriver` 方式に変更。
+  - **BUILD / PLAY 接続 (`App.tsx` + `MmlEditor.tsx`)**: `MmlEditor` がアクティブタブの MML ソースを
+    `onActiveSourceChange` で通知 → `PLAY` (Ctrl+Enter) で `MmlCompiler.compile()` を実行。
+    エラー/警告は `MmlDiagnostic` → `CompileErrorItem` 変換で PROBLEMS パネル + システムコンソールへ表示
+    (エラー時は再生しない)。成功時は `Player.play(musicData, loop, mode)` で再生
+    (SourceInterpreter / Z80Driver 切替可)。自然終了で PLAY 表示が復帰。
+  - **TrackMonitor 実データ化**: VU レベル (`getTrackLevel`) / マスター (`getMasterLevel`) /
+    演奏位置 (`getTrackOffset`) を 100ms ポーリングで実データ表示 (モックのランダム値廃止)。
+    ノート欄は `MmlMap` + 演奏位置から現在演奏中の MML 上の文字列をリアルタイム表示。
+    トラックのプレビュー ON/OFF / マスター音量は `Player.setTrackVolume` / `setMasterVolume` に接続
+    (プレビュー専用パラメータ、コンパイル・エクスポートには影響しない)。
+  - **EXPORT (.qdf) 実装**: `src/core/export/QdfImageBuilder.ts` — 実機エミュレータでの起動実績がある
+    C# 版 (`mz1500_sound_driver` / QdcImageBuilder.BuildStandardExecutable) を 1:1 移植
+    (81,936 バイト固定 / SYNC 0x16x10 区切り / CRC-16/ARC / ロード・実行アドレス 0x1200 / 0xBE00 固定サイズ)。
+    格納データは `Z80DriverImage.buildExecutableImage` (新設) でドライバの music_data 位置へ MZSD データを
+    埋め込んだ**実機起動イメージ** (QD からロード→実行で演奏開始)。
+    ファイル名は `#TITLE` を ASCII 正規化 (16 文字) して使用。形式仕様は quickdisk_export.md に記録。
+  - **SETTINGS に PLAYBACK ENGINE セクション追加** (`SettingsPanel.tsx`):
+    SOURCE INTERPRETER (既定) / Z80 DRIVER の切替 UI。切替は次回 PLAY から適用。
+  - **検証**: `npx tsc -b` エラーゼロ / **`npm test` 222 合格 + 2 skip (合計 224、+13)** /
+    `npm run lint` エラーゼロ (既存 UI 警告 5 のみ) / `npm run build` 成功。
+    新規テスト: QdfImageBuilder 9 (構造 / CRC 既知ベクトル 0xBB3D / 上限超過拒否) +
+    Z80DriverPlayback 3 (ブート & 発音 / 演奏位置 / 自然終了 HALT 検知) +
+    Z80DriverMachine に buildExecutableImage 検証を追加 (+1)。
+  - **判明事項**: QD ファイル名の C# 版は Shift-JIS (Encoding 932) エンコードだが、ブラウザ標準 API が
+    存在しないため ASCII 限定 (`?` 置換) とした。演奏中の TrackMonitor 表示は Z80Driver モードでも
+    ドライバの CB_PTRS (MZSD データ先頭基準オフセット) が MzsdSequencer.currentOffset と同系のため、
+    MmlMap 経由のハイライトが両エンジンで共通動作する。
 - **Phase 4 完了: Z80 CPU コア移植 + ドライバ実行 (`src/core/z80/`, `src/core/player/Z80DriverImage.ts` / `Z80DriverMachine.ts`, [`docs/specification/web_core_port.md`](./specification/web_core_port.md))**:
   - **Z80 CPU コア (`src/core/z80/`)**: Z80dotNet と同一挙動の TypeScript 内製移植。
     `Z80Processor.ts` (全命令セット: メイン + CB + ED + DD/FD + DDCB/FDCB、公式 + 主要未文書命令
@@ -141,10 +174,13 @@
   - [x] **等価性テスト**: SourceInterpreter vs Z80Driver の全フレーム音源レジスタ比較 (9/11 合格、2 は C# と同一理由で skip)
   - [ ] (残タスク) `lkesteloot/trs80` の `z80-test` (1356 テスト) による命令セット全数検証
     (テストバイナリの取り込み + RST 38h 出力ハンドラ実装が必要。web_core_port.md §4.5)
-- [ ] **Phase 5: UI 接続** (本プロジェクト既存 UI とコアの統合)
-  - MML エディタ BUILD → `MmlCompiler` 実行 (コンパイルエラー→ CompileErrorPanel / システムコンソール)
-  - PLAY → `Player` (SourceInterpreter 先行、Z80Driver 切替) / トラックモニターへの VU・演奏位置反映
-  - エクスポート (.MZT) ・楽曲セットアップパネルとの連携
+- [x] **Phase 5: UI 接続** (完了 → §1 参照)
+  - [x] MML エディタ BUILD/PLAY → `MmlCompiler` 実行 (コンパイルエラー→ CompileErrorPanel / システムコンソール)
+  - [x] PLAY → `Player` (SourceInterpreter 既定、SETTINGS で Z80Driver 切替)
+  - [x] トラックモニターへの VU・演奏位置反映 (`Player.getTrackLevel` / `getTrackOffset` + `MmlMap`)
+  - [x] エクスポート (.qdf) 実装 (MZT は次フェーズへ持ち越し・C# 版に MZT 出力実装なしとの判断により
+    実機起動実績のある .qdf を先行実装。仕様: quickdisk_export.md)
+  - [ ] (残タスク) 実機 / エミュレータでの試聴・起動確認 (Phase 3 時点の AudioWorklet 実機検証込み)
 - [ ] **@FM 音色レジスタマッピングの課題引き継ぎ** (C# 版の持ち越し: Z80 `apply_fm_tone` の 0x98/0xA0 系が C# とズレる、
   C# 版 skip 2 テストの原因。Phase 4 の等価テスト実装時に解消を目指す)
 

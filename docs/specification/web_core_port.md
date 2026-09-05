@@ -69,11 +69,14 @@ mz1500_sound_ide/
 │  │  │  └─ __tests__/        (DCSG 7 + BEEP 4 + Ym2151 8 + ChipBank 4 + SystemRandom 2)
 │  │  ├─ player/            … 演奏エンジン (← MzSound.Player) ✅
 │  │  │  ├─ MzsdSong.ts / TrackSequencer.ts / MzsdSequencer.ts
-│  │  │  ├─ AudioFrameMixer.ts / AudioEngine.ts (Web Audio 化) / Player.ts
+│  │  │  ├─ FrameDriver.ts (駆動方式共通契約) / AudioFrameMixer.ts / AudioEngine.ts (Web Audio 化) / Player.ts
 │  │  │  ├─ FramePlaybackWorklet.ts (AudioWorkletProcessor ソース / Blob URL ロード)
-│  │  │  ├─ Z80DriverImage.ts (?raw import + アセンブル) / Z80DriverMachine.ts (内蔵 Z80 でドライバ実行) ✅
+│  │  │  ├─ Z80DriverImage.ts (?raw import + アセンブル + buildExecutableImage) /
+│  │  │  │  Z80DriverMachine.ts (内蔵 Z80 でドライバ実行) / Z80DriverPlayback.ts (リアルタイム駆動) ✅
 │  │  │  └─ __tests__/           (MZSD 解析 3 + シーケンサ/FM 12 + ミキサー 5 + Player 2 +
-│  │  │                            Z80DriverMachine 11 + Z80Driver 等価性 11)
+│  │  │                            Z80DriverMachine 12 + Z80DriverPlayback 3 + Z80Driver 等価性 11)
+│  │  ├─ export/              … 実機転送用バイナリ生成 (Phase 5 新設)
+│  │  │  └─ QdfImageBuilder.ts (+ __tests__/ 9: QuickDisk .qdf イメージ生成)
 │  │  └─ z80/               … Z80 CPU コア (Z80dotNet 相当を内製移植) ✅
 │  │     └─ MainRegisters.ts / Z80Registers.ts / Z80Bus.ts / Z80Processor.ts / __tests__/ (57)
 │  └─ utils/                … UI 補助ユーティリティ (MML キャレット解析 / 仮想シンセ)
@@ -97,7 +100,9 @@ mz1500_sound_ide/
 | `src/MzSound.Player/Audio/AudioEngine.cs` (NAudio) | `src/core/player/AudioFrameMixer.ts` (合成) + `AudioEngine.ts` (Web Audio) | ✅ 移植済。合成 / 60Hz フレーム駆動 / ミックス / VU を Web Audio 非依存の FrameMixer に分離し vitest で検証。出力は AudioWorklet (Blob URL) + ScriptProcessor フォールバック |
 | `src/MzSound.Player/Player.cs` | `src/core/player/Player.ts` | ✅ 移植済 (`play` / `rewindToStart` のみ AudioWorklet ロードのため async) |
 | `src/MzSound.Player/Driver/Z80DriverMachine.cs` (Z80dotNet) | `src/core/z80/*` (CPU コア) + `src/core/player/Z80DriverImage.ts` / `Z80DriverMachine.ts` | ✅ 移植済。実ドライバ 1945 行が内製コア上で動作し、SourceInterpreter との全フレーム等価性を検証済み (§4.3) |
-| `tests/MzSound.*.Tests/*` (xUnit) | `src/core/**/__tests__/*` (vitest) | ✅ アセンブラ 51 + MML 24 + チップ 25 + Player (シーケンサ等) 22 + Z80 コア 57 + Z80DriverMachine 11 + 等価性 11 = **209 合格 + 2 skip (C# 版と同一理由)** |
+| — (C# 版は未接続だったリアルタイム Z80Driver 再生) | `src/core/player/Z80DriverPlayback.ts` + `FrameDriver.ts` + `AudioEngine.ts` (Z80Driver モード) | ✅ Phase 5 で接続。STAT_PLAY 待ちブート + 60Hz フレーム駆動を等価テストと同一手順で実装 |
+| `mz1500_sound_driver` QdcImageBuilder.cs (実績実装・別プロジェクト) | `src/core/export/QdfImageBuilder.ts` | ✅ Phase 5 で移植 (.qdf / 81,936B 固定 / CRC-16/ARC)。仕様は quickdisk_export.md |
+| `tests/MzSound.*.Tests/*` (xUnit) | `src/core/**/__tests__/*` (vitest) | ✅ アセンブラ 51 + MML 24 + チップ 25 + Player (シーケンサ等) 22 + Z80 コア 57 + Z80DriverMachine 12 + Z80DriverPlayback 3 + QDF 9 + 等価性 11 = **222 合格 + 2 skip (C# 版と同一理由)** |
 
 ### 3.1 C# partial class の統合対応
 
@@ -180,3 +185,4 @@ Konamiman) を TypeScript へ移植・改変したものである。Z80dotNet �
 | 2026/09/05 | Phase 2 完了: 音源エミュレーション (DCSG ×2 / BEEP 8253 / YM2151 fmgen 由来) を移植。`tools/cs-probe` による C# リファレンス値とのビット一致検証を導入 (§3.1、§4.4 追加)。テスト合計 110 (アセンブラ 51 + MML 24 + チップ 25 + 実ドライバ 3 + …)。 |
 | 2026/09/05 | Phase 3 完了: 演奏エンジン (`Sequencer` + `Audio` + `Player`) を移植。NAudio の合成部は Web Audio 非依存の `AudioFrameMixer` に分離、出力は AudioWorklet (Blob URL) + ScriptProcessor フォールバック。テスト合計 132 (Player 系 +22)。 |
 | 2026/09/05 | Phase 4 完了: Z80 CPU コア (`src/core/z80/`、Z80dotNet 相当・全命令 / T-state / HALT / 16bit ポート) とドライバ実行環境 (`Z80DriverImage.ts` / `Z80DriverMachine.ts`) を移植。実ドライバが内蔵コア上で動作し、SourceInterpreter との全フレーム等価性テスト (9 シナリオ) 合格。テスト合計 209 合格 + 2 skip。§4.1 (ライセンス表記) / §4.5 (検証方針) 追加。 |
+| 2026/09/05 | Phase 5 完了: UI 接続。`FrameDriver` 抽象 (`MzsdSequencer` / `Z80DriverPlayback` を同一視) を導入し `AudioEngine` に Z80Driver モードを接続。`src/core/export/QdfImageBuilder.ts` (C# QdcImageBuilder 移植・実機起動実績あり) による `EXPORT (.qdf)` (ドライバ込み実機起動イメージ格納) を実装。UI は MML BUILD → `MmlCompiler` (エラー → PROBLEMS / CONSOLE)、PLAY → `Player`、TrackMonitor を VU / 演奏位置 (`MmlMap`) 実データ連携化、SETTINGS に演奏エンジン切替を追加。テスト合計 222 合格 + 2 skip。 |

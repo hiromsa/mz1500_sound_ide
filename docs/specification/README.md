@@ -8,3 +8,4 @@
 | [mml_reference.md](./mml_reference.md) | MML リファレンス (文法・コマンド仕様) |
 | [mcp-browser-debug.md](./mcp-browser-debug.md) | MCP による自動ブラウザ操作 & デバッグ環境 (chrome-devtools-mcp) |
 | [web_core_port.md](./web_core_port.md) | C# 版コアの Web (TypeScript) への移植アーキテクチャ・フォルダ構成・対応表 |
+| [quickdisk_export.md](./quickdisk_export.md) | QuickDisk (.qdf) エクスポートの形式仕様・実装契約 |
