@@ -5,6 +5,30 @@
 ---
 
 ## 1. 直近の完了作業（最新）
+- **システムコンソールの機能拡張 (`src/view/ConsolePanel.tsx` 新設, `src/view/MmlEditor.tsx`, `src/app/App.tsx`, `src/utils/consoleLogStyle.ts` / `diagnosticsLog.ts` 新設, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-06):
+  - **コンソール本体の部品化 (`ConsolePanel.tsx` 新設)**:
+    - `MmlEditor.tsx` 内にインライン実装されていた CONSOLE タブのログ表示を `ConsolePanel` コンポーネントとして分離 (高凝集・疎結合化)。
+    - **末尾自動追従**: ユーザーが末尾付近 (下部 24px 以内) を見ている場合のみログ追記時に自動スクロールし、過去ログを読み上げ中は追従しない。
+    - **空状態表示**: ログ 0 件時は `No logs. BUILD / PLAY / EXPORT events will appear here.` を表示。
+  - **行色分けロジックの純粋関数化 (`src/utils/consoleLogStyle.ts` 新設)**:
+    - `classifyConsoleLog` / `resolveConsoleLogStyle` を分離してテスト可能に。従来 `[ERROR]` 固定判定のため赤表示されなかった `[AUDIO] ERROR: ...` 形式のログも赤に修正。
+  - **ビルドエラー詳細のコンソール出力 (`src/utils/diagnosticsLog.ts` 新設)**:
+    - PLAY / EXPORT 失敗時、診断 1 件毎に `[BUILD] ERROR 行:桁 - メッセージ` / `[BUILD] WARNING 行:桁 - メッセージ` 形式でコンソールへ出力 (上限 20 件、超過分は `[BUILD] ... and N more. See the PROBLEMS panel.` と要約)。
+  - **下部エリアの折りたたみトグル (`MmlEditor.tsx`)**:
+    - 下部タブバー右端に `ChevronDown` / `ChevronUp` の折りたたみボタンを新設 (タブ選択に依存せず常時表示)。折りたたみ時はタブバーのみ (28px) を残し、リサイズ用スプリッターを非表示化。再押下で直前の高さに復帰。
+  - **ログコピー (`COPY`) ボタン (`MmlEditor.tsx`)**:
+    - CONSOLE タブ選択時に `COPY` ボタン (ログ全文をクリップボードへコピー) を追加。成功時は `COPIED` を約 1.5 秒表示。
+  - **テスト追加**: `consoleLogStyle.test.ts` / `diagnosticsLog.test.ts` の 12 ケース追加 → 合計 **250 passed + 2 skipped**。
+  - **検証**: `npm test` 全合格 / `npm run lint` エラーゼロ (既存警告 5 のみ) / `npm run build` 成功。
+
+- **GitHub Actions による GitHub Pages 自動デプロイの導入 (`.github/workflows/deploy.yml` 新設, [`docs/specification/ci_deploy.md`](./specification/ci_deploy.md) 新設)** (2026-09-06):
+  - `main` push / 手動実行 (`workflow_dispatch`) をトリガーに `npm ci` → `npm run lint` → `npm run build` → `actions/deploy-pages@v4` で自動公開。連続 push 時は `concurrency.group: pages` で古いデプロイを打ち切り。
+  - **CI で `npm test` を実行しない理由を明記**: チップ照合テストは `tools/cs-probe` (ターゲット `net9.0-windows` / リポジトリ外の `mz1500_sound_devenv/src/MzSound.Player` を ProjectReference) が生成する `out/reference.json` を必要とし、CI 環境では生成不可能なため。単体テストは push 前にローカル実行する運用。
+  - **残作業 (ユーザー操作)**: リポジトリ Settings → Pages → Build and deployment の **Source** を `GitHub Actions` へ切替すること (切替後は `npm run deploy` 手動方式は不要)。
+
+- **`<title>` タグの更新 (`index.html`)** (2026-09-06):
+  - ビルド出力のタイトルが `temp_vite` のままだったため `MZ-1500 Sound IDE` へ変更 (`lang` も `ja` へ統一)。
+
 - **TRACK MONITOR から不要なノート表示列 (`---`) を削除 (`src/view/TrackMonitor.tsx`, [`docs/specification/ui.md`](./specification/ui.md))**:
   - **背景・ユーザー意図**:
     - `extra` 欄削除に続き、未発音・停止時に `---` が並ぶノート表示欄も不要として削除し、トラックモニターを「ミュートトグル ＋ トラックID/名 ＋ VUメーター」のシンプルな構成へ整理。
@@ -728,11 +752,12 @@ Konamiman氏の `Z80.Net` をTypeScriptへ移植するにあたり、以下の�
 - [x] **接続ルート表示 (`SIGNAL ROUTE`) の静的インフォメーション化** (完了: 誤操作防止のフラットテキスト表示)
 - [x] **数値入力エリアのサイズ拡大 & カスタム上下スピンボタン (`▲` `▼`) の実装** (完了: MUL/DT1/DT2拡大、AR〜RRの独立上下ボタン・ホイール対応)
 - [x] **ピッチエンベロープエディタ (`PITCH ENV`) のUI実装** (完了: 双極性バーグラフ、ダイナミックレンジ±7〜±48切替、ビブラートプリセット＆生成ツール、Web Audio試聴、MML出力)
-- [ ] **システムコンソールの機能拡張**
-  - ログ出力、MMLビルドエラーの詳細表示、折りたたみ・リサイズ
-- [ ] **GitHub Actions による自動デプロイの導入検討**
-  - 現状は `npm run deploy` (gh-pages ブランチ方式) の手動デプロイ。main push 時の自動デプロイ (actions/deploy-pages) への移行候補。
-- [ ] **`<title>` タグの更新**
-  - 現状ビルド出力のタイトルが `temp_vite` のまま → `MZ-1500 Sound IDE` 等への変更候補。
+- [x] **システムコンソールの機能拡張** (完了 2026-09-06)
+  - ログ出力 (末尾自動追従・コピー・空状態表示)、MMLビルドエラーの詳細表示 (行:桁・メッセージ、上限 20 件)、折りたたみトグル新設 (高さリサイズは既存スプリッターで対応済み)。→ §1 参照
+- [x] **GitHub Actions による自動デプロイの導入** (完了 2026-09-06)
+  - `.github/workflows/deploy.yml` 新設 (main push 時に lint + build → actions/deploy-pages)。CI で `npm test` を実行しない理由は [`docs/specification/ci_deploy.md`](./specification/ci_deploy.md) 参照。
+  - **残作業 (ユーザー操作)**: リポジトリ Settings → Pages の Source を `GitHub Actions` へ切替。
+- [x] **`<title>` タグの更新** (完了 2026-09-06)
+  - `temp_vite` → `MZ-1500 Sound IDE` に変更 (`lang="ja"` へ統一)。
 - [ ] **MCP chrome-devtools-mcp の初回動作確認**
   - 設定済み・未検証 ([`docs/specification/mcp-browser-debug.md`](./specification/mcp-browser-debug.md))。次回ブラウザデバッグが必要になった際、`npm run dev` → `http://localhost:5173/mz1500_sound_ide/` を Chrome で起動 → コンソールログ / スクリーンショット取得の一連の流れを確認する。
