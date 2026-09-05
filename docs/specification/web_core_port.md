@@ -67,10 +67,12 @@ mz1500_sound_ide/
 │  │  │  ├─ fm/ (Ym2151.ts / Opm.ts / FmOperator.ts / FmChannel4.ts / FmTables.ts / FmTimer.ts /
 │  │  │  │        FmChip.ts / ISoundChip.ts / SystemRandom.ts)
 │  │  │  └─ __tests__/        (DCSG 7 + BEEP 4 + Ym2151 8 + ChipBank 4 + SystemRandom 2)
-│  │  ├─ player/            … 演奏エンジン (← MzSound.Player) 【次フェーズ】
+│  │  ├─ player/            … 演奏エンジン (← MzSound.Player) ✅ (Z80Driver は次フェーズ)
 │  │  │  ├─ MzsdSong.ts / TrackSequencer.ts / MzsdSequencer.ts
-│  │  │  ├─ AudioEngine.ts (Web Audio 化) / Player.ts
-│  │  │  └─ Z80DriverImage.ts / Z80DriverMachine.ts
+│  │  │  ├─ AudioFrameMixer.ts / AudioEngine.ts (Web Audio 化) / Player.ts
+│  │  │  ├─ FramePlaybackWorklet.ts (AudioWorkletProcessor ソース / Blob URL ロード)
+│  │  │  ├─ __tests__/           (MZSD 解析 3 + シーケンサ/FM 12 + ミキサー 5 + Player 2)
+│  │  │  └─ Z80DriverImage.ts / Z80DriverMachine.ts 【次フェーズ】
 │  │  └─ z80/               … Z80 CPU コア (Z80dotNet 相当を内製移植) 【次フェーズ】
 │  └─ utils/                … UI 補助ユーティリティ (MML キャレット解析 / 仮想シンセ)
 └─ docs/specification/      … 本書を含む仕様ドキュメント一式
@@ -87,10 +89,13 @@ mz1500_sound_ide/
 | `src/MzSound.Player/Chips/BeepChip.cs` | `src/core/chips/BeepChip.ts` | ✅ 移植済 (標本レベルで C# 一致) |
 | `src/MzSound.Player/Chips/ChipBank.cs` | `src/core/chips/ChipBank.ts` | ✅ 移植済 |
 | `src/MzSound.Player/Chips/Fm/*` (fmgen 由来) | `src/core/chips/fm/*` | ✅ 移植済 (FM 出力をビット単位で C# 一致検証済み) |
-| `src/MzSound.Player/Sequencer/*` | `src/core/player/*` | ⏳ 次フェーズ |
-| `src/MzSound.Player/Audio/AudioEngine.cs` (NAudio) | `src/core/player/AudioEngine.ts` (Web Audio) | ⏳ 次フェーズ |
-| `src/MzSound.Player/Driver/Z80DriverMachine.cs` (Z80dotNet) | `src/core/player/Z80DriverMachine.ts` + `src/core/z80/*` | ⏳ 次フェーズ |
-| `tests/MzSound.*.Tests/*` (xUnit) | `src/core/**/__tests__/*` (vitest) | 🔶 アセンブラ 51 + MML 24 + チップ 25 相当を移植済、Player/等価テストは次フェーズ |
+| `src/MzSound.Player/Sequencer/MzsdSong.cs` | `src/core/player/MzsdSong.ts` | ✅ 移植済 (C# xUnit テスト期待値と一致) |
+| `src/MzSound.Player/Sequencer/TrackSequencer.cs` | `src/core/player/TrackSequencer.ts` | ✅ 移植済 (同上) |
+| `src/MzSound.Player/Sequencer/MzsdSequencer.cs` | `src/core/player/MzsdSequencer.ts` | ✅ 移植済 (同上) |
+| `src/MzSound.Player/Audio/AudioEngine.cs` (NAudio) | `src/core/player/AudioFrameMixer.ts` (合成) + `AudioEngine.ts` (Web Audio) | ✅ 移植済。合成 / 60Hz フレーム駆動 / ミックス / VU を Web Audio 非依存の FrameMixer に分離し vitest で検証。出力は AudioWorklet (Blob URL) + ScriptProcessor フォールバック |
+| `src/MzSound.Player/Player.cs` | `src/core/player/Player.ts` | ✅ 移植済 (`play` / `rewindToStart` のみ AudioWorklet ロードのため async) |
+| `src/MzSound.Player/Driver/Z80DriverMachine.cs` (Z80dotNet) | `src/core/player/Z80DriverMachine.ts` + `src/core/z80/*` | ⏳ 次フェーズ (Phase 4) |
+| `tests/MzSound.*.Tests/*` (xUnit) | `src/core/**/__tests__/*` (vitest) | 🔶 アセンブラ 51 + MML 24 + チップ 25 + Player 22 = **132 テスト合格**。Z80Driver 等価テストは次フェーズ |
 
 ### 3.1 C# partial class の統合対応
 
@@ -107,13 +112,17 @@ C# の partial class (1 クラス複数ファイル) は、TS では 1 ファイ
 その他の移植上の対応:
 
 - C# `enum` は `erasableSyntaxOnly` 対応のため const オブジェクト + union 型で実装
-  (`FmOpType` / `EgPhase`)。
+  (`FmOpType` / `EgPhase` / `AudioEngineMode`)。
 - C# `uint` の 32bit ラップが必要な箇所 (`lfoCount` / `pgCount` / `noise` 等) は
   `>>> 0` / `Math.imul(...) >>> 0` で再現。
 - `Span<int>` は `Int32Array` + offset 引数で代替。
 - `Random(1234)` (Knuth 減算法) は `chips/fm/SystemRandom.ts` として完全再現
   (OPM の LFO ノイズ波形が乱数に依存するため、C# とのビット一致には乱数列の一致が必須)。
 - `Ym2151.IrqChanged` イベントは `setIrqChanged(handler)` コールバックで代替。
+- C# の `(sbyte)` キャスト (`OpSweep` / `OpTranspose`) は `(v << 24) >> 24` で再現。
+- NAudio `MixerProvider` の合成部 (60Hz フレーム駆動 / ミックス / VU) は
+  `player/AudioFrameMixer.ts` (Web Audio 非依存) として切り出し。`AudioEngine.ts` は
+  AudioWorklet への標本供給 (20ms pump + リングバッファ) と ScriptProcessor フォールバックのみを担う。
 
 ## 4. 検証方針
 
@@ -142,3 +151,4 @@ C# の partial class (1 クラス複数ファイル) は、TS では 1 ファイ
 | 2026/09/05 | 初版作成。アセンブラ・MML コンパイラ移植完了 (85 テスト全合格)。フォルダ再編 (view/app/core) 実施。 |
 | 2026/09/05 | §1.1 追加: Z80 コア外部ライブラリ (`lkesteloot/z80-emulator`) を評価。依存採用は見送り、Z80dotNet 内製移植方針を再確定 (`z80-test` は検証基盤として活用)。 |
 | 2026/09/05 | Phase 2 完了: 音源エミュレーション (DCSG ×2 / BEEP 8253 / YM2151 fmgen 由来) を移植。`tools/cs-probe` による C# リファレンス値とのビット一致検証を導入 (§3.1、§4.4 追加)。テスト合計 110 (アセンブラ 51 + MML 24 + チップ 25 + 実ドライバ 3 + …)。 |
+| 2026/09/05 | Phase 3 完了: 演奏エンジン (`Sequencer` + `Audio` + `Player`) を移植。NAudio の合成部は Web Audio 非依存の `AudioFrameMixer` に分離、出力は AudioWorklet (Blob URL) + ScriptProcessor フォールバック。テスト合計 132 (Player 系 +22)。 |

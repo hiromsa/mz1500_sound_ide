@@ -5,6 +5,30 @@
 ---
 
 ## 1. 直近の完了作業（最新）
+- **Phase 3 完了: 演奏エンジン移植 (`src/core/player/`, [`docs/specification/web_core_port.md`](./specification/web_core_port.md))**:
+  - **移植元**: `MzSound.Player/Sequencer/*` + `Audio/AudioEngine.cs` + `Player.cs`。
+    C# xUnit テスト (`MzsdSequencerTests.cs` のシーケンサ / FM 分) を vitest へ 1:1 移植。
+  - **`MzsdSong.ts`**: MZSD バイナリ解析 (ヘッダ / 17 トラックテーブル / 音量エンベロープ /
+    ピッチエンベロープ / FM 音色テーブル 46 パラメータ)。
+  - **`TrackSequencer.ts`**: 1 トラック状態機械 (MZSD 命令列解釈 → DCSG / BEEP / FM レジスタ書き込み)。
+    ノート / ゲート / スイープ / ディチューン / 転調 / 音量・ピッチエンベロープ (ループ・リリース付き) /
+    ノイズ制御 (同期・非連動) / FM KC/KF 展開 (C4 基準・1 セミトーン = 64) / @FM 音色レジスタ展開。
+  - **`MzsdSequencer.ts`**: 17 トラックを 60Hz で駆動、全トラック終了時に L ループ復帰 / 演奏終了を判定。
+  - **`AudioFrameMixer.ts`**: NAudio `MixerProvider.Read` 相当の合成部を Web Audio 非依存の
+    純粋ロジックとして切り出し (vitest で完全テスト可能)。60Hz フレーム駆動 /
+    ミックス (PSG1→L、PSG2→R、BEEP・FM→中央、FM 0.4 / BEEP 0.5 / PSG 0.8) / トラックゲイン /
+    VU レベル / シーケンサ終了検知を実装。
+  - **`AudioEngine.ts`**: Web Audio 出力。AudioWorklet (Blob URL ロード、Vite の base サブパスに依存しない) を
+    推奨とし、ScriptProcessor へ自動フォールバック。メインスレッドの pump (20ms) が FrameMixer を
+    合成して worklet 側リングバッファ (≒ 0.68 秒) へ転送。`AudioEngineMode` は C# 版と同じ
+    SourceInterpreter / Z80Driver の 2 モード構成 (Z80Driver は Phase 4 で接続)。
+  - **`Player.ts`**: UI 向けファサード (`play` / `stop` / `rewindToStart` / `setTrackVolume` 2 乗曲線 /
+    `setMasterVolume` / `getTrackLevel` / `getMasterLevel` / `getTrackOffset` / `onPlaybackFinished`)。
+    AudioWorklet ロードのため `play` / `rewindToStart` のみ async (C# 版との差分は JSDoc に明記)。
+  - **テスト移植**: `SongBuilder` (MZSD ビルダー) + MZSD 解析 3 + シーケンサ/FM 12 + ミキサー 5 +
+    Player 2 = **新規 22 テスト (合計 132/132 合格)**。DcsgChipTests / Ym2151 分は Phase 2 移植済のため対象外。
+  - 検証: `npx tsc -b` エラーゼロ / `npm run build` 成功 / `npm run lint` エラーゼロ (既存 UI 警告 5 のみ)。
+  - 備考: 実機ブラウザでの試聴 (AudioWorklet 動作確認) は Phase 5 (UI 接続) で実施予定。
 - **Phase 2 完了: C# 版音源エミュレーション (Chips) の TypeScript 移植 (`src/core/chips/`, [`docs/specification/web_core_port.md`](./specification/web_core_port.md))**:
   - **移植元**: `MzSound.Player/Chips/*` (DCSG / BEEP 8253 / YM2151)。C# partial class は
     1 ファイル 1 クラスへ統合 (FmTables 3 → 1、FmOperator 4 → 1、FmChannel4 2 → 1、Opm 4 → 1、Ym2151 2 → 1)。
@@ -78,11 +102,6 @@
   - 検証: `npx tsc -b` エラーゼロ / `npm run build` 成功 / `npm run lint` エラーゼロ / `npm test` 85/85 合格。
 
 ## 2. 次のフェーズ (Web コア移植の続き)
-- [ ] **Phase 3: 演奏エンジン移植** (`src/core/player/` ← `MzSound.Player`)
-  - `MzsdSong.ts` (MZSD 解析) / `TrackSequencer.ts` (C# リファレンス実装) / `MzsdSequencer.ts` (17ch 60Hz)
-  - `AudioEngine.ts` (NAudio → Web Audio API 化、AudioWorklet / 60Hz フレーム駆動 / ミックス / VU)
-  - `Player.ts` ファサード (UI 連携: 再生 / 停止 / ミキサーゲイン / 演奏位置 GetTrackOffset)
-  - C# Player テストのうちシーケンサ分 (MzsdSequencerTests) の移植
 - [ ] **Phase 4: Z80 コア移植 + ドライバ実行** (`src/core/z80/` + `src/core/player/Z80DriverMachine.ts`)
   - Z80dotNet 相当の TS コア (全命令セット / 16bit ポート `UseExtendedPortsSpace` 相当 / T-state 精度 / HALT)
   - 検証: `lkesteloot/trs80` モノレポの `z80-test` (1356 テスト) を内製コアの命令セット検証に活用 (web_core_port.md §1.1)
