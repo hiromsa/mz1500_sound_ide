@@ -359,7 +359,7 @@ export function VirtualKeyboard({
           <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-cyan-950/60 border border-cyan-500/40 text-[10px] text-cyan-300 font-bold">
             <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
             <span>
-              {activeTabContext === 'mml' && `MML CARET: ${mmlContext?.trackName || 'TR1'}`}
+              {activeTabContext === 'mml' && `MML CARET: ${mmlContext?.trackName || 'P1'}`}
               {activeTabContext === 'tone' && 'FM TONE EDITOR'}
               {activeTabContext === 'pitch_envelope' && 'PITCH ENV EDITOR'}
               {activeTabContext === 'vol_envelope' && 'VOL ENV EDITOR'}

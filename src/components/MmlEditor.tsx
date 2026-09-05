@@ -35,12 +35,12 @@ const DUMMY_FILES: MmlFile[] = [
   {
     id: '1',
     name: 'main.mml',
-    content: '; MZ-1500 MML Example\n\n#TITLE "Theme of MZ"\n#COMPOSER "User"\n#OPM OFF\n#OCTAVE NORMAL\n\n@1 { /* YM2151 Tone Data */ }\n\nTR1 O4 C D E F G A B <C>\n'
+    content: '; MZ-1500 MML Example\n\n#TITLE "Theme of MZ"\n#COMPOSER "User"\n#OPM OFF\n#OCTAVE NORMAL\n\n; FM音色定義 (#OPM ON 時に F1〜F8 トラックで @1 を指定して使用)\n@1 = {\n  4, 6,\n  31, 12, 3, 0, 15, 24, 1, 0, 0,\n  31, 18, 5, 0, 12, 18, 2, 3, 0,\n  31, 10, 2, 0, 15, 30, 1, 0, 0,\n  31,  8, 4, 0,  8,  0, 1, 0, 0\n}\n@v1 = { 15, 14, 13, |L 12, 12, |R 8, 5, 2, 0 }\n@PE1 = { |L 0, 2, 4, 6, 8, 6, 4, 2 }\n\n; 各行を右クリックすると対応エディタで編集できます\nP1 t120 l8 o4 @v1 @PE1\nP1 c e g > c < g e c r\nP1 L [c d e f g2]2\n'
   },
   {
     id: '2',
     name: 'drums.mml',
-    content: '; DCSG Noise / Drums\n\nTR7 O2 C C C C\n'
+    content: '; DCSG Noise / Drums\n\nN1 @WN1 t120 l4 o2\nN1 c c c c r2\n'
   }
 ];
 
@@ -440,7 +440,7 @@ export function MmlEditor({
       const newFile: MmlFile = {
         id: fileItem.id,
         name: fileItem.name,
-        content: `; MML Source: ${fileItem.name}\n\n#TITLE "${fileItem.name}"\n\nTR1 O4 C D E\n`,
+        content: `; MML Source: ${fileItem.name}\n\n#TITLE "${fileItem.name}"\n\nP1 t120 l8 o4 c d e\n`,
       };
       setFiles(prev => [...prev, newFile]);
       setActiveFileId(newFile.id);
@@ -471,7 +471,7 @@ export function MmlEditor({
     const newFile: MmlFile = {
       id: newId,
       name: newName,
-      content: `; New MML File\n\nTR1 O4 C D E F\n`,
+      content: `; New MML File\n\nP1 t120 l8 o4 c d e f\n`,
     };
     setFiles(prev => [...prev, newFile]);
     setActiveFileId(newId);

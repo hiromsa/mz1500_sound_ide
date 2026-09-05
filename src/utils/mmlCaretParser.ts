@@ -22,8 +22,8 @@ export function parseMmlCaretContext(content: string, lineNumber: number, column
     targetLines[targetLines.length - 1] = targetLines[targetLines.length - 1].slice(0, column);
   }
 
-  // デフォルト値
-  let trackName = 'TR1';
+  // デフォルト値 (トラック表記は mml_reference.md 2節準拠: P1〜P6, N1〜N2, B1, F1〜F8)
+  let trackName = 'P1';
   let engine: SoundEngineType = 'psg';
   let octave = 4;
   let volume = 12;
@@ -43,9 +43,9 @@ export function parseMmlCaretContext(content: string, lineNumber: number, column
   });
 
   // 全トラック宣言とコマンドを順番に走査
-  // トラック宣言パターン: TR1, TR2... P1〜P6, N1〜N2, B1, F1〜F8
-  const trackRegex = /\b(TR\d+|P[1-6]|N[1-2]|B1|F[1-8])\b/gi;
-  let currentTrack = 'TR1';
+  // トラック宣言パターン: P1〜P6, N1〜N2, B1, F1〜F8
+  const trackRegex = /\b(P[1-6]|N[1-2]|B1|F[1-8])\b/gi;
+  let currentTrack = 'P1';
   let trackStartIndex = 0;
 
   let match: RegExpExecArray | null;
@@ -64,19 +64,9 @@ export function parseMmlCaretContext(content: string, lineNumber: number, column
     engine = 'beep';
   } else if (/^N[1-2]$/i.test(currentTrack)) {
     engine = 'noise';
-  } else if (/^P[1-6]$/i.test(currentTrack)) {
+  } else {
+    // P1〜P6 (DCSG矩形波)
     engine = 'psg';
-  } else if (/^TR(\d+)$/i.test(currentTrack)) {
-    const trNum = parseInt(currentTrack.slice(2), 10);
-    if (trNum >= 1 && trNum <= 6) {
-      engine = 'psg';
-    } else if (trNum === 7 || trNum === 8) {
-      engine = 'noise';
-    } else if (trNum === 9) {
-      engine = 'beep';
-    } else if (trNum >= 10) {
-      engine = 'fm';
-    }
   }
 
   // 直近トラック以降のテキストからコマンドを解析

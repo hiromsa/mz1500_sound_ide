@@ -5,6 +5,19 @@
 ---
 
 ## 1. 直近の完了作業（最新）
+- **サンプルMMLデータの `mml_reference.md` 準拠修正・旧 `TR` トラック表記の全面排除 ([`src/components/MmlEditor.tsx`](./src/components/MmlEditor.tsx), [`src/utils/mmlCaretParser.ts`](./src/utils/mmlCaretParser.ts), [`src/components/VirtualKeyboard.tsx`](./src/components/VirtualKeyboard.tsx), [`src/App.tsx`](./src/App.tsx), [`scripts/verify-mml-parser.mjs`](./scripts/verify-mml-parser.mjs))**:
+  - **サンプルデータの文法修正**:
+    - `main.mml`: FM音色定義を `@1 { ... }` から **`@1 = { ... }` (`=` 必須)** に修正し、実パラメータ (ALG/FB/OP1〜OP4) を記載。`TR1` → `P1` トラック、音符は小文字・`t120 l8` 付きのリファレンス実例準拠スタイルに統一。
+    - `drums.mml`: 無効トラック `TR7` → ノイズトラック `N1` (`@WN1` ホワイトノイズ) に修正。
+    - 新規ファイル / 新規タブのテンプレートも `TR1 O4 C D E` → `P1 t120 l8 o4 c d e` に修正。
+  - **旧 `TR\d+` トラック表記の全面排除** (正: `P1`〜`P6` / `N1` `N2` / `B1` / `F1`〜`F8` の全17ch 表記):
+    - `mmlCaretParser.ts`: デフォルトトラック名 `'TR1'` → `'P1'`、`trackRegex` から `TR\d+` を削除、TR系エンジン判定ブロックを削除。
+    - `VirtualKeyboard.tsx`: `MML CARET:` 表示のフォールバック `'TR1'` → `'P1'`。
+    - `App.tsx`: コンパイルエラーモックの `track` を `'P1'` に修正し、`line`/`column` も新サンプルの `@v1` 記述位置 (20行目/15列) に整合。
+    - `verify-mml-parser.mjs`: テスト入力を `P1`〜`P3`・小文字音符・`@1 = { }` 準拠に更新。
+  - **検証**: `node scripts/verify-mml-parser.mjs` 全17テスト合格、`npm run build` 成功、`npm run lint` エラーゼロ (警告8件は既存の set-state-in-effect 系で本件と無関係)。
+  - 備考: `mml_reference.md` はユーザーにより FM音色定義 `@N = { ... }` / `@FMN = { ... }` の **`=` 必須** 仕様へ修正済み (4.3節・5節実例とも整合)。
+
 - **MMLエディタ 右クリックコンテキストメニュー & 各エディタ⇔MML連携の実装 ([`src/components/MmlEditor.tsx`](./src/components/MmlEditor.tsx), [`src/utils/mmlContextParser.ts`](./src/utils/mmlContextParser.ts), [`src/components/FmToneEditor.tsx`](./src/components/FmToneEditor.tsx), [`src/components/VolEnvelopeEditor.tsx`](./src/components/VolEnvelopeEditor.tsx), [`src/components/PitchEnvelopeEditor.tsx`](./src/components/PitchEnvelopeEditor.tsx), [`src/App.tsx`](./src/App.tsx), [`docs/specification/ui.md`](./docs/specification/ui.md))**:
   - **カスタム右クリックコンテキストメニュー (計6アクション・overlay方式)**:
     - `@N を TONE エディタで編集` / `@VEN を VOL ENV エディタで編集` / `@PEN を PITCH ENV エディタで編集`: 右クリックした行を解析し、記述済みの `@N` / `@FMN`、`@vN` / `@VEN`、`@PEN` を対応エディタで開く (右ペインタブ自動切替・非表示時は自動オープン)。

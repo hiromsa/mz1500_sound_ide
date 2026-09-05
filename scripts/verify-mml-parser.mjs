@@ -17,8 +17,8 @@ const assert = (name, actual, expected) => {
 };
 
 // ── analyzeMmlLine: 行解析 ──
-assert('TR1 @1 O4 C D E -> toneId=1',
-  analyzeMmlLine('TR1 @1 O4 C D E'),
+assert('P1 @1 o4 c d e -> toneId=1',
+  analyzeMmlLine('P1 @1 o4 c d e'),
   { toneId: 1, volEnvId: null, pitchEnvId: null });
 
 assert('@FM3 C D E -> toneId=3',
@@ -58,7 +58,7 @@ assert('他コマンド @WN1 @SW15 は音色IDに誤検出しない',
   { toneId: null, volEnvId: null, pitchEnvId: null });
 
 assert('トーン無し行 -> すべてnull',
-  analyzeMmlLine('TR1 O4 C D E F G'),
+  analyzeMmlLine('P1 o4 c d e f g'),
   { toneId: null, volEnvId: null, pitchEnvId: null });
 
 assert('空行 -> すべてnull',
@@ -68,12 +68,12 @@ assert('空行 -> すべてnull',
 // ── collectUsedIds: 全文走査 ──
 const sample = `; コメント
 #TITLE "Test"
-@1 { /* tone */ }
+@1 = { /* tone */ }
 @3 = { /* tone */ }
-TR1 @1 @FM2 O4 C
-TR2 @v1 @VE2 C
+P1 @1 @FM2 o4 c
+P2 @v1 @VE2 c
 @v4 = { 15, |L 10, |R 5 }
-TR3 @PE5 C
+P3 @PE5 c
 @PE7 = { 0, 3, 6 }
 @WN1 @SW15 @q8
 `;

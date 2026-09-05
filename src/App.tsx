@@ -132,9 +132,9 @@ function App() {
     {
       id: 'err-1',
       severity: 'warning',
-      track: 'TR1',
-      line: 8,
-      column: 14,
+      track: 'P1',
+      line: 20,
+      column: 15,
       message: 'Track volume exceeds standard DCSG headroom (consider @v12 or lower)',
       sourceFile: 'main.mml',
     }
