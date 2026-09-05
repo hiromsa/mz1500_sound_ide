@@ -12,7 +12,10 @@ import {
   Music,
   AudioWaveform,
   TrendingUp,
-  ChartLine
+  ChartLine,
+  Scissors,
+  Copy,
+  ClipboardPaste
 } from 'lucide-react';
 import Editor, { type Monaco } from '@monaco-editor/react';
 import type { editor } from 'monaco-editor';
@@ -195,6 +198,7 @@ export function MmlEditor({
   const onRequestNewToneRef = useRef(onRequestNewTone);
   const onRequestNewVolEnvRef = useRef(onRequestNewVolEnv);
   const onRequestNewPitchEnvRef = useRef(onRequestNewPitchEnv);
+  const onTogglePlayRef = useRef(onTogglePlay);
 
   // コールバック更新時にrefを同期
   useEffect(() => { onRequestEditToneRef.current = onRequestEditTone; }, [onRequestEditTone]);
@@ -203,15 +207,16 @@ export function MmlEditor({
   useEffect(() => { onRequestNewToneRef.current = onRequestNewTone; }, [onRequestNewTone]);
   useEffect(() => { onRequestNewVolEnvRef.current = onRequestNewVolEnv; }, [onRequestNewVolEnv]);
   useEffect(() => { onRequestNewPitchEnvRef.current = onRequestNewPitchEnv; }, [onRequestNewPitchEnv]);
+  useEffect(() => { onTogglePlayRef.current = onTogglePlay; }, [onTogglePlay]);
 
   /** Monaco editor onMount: インスタンス保持・Ctrl+Enter再生キーバインド・キャレットコンテキスト解析をセットアップする */
   const handleEditorMount = useCallback((editorInstance: editor.IStandaloneCodeEditor, _monaco: Monaco) => {
     monacoEditorRef.current = editorInstance;
     onEditorMount?.(editorInstance);
 
-    // Ctrl + Enter で再生/停止トグル
+    // Ctrl + Enter で再生/停止トグル (ref経由で最新のハンドラを実行して確実に停止可能に)
     editorInstance.addCommand(_monaco.KeyMod.CtrlCmd | _monaco.KeyCode.Enter, () => {
-      onTogglePlay?.();
+      onTogglePlayRef.current?.();
     });
 
     // カーソル位置変更時にMMLキャレットコンテキストを更新
@@ -233,6 +238,119 @@ export function MmlEditor({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // クリップボード: 切り取り (Cut)
+  const handleCut = useCallback(async () => {
+    const ed = monacoEditorRef.current;
+    if (!ed) return;
+    ed.focus();
+    const selection = ed.getSelection();
+    const model = ed.getModel();
+    if (!selection || !model) return;
+
+    if (!selection.isEmpty()) {
+      const selectedText = model.getValueInRange(selection);
+      try {
+        await navigator.clipboard.writeText(selectedText);
+      } catch {
+        document.execCommand('cut');
+        return;
+      }
+      ed.executeEdits('cut', [{ range: selection, text: '', forceMoveMarkers: true }]);
+    } else {
+      // 選択範囲がない場合はカーソル行全体を切り取り
+      const lineNumber = selection.startLineNumber;
+      const lineContent = model.getLineContent(lineNumber);
+      try {
+        await navigator.clipboard.writeText(lineContent + '\n');
+      } catch {
+        document.execCommand('cut');
+        return;
+      }
+      const totalLines = model.getLineCount();
+      let range;
+      if (lineNumber < totalLines) {
+        range = {
+          startLineNumber: lineNumber,
+          startColumn: 1,
+          endLineNumber: lineNumber + 1,
+          endColumn: 1,
+        };
+      } else if (lineNumber > 1) {
+        const prevLineLen = model.getLineContent(lineNumber - 1).length + 1;
+        range = {
+          startLineNumber: lineNumber - 1,
+          startColumn: prevLineLen,
+          endLineNumber: lineNumber,
+          endColumn: lineContent.length + 1,
+        };
+      } else {
+        range = {
+          startLineNumber: 1,
+          startColumn: 1,
+          endLineNumber: 1,
+          endColumn: lineContent.length + 1,
+        };
+      }
+      ed.executeEdits('cut', [{ range, text: '', forceMoveMarkers: true }]);
+    }
+  }, []);
+
+  // クリップボード: コピー (Copy)
+  const handleCopy = useCallback(async () => {
+    const ed = monacoEditorRef.current;
+    if (!ed) return;
+    ed.focus();
+    const selection = ed.getSelection();
+    const model = ed.getModel();
+    if (!selection || !model) return;
+
+    if (!selection.isEmpty()) {
+      const selectedText = model.getValueInRange(selection);
+      try {
+        await navigator.clipboard.writeText(selectedText);
+      } catch {
+        document.execCommand('copy');
+      }
+    } else {
+      // 選択範囲がない場合はカーソル行全体をコピー
+      const lineNumber = selection.startLineNumber;
+      const lineContent = model.getLineContent(lineNumber);
+      try {
+        await navigator.clipboard.writeText(lineContent + '\n');
+      } catch {
+        document.execCommand('copy');
+      }
+    }
+  }, []);
+
+  // クリップボード: 貼り付け (Paste)
+  const handlePaste = useCallback(async () => {
+    const ed = monacoEditorRef.current;
+    if (!ed) return;
+    ed.focus();
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text != null) {
+        const selection = ed.getSelection() || {
+          startLineNumber: 1,
+          startColumn: 1,
+          endLineNumber: 1,
+          endColumn: 1,
+        };
+        ed.executeEdits('paste', [{ range: selection, text, forceMoveMarkers: true }]);
+        ed.focus();
+        return;
+      }
+    } catch {
+      // クリップボードAPIが拒否された場合は execCommand をフォールバック
+      try {
+        document.execCommand('paste');
+      } catch {
+        // ignore
+      }
+    }
+  }, []);
+
   // 右クリックコンテキストメニューの表示状態 (overlay 方式)
   const [contextMenu, setContextMenu] = useState<{
     x: number;
@@ -249,6 +367,22 @@ export function MmlEditor({
     // 右クリック位置の行を特定 (マウス座標ベースでカーソル位置に依存しない)
     const target = ed.getTargetAtClientPoint(e.clientX, e.clientY);
     const lineNumber = target?.position?.lineNumber;
+    const position = target?.position;
+
+    // もし右クリックした位置が既存の選択範囲外なら、右クリック位置にカーソルを合わせる (VS Code標準挙動)
+    const currentSelection = ed.getSelection();
+    if (position && currentSelection) {
+      const isInsideSelection = !currentSelection.isEmpty() && 
+        position.lineNumber >= currentSelection.startLineNumber &&
+        position.lineNumber <= currentSelection.endLineNumber &&
+        (position.lineNumber > currentSelection.startLineNumber || position.column >= currentSelection.startColumn) &&
+        (position.lineNumber < currentSelection.endLineNumber || position.column <= currentSelection.endColumn);
+
+      if (!isInsideSelection) {
+        ed.setPosition(position);
+      }
+    }
+
     const lineContent = lineNumber != null
       ? ed.getModel()?.getLineContent(lineNumber) ?? ''
       : '';
@@ -294,6 +428,33 @@ export function MmlEditor({
       entries.push({ type: 'separator' });
     }
 
+    // クリップボード標準アクション (切り取り・コピー・貼り付け)
+    entries.push(
+      {
+        id: 'cut',
+        label: '切り取り',
+        icon: Scissors,
+        shortcut: 'Ctrl+X',
+        onSelect: () => { void handleCut(); },
+      },
+      {
+        id: 'copy',
+        label: 'コピー',
+        icon: Copy,
+        shortcut: 'Ctrl+C',
+        onSelect: () => { void handleCopy(); },
+      },
+      {
+        id: 'paste',
+        label: '貼り付け',
+        icon: ClipboardPaste,
+        shortcut: 'Ctrl+V',
+        onSelect: () => { void handlePaste(); },
+      },
+    );
+
+    entries.push({ type: 'separator' });
+
     // 新規作成 (常時表示・メニューを開いた時点で未使用IDを採番)
     entries.push(
       {
@@ -317,7 +478,7 @@ export function MmlEditor({
     );
 
     setContextMenu({ x: e.clientX, y: e.clientY, entries });
-  }, []);
+  }, [handleCut, handleCopy, handlePaste]);
 
   const activeFile = files.find(f => f.id === activeFileId) || files[0];
 

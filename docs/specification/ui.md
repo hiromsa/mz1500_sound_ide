@@ -108,8 +108,9 @@ FlexboxおよびCSS Gridを活用し、解像度変化に追従するペイン�
 ### 3.1 ヘッダー領域 (`Header`)
 - **背景デザイン**: MZ-1500実機およびQD（クイックディスク）ドライブの象徴である**QDテクニカル方眼グリッド背景（主線48px / 副線12pxのシアン複線グリッド）**を適用。
 - **ロゴ**: 
-  - 左端にQDシアン自照式バッジ `MZ` を配置（`bg-cyan-950` / `border-cyan-400` / ネオングロー、力強い極太ボールド `font-black text-sm`）。
-  - タイトル表記: `MZ-1500 IDE`（`IDE` をMZレッドで強調表示）
+  - 左端に実機公式デザイン準拠の **MZ-1500 ベクターSVGロゴ**（[`src/assets/mz1500logo.svg`](../src/assets/mz1500logo.svg): 縦3本バーM、シャープなZ、中空アウトライン1500）を配置（高さ `h-5`）。
+  - ロゴ右横にダークグレー角丸の `Sound IDE` バッジ（`bg-[#383838] border-[#484848]`）を配置。
+  - サブタイトル: `SOUND DRIVER & MML COMPILER`（区切り線付き）。
 - **トランスポートアクションボタン**:
   - `🔁 LOOP`: MMLの `L` コマンドによる無限ループの有効/無効トグルボタン（自照式LEDランプ付き、デフォルト: **ON**）。OFF時は曲末尾または1周で再生停止。
   - `▶ PLAY / STOP / PLAYING`: MMLのビルド（コンパイル）および再生開始をワンクリックで実行。
@@ -143,8 +144,14 @@ FlexboxおよびCSS Gridを活用し、解像度変化に追従するペイン�
     - `@VEN を VOL ENV エディタで編集`: 行内の `@vN` / `@VEN` を解析し、VOL ENVタブへ切替して該当IDをロード。
     - `@PEN を PITCH ENV エディタで編集`: 行内の `@PEN` を解析し、PITCH ENVタブへ切替して該当IDをロード。
     - `新規 FM TONE を挿入...` / `新規 VOL ENV を挿入...` / `新規 PITCH ENV を挿入...`: MML全文から既存IDを収集し、**最大ID+1の未使用ID**で各エディタを新規作成状態で開く。
-    - **メニューアイコンは右ペインタブと同一の Lucide SVG**（`AudioWaveform` / `TrendingUp` / `ChartLine`）。Monaco 内蔵メニューは Lucide アイコンを表示できないため、**カスタムコンテキストメニューコンポーネント（[`src/components/MmlContextMenu.tsx`](./src/components/MmlContextMenu.tsx)）による overlay 方式**を採用（Monaco `contextmenu: false` 化 + エディタラッパーの `onContextMenu` で `preventDefault`）。
-    - メニューは「編集」系を対象IDを含む行でのみ表示し、区切り線を挟んで「新規〜を挿入...」3種を常時表示。外クリック / `Esc` / ウィンドウ非活性で閉じ、画面端では表示位置を自動補正。
+    - **クリップボード標準アクション（切り取り・コピー・貼り付け）**:
+      - `切り取り` (`Scissors`, `Ctrl+X`): 選択範囲または現在行をクリップボードへコピーして削除。
+      - `コピー` (`Copy`, `Ctrl+C`): 選択範囲または現在行をクリップボードへコピー。
+      - `貼り付け` (`ClipboardPaste`, `Ctrl+V`): クリップボードのテキストをキャレット位置へ挿入。
+      - 右端にショートカットキー（`Ctrl+X` / `Ctrl+C` / `Ctrl+V`）を表示。
+    - **メニューアイコンは右ペインタブと同一の Lucide SVG**（`AudioWaveform` / `TrendingUp` / `ChartLine` / `Scissors` / `Copy` / `ClipboardPaste`）。Monaco 内蔵メニューは Lucide アイコンを表示できないため、**カスタムコンテキストメニューコンポーネント（[`src/components/MmlContextMenu.tsx`](./src/components/MmlContextMenu.tsx)）による overlay 方式**を採用（Monaco `contextmenu: false` 化 + エディタラッパーの `onContextMenu` で `preventDefault`）。
+    - メニュー構成: 「編集」系（該当IDを含む行のみ表示）➜ 区切り線 ➜ 「切り取り・コピー・貼り付け」 ➜ 区切り線 ➜ 「新規〜を挿入...」3種を常時表示。外クリック / `Esc` / ウィンドウ非活性で閉じ、画面端では表示位置を自動補正。右クリック位置が選択範囲外なら自動でキャレットを移動。
+    - **Ctrl+Enter ショートカット連動**: Monaco Editor 内およびグローバルで `Ctrl+Enter` を押した際、常に最新の再生状態（`isPlayingRef`）を参照して確実に再生開始 / 停止をトグル可能。
   - 行解析ユーティリティは `src/utils/mmlContextParser.ts` に純粋関数として分離:
     - `analyzeMmlLine`: 1行から `@N` / `@FMN`、`@vN` / `@VEN`、`@PEN` のIDを抽出。コメント (`;` / `//`) 以降は解析対象外。他コマンド (`@WN`, `@SW`, `@q` 等) を音色IDへ誤検出しない。
     - `collectUsedIds`: MML全文から3種類のID使用済みセットを収集。

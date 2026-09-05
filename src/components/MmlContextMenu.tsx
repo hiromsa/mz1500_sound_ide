@@ -18,6 +18,8 @@ export interface MmlContextMenuItem {
   label: string;
   /** 右ペインタブと同一の Lucide アイコン */
   icon: LucideIcon;
+  /** キーボードショートカット表記 (例: Ctrl+X, Ctrl+C, Ctrl+V) */
+  shortcut?: string;
   /** true の場合は選択不可 (グレーアウト表示) */
   disabled?: boolean;
   onSelect: () => void;
@@ -117,6 +119,11 @@ export function MmlContextMenu({ x, y, entries, onClose }: MmlContextMenuProps) 
           >
             <entry.icon className="w-3.5 h-3.5 shrink-0" />
             <span className="truncate">{entry.label}</span>
+            {entry.shortcut && (
+              <span className="ml-auto pl-4 text-[10px] font-mono text-zinc-500 tracking-wider shrink-0">
+                {entry.shortcut}
+              </span>
+            )}
           </button>
         ),
       )}

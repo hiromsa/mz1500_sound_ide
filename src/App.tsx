@@ -21,6 +21,7 @@ import { FmToneEditor, type FmToneData } from './components/FmToneEditor';
 import type { CompileErrorItem } from './components/CompileErrorPanel';
 import type { ActiveTabContext } from './components/VirtualKeyboard';
 import type { editor } from 'monaco-editor';
+import mz1500Logo from './assets/mz1500logo.svg';
 
 type RightTab = 'track' | 'tone' | 'vol_envelope' | 'pitch_envelope' | 'song_setup' | 'settings';
 
@@ -153,6 +154,11 @@ function App() {
     setSongMetadata(prev => ({ ...prev, enableYM2151: val }));
   };
 
+  const isPlayingRef = useRef(isPlaying);
+  useEffect(() => {
+    isPlayingRef.current = isPlaying;
+  }, [isPlaying]);
+
   // PLAY ハンドラ (ビルド ➜ 再生開始)
   const handlePlay = useCallback(() => {
     setIsPlaying(true);
@@ -179,12 +185,12 @@ function App() {
 
   // PLAY/STOP トグルハンドラ (再生中なら停止、停止中なら再生)
   const handleTogglePlay = useCallback(() => {
-    if (isPlaying) {
+    if (isPlayingRef.current) {
       handleStop();
     } else {
       handlePlay();
     }
-  }, [isPlaying, handleStop, handlePlay]);
+  }, [handleStop, handlePlay]);
 
   // グローバルショートカット (Ctrl + Enter で再生/停止トグル)
   useEffect(() => {
@@ -253,18 +259,14 @@ function App() {
       <header className="h-12 bg-[#2D2D2D] border-b border-[#3C3C3C] flex items-center justify-between px-3.5 shrink-0 z-10 relative">
         {/* Logo / App Name */}
         <div className="flex items-center gap-2.5">
-          <div className="w-6 h-6 bg-[#222222] border border-[#444444] rounded flex items-center justify-center shadow-xs">
-            <span className="text-zinc-200 font-bold text-[11px] font-mono tracking-tighter">
-              MZ
-            </span>
-          </div>
-
-          <div className="text-sm font-semibold tracking-wide text-zinc-100 font-mono flex items-center gap-1.5">
-            <span>MZ-1500</span>
-            <span className="text-xs px-1.5 py-0.5 rounded bg-[#383838] text-zinc-300 border border-[#484848] font-bold">
-              IDE
-            </span>
-          </div>
+          <img 
+            src={mz1500Logo} 
+            alt="MZ-1500" 
+            className="h-5 w-auto object-contain select-none filter drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]" 
+          />
+          <span className="text-xs px-2 py-0.5 rounded bg-[#383838] text-zinc-300 border border-[#484848] font-bold font-mono">
+            Sound IDE
+          </span>
           <div className="text-[11px] text-zinc-400 font-mono hidden md:block border-l border-[#444444] pl-2.5">
             SOUND DRIVER & MML COMPILER
           </div>

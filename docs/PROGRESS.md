@@ -5,6 +5,30 @@
 ---
 
 ## 1. 直近の完了作業（最新）
+- **公式 MZ-1500 SVG ロゴの assets 配置 & ヘッダー「Sound IDE」バッジ化 ([`src/assets/mz1500logo.svg`](./src/assets/mz1500logo.svg), [`public/assets/mz1500logo.svg`](./public/assets/mz1500logo.svg), [`src/App.tsx`](./src/App.tsx), [`docs/specification/ui.md`](./docs/specification/ui.md))**:
+  - **SVG ロゴファイルの配置**:
+    - 実機公式デザイン準拠のベクターロゴファイル（`mz1500logo.svg`: 縦3本バーM、シャープなZ、中空アウトライン1500）を `src/assets/` および `public/assets/` 配下に格納。
+  - **ヘッダーロゴ・バッジの刷新**:
+    - 従来の暫定「角丸四角MZバッジ + MZ-1500 テキスト」を撤去し、`import mz1500Logo from './assets/mz1500logo.svg';` による鮮明なベクターSVGロゴ画像（高さ `h-5`）へ置き換え。
+    - 隣接するバッジの表記を `IDE` から **`Sound IDE`** へ更新。
+    - 実機通りの美麗なプロポーションと色合い（ライトアイスブルー）がダークヘッダーに調和し、製品名「MZ-1500 Sound IDE」としてのブランド・ビジュアルを確立。
+  - **ビルド & 実機ブラウザ検証通過**:
+    - `npm run build` エラーゼロ通過。実機ブラウザにてヘッダー左上に公式 MZ-1500 ロゴおよび `Sound IDE` バッジが美麗にレンダリングされることをスクリーンショットにて確認。
+
+- **`Ctrl + Enter` 再生/停止トグルの確実化 & MMLエディタ右クリックメニューへの切り取り・コピー・貼り付け復活 ([`src/App.tsx`](./src/App.tsx), [`src/components/MmlEditor.tsx`](./src/components/MmlEditor.tsx), [`src/components/MmlContextMenu.tsx`](./src/components/MmlContextMenu.tsx), [`docs/specification/ui.md`](./docs/specification/ui.md))**:
+  - **`Ctrl + Enter` による再生停止トグルの安定化**:
+    - `MmlEditor.tsx` のマウント時に登録される `addCommand` のコールバックが初期の `onTogglePlay`（`isPlaying: false`）をキャプチャし続ける stale closure 問題を解消。
+    - `App.tsx` に `isPlayingRef` を導入して常に最新の再生状態を追跡し、`MmlEditor.tsx` にも `onTogglePlayRef` を設けて常に最新のトグル関数を実行。
+    - Monaco Editor 内およびグローバルのいずれにおいても、再生中に `Ctrl + Enter` を押すことで確実に再生が停止するよう修正。
+  - **MMLエディタ右クリックメニューのクリップボード操作復活**:
+    - カスタムコンテキストメニュー（overlay 方式）へ、標準編集アクション「`切り取り` (`Ctrl+X`)」「`コピー` (`Ctrl+C`)」「`貼り付け` (`Ctrl+V`)」を追加。
+    - アイコンは `lucide-react` の `Scissors`, `Copy`, `ClipboardPaste` を使用し、右端にショートカットキー表記（`Ctrl+X` 等）を配置。
+    - 選択範囲がある場合はその範囲を、選択範囲がない場合はカーソル行を対象とする VS Code 準拠のスマートなクリップボード動作を実装（右クリック位置への自動キャレット追従もサポート）。
+  - **ビルド & 実機ブラウザ自動テスト通過**:
+    - `npm run build` エラーゼロ通過、`npm run lint` (oxlint) エラーゼロ。
+    - ブラウザ実機にて Monaco Editor 内での `Ctrl + Enter` による再生開始 ➜ 再度 `Ctrl + Enter` での確実な停止を確認。
+    - MMLエディタ上の右クリックメニューに「切り取り」「コピー」「貼り付け」が整然と表示されることをスクリーンショットおよびDOM検証にて確認完了。
+
 - **開発環境の役割分担・MCP 設定の適用範囲に関する注意点をドキュメント化 ([.clinerules](./.clinerules), [`docs/specification/mcp-browser-debug.md`](./specification/mcp-browser-debug.md))**:
   - 開発環境の役割分担を `.clinerules` に新規セクションとして追加: **VSCode + Cline = 内部実装 / Antigravity = デザイン・UI** (`.clinerules` は GEMINI.md 経由で Antigravity にも共有される)。
   - **chrome-devtools-mcp の MCP 設定は Cline 専用**である旨を明記 (Antigravity は組み込み Browser を使用するため原則不要・Antigravity 側への流し込みはしない)。
