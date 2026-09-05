@@ -5,6 +5,19 @@
 ---
 
 ## 1. 直近の完了作業（最新）
+- **MMLシンタックスハイライト機能の実装 (`src/utils/mmlLanguage.ts`, `src/utils/mmlLanguage.test.ts`, `src/view/MmlEditor.tsx`, [`docs/PROGRESS.md`](./PROGRESS.md))**:
+  - **Monaco Monarch 言語定義の実装**:
+    - `docs/specification/mml_reference.md` に準拠した MML 専用言語 `mz1500-mml` および Monaco 言語設定（コメント `;` / `/* */`、括弧オートクローズ等）を新設。
+    - ディレクティブ（`#TITLE`, `#COMPOSER`, `#OCTAVE`, `#OPM`, `#FM`）、全17トラック識別子（`P1`〜`P6`, `N1`〜`N2`, `B1`, `F1`〜`F8`）、音色・エンベロープマクロ定義（`@1 = { ... }`, `@v1 = { ... }`, `@PE1 = { ... }`）、演奏コマンド（音符・休符、オクターブ、テンポ、音量、クオンタイズ、ループ `L`, `[ ]` など）を字句解析。
+    - 空白区切りだけでなく、MML特有のコマンド連続記述（詰め打ち）にも対応。
+  - **直感的な系統別カスタムダークテーマ (`mz1500-mml-theme`) の設計**:
+    - ディレクティブ: マゼンタ（`#C586C0`）、文字列: ウォームアンバー（`#CE9178`）、設定値: ティール（`#4EC9B0`）。
+    - トラック識別子: DCSG矩形波はスカイブルー（`#00A8FF`）、DCSGノイズはオレンジ（`#FF9E3B`）、BEEPはライム（`#50FA7B`）、FM音源はバイオレット（`#BD93F9`）。
+    - マクロ定義/適用: FM音色はピンク（`#FF79C6`）、音量エンベロープはゴールド（`#F1FA8C`）、ピッチエンベロープはミント（`#50FA7B`）、ノイズはコーラル（`#FF6E6E`）。
+    - 演奏記号: 音符はクリアホワイト（`#E6EDF3`）、休符はソフトミント（`#85E89D`）、オクターブはシアン（`#4EC9B0` / `#00E5FF`）、永久ループ `L` は太字ネオンイエロー（`#FFDF5D`）、マクロ内 `|` はネオンシアン。
+    - コメント: オリーブグリーン斜体（`#6A9955`）。
+  - **検証**: `npm test` 235 passed (新規テスト5件追加)、`npm run lint` エラーゼロ、`npm run build` 成功、ブラウザサブエージェントによる描画確認・キャプチャ完了。
+
 - **PITCH ENV エディタからのリリースポイント仕様の削除 (`src/view/PitchEnvelopeEditor.tsx`, [`docs/specification/ui.md`](./specification/ui.md), [`docs/PROGRESS.md`](./PROGRESS.md))**:
   - **仕様整理**: ピッチエンベロープ（`@PE`）はドライバ・MML言語仕様上リリース（`>`）に対応しておらず未実装であるため、UI側の混乱を防ぐため PITCH ENV エディタから Release ポイント関連の全仕様・UI要素を削除。
   - **エディタUIの改修** (`PitchEnvelopeEditor.tsx`):
