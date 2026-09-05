@@ -5,6 +5,15 @@
 ---
 
 ## 1. 直近の完了作業（最新）
+- **MMLエディタ右クリックメニューの「編集」項目を定義行のみ表示に変更 & 複数行 (折り返し) 定義対応 (`src/utils/mmlContextParser.ts`, `src/view/MmlEditor.tsx`, `src/utils/__tests__/mmlContextParser.test.ts` 新設, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-06):
+  - **背景**: 右クリックコンテキストメニューの「編集」項目 (`@N を TONE エディタで編集` 等) は、行に `@N` / `@vN` / `@PEN` が含まれていれば**定義・利用を問わず**表示されていた。また `@1 = { ... }` のような複数行 (折り返し) 定義では、ID はヘッダ行 (`@1 = {`) にしかないため、ブロック内の他の行ではメニューが出なかった。
+  - **変更内容**:
+    - `mmlContextParser.ts` に `findDefinitionBlocks` / `findDefinitionAt` を新設。コンパイラ (`MmlCompiler.macroRegex`) と同一書式 (`@<種別><番号> = { ... }`、`=` 必須) で定義ブロックを抽出し、`{` / `}` の深さカウントで対応する `}` の行までを `startLine`〜`endLine` の行範囲として返す。
+    - `handleEditorContextMenu` を行内 ID 抽出 (`analyzeMmlLine`) ベースから定義ブロック判定 (`findDefinitionAt`) ベースへ変更 → **利用箇所では「編集」を非表示**、複数行定義は**ブロック内のどの行でも**表示。
+    - コメント除去 `stripComment` を共通化し、同一行完結の `/* ... */` ブロックコメントにも対応 (コメント内の `}` を定義の閉じと誤判定しない)。未完 (未閉鎖) の定義は抽出対象外。
+    - サンプル main.mml のガイドコメントを新仕様 (`; 定義行 (@1 / @v1 / @PE1) を右クリックすると対応エディタで編集できます (複数行定義はどの行でもOK)`) に更新。
+  - **検証**: `npm test` 全 **268 合格** (新テスト 16 ケース追加: `src/utils/__tests__/mmlContextParser.test.ts`) / `node scripts/verify-mml-parser.mjs` 全 17 ケース合格 / `npm run lint` エラーゼロ (既存警告 5 のみ) / `npm run build` 成功。
+
 - **Z80 ドライバ `apply_fm_tone` のレジスタマッピング 3 バグ修正 & C# 版持ち越し skip 2 テストの解消 (`driver/mzsd_driver.asm`, `src/core/player/__tests__/Z80DriverEquivalence.test.ts`, [`docs/specification/web_core_port.md`](./specification/web_core_port.md))** (2026-09-06):
   - **背景**: C# 版から持ち越された「Z80 `apply_fm_tone` の 0x98/0xA0 系レジスタが C# 版とズレる」課題 (等価性テスト 11 シナリオ中 2 が skip) を解消。
   - **原因 (3 バグ)**:

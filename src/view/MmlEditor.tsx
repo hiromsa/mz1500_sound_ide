@@ -28,7 +28,7 @@ import { ConsolePanel } from './ConsolePanel';
 import type { SongMetadata } from './SongSetupPanel';
 import { VirtualKeyboard, type ActiveTabContext } from './VirtualKeyboard';
 import { parseMmlCaretContext, type MmlCaretContext } from '../utils/mmlCaretParser';
-import { analyzeMmlLine, collectUsedIds, nextAvailableId } from '../utils/mmlContextParser';
+import { collectUsedIds, findDefinitionAt, findDefinitionBlocks, nextAvailableId } from '../utils/mmlContextParser';
 import { MmlContextMenu, type MmlContextMenuEntry } from './MmlContextMenu';
 import type { FmToneData } from '../core/fm/FmTone';
 import { setupMmlLanguage, MML_LANGUAGE_ID, MML_THEME_NAME } from '../utils/mmlLanguage';
@@ -43,7 +43,7 @@ const DUMMY_FILES: MmlFile[] = [
   {
     id: '1',
     name: 'main.mml',
-    content: '; MZ-1500 MML Example\n\n#TITLE "Theme of MZ"\n#COMPOSER "User"\n#OPM OFF\n#OCTAVE NORMAL\n\n; FM音色定義 (#OPM ON 時に F1〜F8 トラックで @1 を指定して使用)\n@1 = {\n  4, 6,\n  31, 12, 0, 15, 3, 24, 0, 1, 0, 0, 0,\n  31, 18, 0, 12, 5, 18, 0, 2, 3, 0, 0,\n  31, 10, 0, 15, 2, 30, 0, 1, 0, 0, 0,\n  31,  8, 0,  8, 4,  0, 0, 1, 0, 0, 0\n}\n@v1 = { 15, 14, 13, |, 12, 11, >, 8, 5, 2, 0 }\n@PE1 = { |, 0, 2, 4, 6, 8, 6, 4, 2 }\n\n; 各行を右クリックすると対応エディタで編集できます\nP1 t120 l8 o4 @v1 @PE1\nP1 c e g > c < g e c r\nP1 L [c d e f g2]2\n'
+    content: '; MZ-1500 MML Example\n\n#TITLE "Theme of MZ"\n#COMPOSER "User"\n#OPM OFF\n#OCTAVE NORMAL\n\n; FM音色定義 (#OPM ON 時に F1〜F8 トラックで @1 を指定して使用)\n@1 = {\n  4, 6,\n  31, 12, 0, 15, 3, 24, 0, 1, 0, 0, 0,\n  31, 18, 0, 12, 5, 18, 0, 2, 3, 0, 0,\n  31, 10, 0, 15, 2, 30, 0, 1, 0, 0, 0,\n  31,  8, 0,  8, 4,  0, 0, 1, 0, 0, 0\n}\n@v1 = { 15, 14, 13, |, 12, 11, >, 8, 5, 2, 0 }\n@PE1 = { |, 0, 2, 4, 6, 8, 6, 4, 2 }\n\n; 定義行 (@1 / @v1 / @PE1) を右クリックすると対応エディタで編集できます (複数行定義はどの行でもOK)\nP1 t120 l8 o4 @v1 @PE1\nP1 c e g > c < g e c r\nP1 L [c d e f g2]2\n'
   },
   {
     id: '2',
@@ -412,10 +412,11 @@ export function MmlEditor({
       }
     }
 
-    const lineContent = lineNumber != null
-      ? ed.getModel()?.getLineContent(lineNumber) ?? ''
-      : '';
-    const analysis = analyzeMmlLine(lineContent);
+    // 「編集」項目はマクロ定義ブロック (@N / @vN / @PEN = { ... }) の行でのみ表示する。
+    // 定義が複数行 (折り返し) にわたる場合はブロック内のどの行でも表示する。
+    const definition = lineNumber != null
+      ? findDefinitionAt(findDefinitionBlocks(ed.getModel()?.getValue() ?? ''), lineNumber)
+      : null;
 
     // MML全文から新規採番用の未使用IDを算出
     const usedIds = collectUsedIds(ed.getModel()?.getValue() ?? '');
@@ -425,33 +426,35 @@ export function MmlEditor({
 
     const entries: MmlContextMenuEntry[] = [];
 
-    // 対象IDを含む行のみ「編集」項目を表示
-    if (analysis.toneId != null) {
-      const toneId = analysis.toneId;
-      entries.push({
-        id: 'edit-tone',
-        label: `@${toneId} を TONE エディタで編集`,
-        icon: AudioWaveform,
-        onSelect: () => onRequestEditToneRef.current?.(toneId),
-      });
-    }
-    if (analysis.volEnvId != null) {
-      const volEnvId = analysis.volEnvId;
-      entries.push({
-        id: 'edit-vol-env',
-        label: `@VE${volEnvId} を VOL ENV エディタで編集`,
-        icon: TrendingUp,
-        onSelect: () => onRequestEditVolEnvRef.current?.(volEnvId),
-      });
-    }
-    if (analysis.pitchEnvId != null) {
-      const pitchEnvId = analysis.pitchEnvId;
-      entries.push({
-        id: 'edit-pitch-env',
-        label: `@PE${pitchEnvId} を PITCH ENV エディタで編集`,
-        icon: ChartLine,
-        onSelect: () => onRequestEditPitchEnvRef.current?.(pitchEnvId),
-      });
+    // 定義ブロック内の行のみ「編集」項目を表示 (利用箇所では表示しない)
+    if (definition !== null) {
+      const definitionId = definition.id;
+      switch (definition.kind) {
+        case 'tone':
+          entries.push({
+            id: 'edit-tone',
+            label: `@${definitionId} を TONE エディタで編集`,
+            icon: AudioWaveform,
+            onSelect: () => onRequestEditToneRef.current?.(definitionId),
+          });
+          break;
+        case 'volEnv':
+          entries.push({
+            id: 'edit-vol-env',
+            label: `@VE${definitionId} を VOL ENV エディタで編集`,
+            icon: TrendingUp,
+            onSelect: () => onRequestEditVolEnvRef.current?.(definitionId),
+          });
+          break;
+        case 'pitchEnv':
+          entries.push({
+            id: 'edit-pitch-env',
+            label: `@PE${definitionId} を PITCH ENV エディタで編集`,
+            icon: ChartLine,
+            onSelect: () => onRequestEditPitchEnvRef.current?.(definitionId),
+          });
+          break;
+      }
     }
     if (entries.length > 0) {
       entries.push({ type: 'separator' });
