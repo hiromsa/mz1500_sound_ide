@@ -26,6 +26,7 @@ import { Player } from '../core/player/Player';
 import { Z80DriverImage } from '../core/player/Z80DriverImage';
 import { buildQuickDiskImage } from '../core/export/QdfImageBuilder';
 import type { FmToneData } from '../core/fm/FmTone';
+import { formatDiagnosticsAsLogLines } from '../utils/diagnosticsLog';
 import type { CompileErrorItem } from '../view/CompileErrorPanel';
 import type { ActiveTabContext } from '../view/VirtualKeyboard';
 import type { editor } from 'monaco-editor';
@@ -243,6 +244,8 @@ function App() {
     if (!result.success || result.musicData === null) {
       const errorCount = result.diagnostics.filter(d => d.severity === DiagnosticSeverity.Error).length;
       appendLog(`[BUILD] FAILED: ${errorCount} error(s). See the PROBLEMS panel.`);
+      // エラー詳細 (行・桁・メッセージ) もコンソールへ出力する (上限件数を超えた分は要約)
+      formatDiagnosticsAsLogLines(result.diagnostics).forEach(appendLog);
       return;
     }
 
@@ -310,6 +313,7 @@ function App() {
     if (!result.success || result.musicData === null) {
       const errorCount = result.diagnostics.filter(d => d.severity === DiagnosticSeverity.Error).length;
       appendLog(`[BUILD] FAILED: export aborted (${errorCount} error(s)). See the PROBLEMS panel.`);
+      formatDiagnosticsAsLogLines(result.diagnostics).forEach(appendLog);
       return;
     }
 

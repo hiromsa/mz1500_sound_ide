@@ -15,12 +15,16 @@ import {
   ChartLine,
   Scissors,
   Copy,
-  ClipboardPaste
+  ClipboardPaste,
+  ChevronUp,
+  ChevronDown,
+  Check
 } from 'lucide-react';
 import Editor, { type Monaco } from '@monaco-editor/react';
 import type { editor } from 'monaco-editor';
 import { FileExplorer } from './FileExplorer';
 import { CompileErrorPanel, type CompileErrorItem } from './CompileErrorPanel';
+import { ConsolePanel } from './ConsolePanel';
 import type { SongMetadata } from './SongSetupPanel';
 import { VirtualKeyboard, type ActiveTabContext } from './VirtualKeyboard';
 import { parseMmlCaretContext, type MmlCaretContext } from '../utils/mmlCaretParser';
@@ -118,6 +122,9 @@ function applyMetadataToContent(content: string, meta: SongMetadata): string {
 
 export type BottomTab = 'problems' | 'console' | 'keyboard';
 
+/** 折りたたみ時に下部エリアへ残すタブバーの高さ (px)。 */
+const BOTTOM_COLLAPSED_HEIGHT_PX = 28;
+
 interface MmlEditorProps {
   songMetadata: SongMetadata;
   onChangeSongMetadata: (metadata: SongMetadata) => void;
@@ -185,6 +192,18 @@ export function MmlEditor({
   const [activeBottomTab, setActiveBottomTab] = useState<BottomTab>('keyboard');
   const [bottomHeight, setBottomHeight] = useState<number>(180);
   const [isDraggingBottomSplitter, setIsDraggingBottomSplitter] = useState<boolean>(false);
+
+  // 下部エリアの折りたたみ (タブバーのみ表示) とコンソールログコピーのフィードバック
+  const [isBottomCollapsed, setIsBottomCollapsed] = useState<boolean>(false);
+  const [isLogsCopied, setIsLogsCopied] = useState<boolean>(false);
+
+  // コンソールログ全文をクリップボードへコピーする
+  const handleCopyLogs = useCallback((): void => {
+    navigator.clipboard.writeText(logs.join('\n')).then(() => {
+      setIsLogsCopied(true);
+      window.setTimeout(() => setIsLogsCopied(false), 1500);
+    }).catch(() => { /* ignore: クリップボードが利用できない環境 */ });
+  }, [logs]);
 
   // MMLキャレットコンテキスト
   const [mmlCaretContext, setMmlCaretContext] = useState<MmlCaretContext | undefined>(undefined);
@@ -807,8 +826,9 @@ export function MmlEditor({
           )}
         </div>
 
-        {/* スプリッター (エディタ ⇔ 下部タブエリア) */}
+        {/* スプリッター (エディタ ⇔ 下部タブエリア) ※折りたたみ中は非表示 */}
         <div
+          hidden={isBottomCollapsed}
           onMouseDown={handleBottomSplitterMouseDown}
           onDoubleClick={() => setBottomHeight(160)}
           className="h-2 -my-1 w-full cursor-row-resize z-20 shrink-0 flex items-center justify-center group select-none relative"
@@ -823,7 +843,7 @@ export function MmlEditor({
 
         {/* 下部エリア (タブバー + コンテンツ: PROBLEMS / CONSOLE + 今後の拡張エリア) */}
         <div 
-          style={{ height: `${bottomHeight}px` }} 
+          style={{ height: `${isBottomCollapsed ? BOTTOM_COLLAPSED_HEIGHT_PX : bottomHeight}px` }} 
           className="bg-[#1E1E1E] border-t border-[#3C3C3C] flex flex-col font-mono text-xs select-none shrink-0 overflow-hidden"
         >
           {/* 下部タブバー */}
@@ -887,6 +907,18 @@ export function MmlEditor({
 
             {/* タブ右側 アクションボタン */}
             <div className="flex items-center gap-1.5">
+              {activeBottomTab === 'console' && (
+                <button
+                  onClick={handleCopyLogs}
+                  className="h-5 px-2 rounded bg-[#333333] hover:bg-[#3E3E3E] text-zinc-400 hover:text-zinc-200 text-[10px] font-mono border border-[#484848] transition-colors cursor-pointer flex items-center gap-1"
+                  title="コンソールログ全文をクリップボードへコピー"
+                >
+                  {isLogsCopied
+                    ? <Check className="w-3 h-3 text-emerald-400" />
+                    : <Copy className="w-3 h-3" />}
+                  {isLogsCopied ? 'COPIED' : 'COPY'}
+                </button>
+              )}
               {activeBottomTab === 'problems' && errors.length > 0 && onClearErrors && (
                 <button
                   onClick={onClearErrors}
@@ -905,6 +937,17 @@ export function MmlEditor({
                   CLEAR
                 </button>
               )}
+
+              {/* 下部エリアの折りたたみトグル (タブに依存せず常時表示) */}
+              <button
+                onClick={() => setIsBottomCollapsed(prev => !prev)}
+                className="h-5 w-5 rounded bg-[#333333] hover:bg-[#3E3E3E] text-zinc-400 hover:text-zinc-200 border border-[#484848] transition-colors cursor-pointer flex items-center justify-center"
+                title={isBottomCollapsed ? '下部エリアを展開' : '下部エリアを折りたたむ'}
+              >
+                {isBottomCollapsed
+                  ? <ChevronUp className="w-3 h-3" />
+                  : <ChevronDown className="w-3 h-3" />}
+              </button>
             </div>
           </div>
 
@@ -932,30 +975,7 @@ export function MmlEditor({
             )}
 
             {activeBottomTab === 'console' && (
-              <div className="h-full p-3 font-mono text-xs overflow-y-auto space-y-1 bg-[#1A1A1A]">
-                {logs.map((log, index) => {
-                  const isError = log.includes('[ERROR]');
-                  const isBuild = log.includes('[BUILD]');
-                  const isSuccess = log.includes('SUCCESS');
-                  return (
-                    <div 
-                      key={index} 
-                      className={
-                        isError 
-                          ? 'text-red-400' 
-                          : isSuccess 
-                            ? 'text-emerald-400' 
-                            : isBuild 
-                              ? 'text-cyan-300' 
-                              : 'text-zinc-400'
-                      }
-                    >
-                      {'>'} {log}
-                    </div>
-                  );
-                })}
-                <div className="animate-pulse text-zinc-400 font-bold">{'_'}</div>
-              </div>
+              <ConsolePanel logs={logs} />
             )}
           </div>
         </div>
