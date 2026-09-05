@@ -141,9 +141,16 @@ C# の partial class (1 クラス複数ファイル) は、TS では 1 ファイ
 3. **等価性テスト**: C# 版 `Z80DriverEquivalenceTests` を vitest に移植し、
    SourceInterpreter (`MzsdSequencer`) と Z80Driver (`Z80DriverMachine`) の全フレーム音源レジスタ
    (PSG×2 全パラメータ / BEEP counter・gate / YM2151 全 256 レジスタの書き込み有無と値) を比較する。
-   11 シナリオ (全チャンネル / 音量エンベロープ / ピッチエンベロープ・スイープ / ノイズ / L ループ /
-   ネストループ / トランスポーズ / FM ピッチ系) 中 9 が合格。残り 2 (FM 音色レジスタマッピング) は
-   C# 版がスキップしている同一理由で `it.skip` とし、Z80 ドライバ側の `apply_fm_tone` 修正まで保留。
+   **11 シナリオ全てが合格 (2026-09-06)**。かつて C# 版がスキップしていた 2 シナリオ (FM 音色
+   レジスタマッピング) は、Z80 ドライバ `apply_fm_tone` 周辺の下記 3 バグ修正により解消した
+   (`driver/mzsd_driver.asm`):
+   - `ev_tone`: 音色番号範囲チェックが `音色数 - 1` と比較しており、最後の音色番号 (音色数 1 時は
+     音色 0) が常に範囲外扱いでスキップされ、`apply_fm_tone` が一度も呼ばれていなかった →
+     音色数との直接比較へ修正。
+   - `aft_reg`: オペレータアドレス計算が `op*4` (`add a,a` ×2) で、OPM 正の `op*8` でなかった
+     (op1 以降の書き込みが ch4-7 のレジスタ領域へ衝突) → `add a,a` を 1 回追加。
+   - 0xC0 系 (DT2/D2R): DT2 読み出しが `hl` が既に p2 を指した状態で `+9` しており p11
+     (次オペレータの AR) を読んでいた → `+7` (p9) に修正。
 4. **C# リファレンス値ダンプ (`tools/cs-probe/`)**: chips 移植の検証のため、C# 版
    `MzSound.Player` を参照する .NET コンソールツールを用意した。
    `dotnet run --project tools/cs-probe -c Release` で以下を `out/reference.json` へ出力し、
@@ -159,19 +166,31 @@ C# の partial class (1 クラス複数ファイル) は、TS では 1 ファイ
    16bit ポート) に加え、上記 §4.3 の実ドライバ等価性テストで実機相当の命令列を通した検証を行う。
    `lkesteloot/trs80` の `z80-test` (1356 テスト) による命令セット全数検証は、テストバイナリの
    取り込みと RST 38h 出力ハンドラ実装が必要なため **今後の検証拡充タスク** とする (§1.1)。
+   **実現可能性調査完了 (2026-09-06)**:
+   - `packages/z80-test` (MIT, Copyright (c) 2019 Lawrence Kesteloot) はテキスト形式の
+     `tests.in` / `tests.expected` (計約 484 KB) を持ち、`Delegate` インターフェース
+     (`getRegister` / `setRegister` / `readMemory` / `writeMemory` / `run(tStateCount)` /
+     `getTStateCount` / `startNewTest`) を実装した任意のエミュレータを接続できる。
+     `Runner` は `checkTStates` / `checkEvents` を無効化可能なため、レジスタ最終値 + メモリ変化
+     の検証を主軸にできる。1 命令実行 API (`executeNextInstruction`) は内製コアに既存。
+   - **前提要件 (未解決)**: 全テストが **MEMPTR** レジスタを検証対象とするが、内製コアは
+     MEMPTR 未実装 (Z80dotNet 由来の移植時に省略)。完全合格には全命令ディスパッチへの
+     MEMPTR 設定追加が必要で、コアへの大規模変更となる。MEMPTR は割り込み系挙動にのみ影響し、
+     演奏ドライバ (割り込み未使用) には影響しないため、**MEMPTR 実装の要否を含め別タスクとして
+     判断する**。
 
 ## 4.1 Z80dotNet 由来コードのライセンス表記
 
 `src/core/z80/` は Z80dotNet (https://github.com/Konamiman/Z80dotNet, Copyright (C) 2014
 Konamiman) を TypeScript へ移植・改変したものである。Z80dotNet の LICENSE.txt 条項
 (著作権表示と許諾表示を全てのコピーに添付すること、改変部分を明示すること) に従い、
-該当ソースの冒頭に下記を記載している。
+**2026-09-06 に以下を整備した**:
 
-```text
- * Based on Z80dotNet (https://github.com/Konamiman/Z80dotNet) originally written by Konamiman.
- * Copyright (C) 2014 Konamiman, www.konamiman.com.
- * 本ファイルは Z80dotNet の LICENSE.txt 条項 (著作権 / 許諾表示の保持、改変の明示) に従って改変したものである。
-```
+- `src/core/z80/` の各 `.ts` ファイル (Z80Processor / Z80Registers / MainRegisters / Z80Bus)
+  の冒頭に、移植元の明示 (`This file is a TypeScript port of Z80.Net ...`)・改変者と日付
+  (`Modified by hiromsa on 2026-09-06`)・著作権表示・**Permission 条文の全文併記**を記載。
+- ルート [`LICENSE`](../../LICENSE) に Z80dotNet のライセンス全文 (改変版 MIT) を追記。
+- [`README.md`](../../README.md) に Credits セクション (移植・改変の明記) を追加。
 
 `Z80DriverImage.ts` / `Z80DriverMachine.ts` は C# 版プロジェクト (`mz1500_sound_devenv`) の
 実装移植であり Z80dotNet コードを含まないが、CPU コアの挙動参照元として本節に記録する。
@@ -186,3 +205,4 @@ Konamiman) を TypeScript へ移植・改変したものである。Z80dotNet �
 | 2026/09/05 | Phase 3 完了: 演奏エンジン (`Sequencer` + `Audio` + `Player`) を移植。NAudio の合成部は Web Audio 非依存の `AudioFrameMixer` に分離、出力は AudioWorklet (Blob URL) + ScriptProcessor フォールバック。テスト合計 132 (Player 系 +22)。 |
 | 2026/09/05 | Phase 4 完了: Z80 CPU コア (`src/core/z80/`、Z80dotNet 相当・全命令 / T-state / HALT / 16bit ポート) とドライバ実行環境 (`Z80DriverImage.ts` / `Z80DriverMachine.ts`) を移植。実ドライバが内蔵コア上で動作し、SourceInterpreter との全フレーム等価性テスト (9 シナリオ) 合格。テスト合計 209 合格 + 2 skip。§4.1 (ライセンス表記) / §4.5 (検証方針) 追加。 |
 | 2026/09/05 | Phase 5 完了: UI 接続。`FrameDriver` 抽象 (`MzsdSequencer` / `Z80DriverPlayback` を同一視) を導入し `AudioEngine` に Z80Driver モードを接続。`src/core/export/QdfImageBuilder.ts` (C# QdcImageBuilder 移植・実機起動実績あり) による `EXPORT (.qdf)` (ドライバ込み実機起動イメージ格納) を実装。UI は MML BUILD → `MmlCompiler` (エラー → PROBLEMS / CONSOLE)、PLAY → `Player`、TrackMonitor を VU / 演奏位置 (`MmlMap`) 実データ連携化、SETTINGS に演奏エンジン切替を追加。テスト合計 222 合格 + 2 skip。 |
+| 2026/09/06 | 等価性テスト 11/11 合格: Z80 ドライバ `apply_fm_tone` の 3 バグ (音色番号範囲チェック / `aft_reg` の op×4 → op×8 / 0xC0 系 DT2 オフセット p11 → p9) を修正し、C# 版持ち越しの skip 2 シナリオを解消 (§4.3)。§4.1 ライセンス表記 (LICENSE / README / 各 .ts ヘッダー) を整備。§4.5 に z80-test 実現可能性調査結果を追記 (MEMPTR 未実装が完全合格の前提要件と判明)。 |

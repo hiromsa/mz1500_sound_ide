@@ -5,6 +5,24 @@
 ---
 
 ## 1. 直近の完了作業（最新）
+- **Z80 ドライバ `apply_fm_tone` のレジスタマッピング 3 バグ修正 & C# 版持ち越し skip 2 テストの解消 (`driver/mzsd_driver.asm`, `src/core/player/__tests__/Z80DriverEquivalence.test.ts`, [`docs/specification/web_core_port.md`](./specification/web_core_port.md))** (2026-09-06):
+  - **背景**: C# 版から持ち越された「Z80 `apply_fm_tone` の 0x98/0xA0 系レジスタが C# 版とズレる」課題 (等価性テスト 11 シナリオ中 2 が skip) を解消。
+  - **原因 (3 バグ)**:
+    1. `ev_tone` の音色番号範囲チェックが `音色数 - 1` と比較しており、最後の音色番号 (音色数 1 時は音色 0) が常に範囲外扱いでスキップ → `apply_fm_tone` が一度も呼ばれず FM 音色レジスタが全く書かれない。
+    2. `aft_reg` のオペレータアドレス計算が `op*4` (`add a,a` ×2) で、OPM 正の `op*8` でなかった (op1 以降の書き込みが ch4-7 のレジスタ領域へ衝突)。
+    3. 0xC0 系 (DT2/D2R) の DT2 読み出しが、`hl` が既に p2 を指した状態で `+9` しており p11 (次オペレータの AR) を読んでいた (`+7` = p9 が正)。
+  - **検証**: 等価性テスト 11 シナリオ **全合格 (skip 0)** / `npm test` 全 252 合格 (旧 skip 2 を有効化) / lint エラーゼロ / build 成功。`DriverAsmBuild` テスト (実ドライバ再アセンブル) も合格。
+  - **影響**: EXPORT (.qdf) のドライバイメージは修正版アセンブリから再ビルドされる。
+
+- **Z80dotNet 由来コードのライセンス表記整備 (`LICENSE`, `README.md`, `src/core/z80/*.ts` × 4)** (2026-09-06):
+  - `src/core/z80/` の 4 ファイル (Z80Processor / Z80Registers / MainRegisters / Z80Bus) 冒頭ヘッダーに「TypeScript port of Z80.Net」明示・**改変者と日付 (`Modified by hiromsa on 2026-09-06`)**・**Permission 条文全文の併記**を追加 (改変版 MIT の条項要件を完全充足)。
+  - ルート `LICENSE` に Z80dotNet のライセンス全文 (改変版 MIT) を追記。
+  - `README.md` に Credits セクション (移植・改変の明記 + ライセンス誘導) を追加。
+
+- **z80-test (1356 テスト) 命令セット全数検証の実現可能性調査完了 ([`docs/specification/web_core_port.md`](./specification/web_core_port.md) §4.5)** (2026-09-06):
+  - `lkesteloot/trs80` の `packages/z80-test` (MIT, Copyright (c) 2019 Lawrence Kesteloot) を調査。テキスト形式 `tests.in` / `tests.expected` (計約 484 KB) を `Delegate` インターフェース経由で任意のエミュレータへ接続する設計、`checkTStates` / `checkEvents` は無効化可能と判明。
+  - **前提要件を確定**: 全テストが **MEMPTR** レジスタを検証するが、内製コアは MEMPTR 未実装 (移植時に省略)。完全合格には全命令ディスパッチへの MEMPTR 設定追加 (コア大規模変更) が必要。MEMPTR は割り込み系挙動にのみ影響し、演奏ドライバ (割り込み未使用) には無関係。**MEMPTR 実装の要否を含め別タスクで判断する** (詳細は web_core_port.md §4.5)。
+
 - **システムコンソールの機能拡張 (`src/view/ConsolePanel.tsx` 新設, `src/view/MmlEditor.tsx`, `src/app/App.tsx`, `src/utils/consoleLogStyle.ts` / `diagnosticsLog.ts` 新設, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-06):
   - **コンソール本体の部品化 (`ConsolePanel.tsx` 新設)**:
     - `MmlEditor.tsx` 内にインライン実装されていた CONSOLE タブのログ表示を `ConsolePanel` コンポーネントとして分離 (高凝集・疎結合化)。
@@ -285,9 +303,11 @@
 - [x] **Phase 4: Z80 コア移植 + ドライバ実行** (完了 → §1 参照)
   - [x] Z80dotNet 相当の TS コア (全命令セット / 16bit ポート相当 / T-state 精度 / HALT)
   - [x] `Z80DriverImage.ts` (ドライバビルド + MZSD 配置) / `Z80DriverMachine.ts` (E008h bit7 H-BLANK 同期)
-  - [x] **等価性テスト**: SourceInterpreter vs Z80Driver の全フレーム音源レジスタ比較 (9/11 合格、2 は C# と同一理由で skip)
+  - [x] **等価性テスト**: SourceInterpreter vs Z80Driver の全フレーム音源レジスタ比較
+    (**11/11 合格**。旧 skip 2 は 2026-09-06 の `apply_fm_tone` 修正で解消 → §1 参照)
   - [ ] (残タスク) `lkesteloot/trs80` の `z80-test` (1356 テスト) による命令セット全数検証
-    (テストバイナリの取り込み + RST 38h 出力ハンドラ実装が必要。web_core_port.md §4.5)
+    (実現可能性調査完了。テストデータ取り込み + Delegate 実装に加え、**MEMPTR 実装 (コア大規模変更)** が
+    前提要件。詳細は [`web_core_port.md`](./specification/web_core_port.md) §4.5)
 - [x] **Phase 5: UI 接続** (完了 → §1 参照)
   - [x] MML エディタ BUILD/PLAY → `MmlCompiler` 実行 (コンパイルエラー→ CompileErrorPanel / システムコンソール)
   - [x] PLAY → `Player` (SourceInterpreter 既定、SETTINGS で Z80Driver 切替)
@@ -295,8 +315,8 @@
   - [x] エクスポート (.qdf) 実装 (MZT は次フェーズへ持ち越し・C# 版に MZT 出力実装なしとの判断により
     実機起動実績のある .qdf を先行実装。仕様: quickdisk_export.md)
   - [ ] (残タスク) 実機 / エミュレータでの試聴・起動確認 (Phase 3 時点の AudioWorklet 実機検証込み)
-- [ ] **@FM 音色レジスタマッピングの課題引き継ぎ** (C# 版の持ち越し: Z80 `apply_fm_tone` の 0x98/0xA0 系が C# とズレる、
-  C# 版 skip 2 テストの原因。Phase 4 の等価テスト実装時に解消を目指す)
+- [x] **@FM 音色レジスタマッピングの課題** (2026-09-06 解消): C# 版持ち越しの Z80 `apply_fm_tone`
+  バグ 3 件 (音色範囲チェック / op アドレス倍率 / DT2 オフセット) を修正し、等価性テスト 11/11 合格。→ §1 参照
 
 ---
 
@@ -305,15 +325,17 @@
 
 Konamiman氏の `Z80.Net` をTypeScriptへ移植するにあたり、以下のライセンス条件（改変版MITライセンス）を満たす必要がある。
 
+**✅ 2026-09-06 に全項目完了** (→ §1 参照)。
+
 ## 1. ドキュメント類の整備
-- [ ] `LICENSE` ファイルの作成
-  - 元の著作権表示（`Copyright (C) 2014 Konamiman...`）およびライセンス全文をそのままコピーして配置する。追記でいいかな。
-- [ ] `README.md` への記載
+- [x] `LICENSE` ファイルの作成 (2026-09-06 完了)
+  - 元の著作権表示（`Copyright (C) 2014 Konamiman...`）およびライセンス全文をそのままコピーして配置する。追記でいいかな。→ 追記方式で配置済み。
+- [x] `README.md` への記載 (2026-09-06 完了)
   - Konamiman氏の `Z80.Net` を元に、C#からTypeScriptへ移植（改変）した旨を明記する。
   - `README.md` 内にも著作権表示とライセンス文を併記する。
 
 ## 2. ソースコードヘッダーへの記載
-- [ ] 移植した各 `.ts` ファイルの先頭に、以下の内容を含むコメントブロックを追記する。
+- [x] 移植した各 `.ts` ファイルの先頭に、以下の内容を含むコメントブロックを追記する。 (2026-09-06 完了: Z80Processor / Z80Registers / MainRegisters / Z80Bus の 4 ファイル)
   - 元の著作権表示（`Copyright (C) 2014 Konamiman...`）
   - 「Konamiman氏のコードをTypeScriptに移植・改変した」という明確な宣言
   - 改変者（自分）の名前と改変日
