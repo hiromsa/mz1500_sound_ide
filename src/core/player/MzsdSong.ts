@@ -53,6 +53,8 @@ export const MzsdOp = {
   LoopEnd: 0x0c,
   Pan: 0x0d,
   TrackEnd: 0x0e,
+  /** FM 専用音量 (@v コマンド)。0-127、127 = 最大音量。TL = 127 - 値 を全 op へ反映。 */
+  FmVolume: 0x0f,
 } as const;
 
 const HeaderMinSize = 32;

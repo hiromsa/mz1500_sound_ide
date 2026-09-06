@@ -29,7 +29,7 @@ assert('@VE2 C -> volEnvId=2',
   analyzeMmlLine('@VE2 C'),
   { toneId: null, volEnvId: 2, pitchEnvId: null });
 
-assert('@v5 C -> volEnvId=null (旧 @v は @VE に一本化され解釈しない)',
+assert('@v5 C -> volEnvId=null (@v は FM 音量コマンドであり音量エンベロープ ID には影響しない)',
   analyzeMmlLine('@v5 C'),
   { toneId: null, volEnvId: null, pitchEnvId: null });
 

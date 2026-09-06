@@ -394,6 +394,26 @@ describe('Z80Driver 等価性 (SourceInterpreter vs Z80Driver)', () => {
     runBoth(builder, 40, false, 'FM PAN');
   });
 
+  it('FM 専用音量 (@v) がリファレンスと一致する', () => {
+    const builder = new SongBuilder();
+    builder.addFmTone(new Uint8Array(FmToneParameterCount));
+    builder.addTrack(
+      9,
+      SongBuilder.fmVolume(100),
+      SongBuilder.note(69, 6, 6),
+      SongBuilder.fmVolume(40),
+      SongBuilder.note(72, 6, 6),
+      SongBuilder.volume(10),
+      SongBuilder.note(64, 6, 6),
+      SongBuilder.fmVolume(127),
+      SongBuilder.note(65, 6, 6),
+      SongBuilder.fmVolume(0),
+      SongBuilder.note(67, 6, 6),
+      SongBuilder.trackEnd(),
+    );
+    runBoth(builder, 44, false, 'FM @v 音量');
+  });
+
   it('FM ピッチエンベロープ / スイープ / ディチューン / トランスポーズがリファレンスと一致する', () => {
     const builder = new SongBuilder();
     builder.addFmTone(new Uint8Array(FmToneParameterCount)); // 音色 0 (全 0)

@@ -173,4 +173,24 @@ describe('parseMmlCaretContext', () => {
       expect(veCtx.volEnvId).toBe(7);
     });
   });
+
+  describe('@v (FM 専用音量) の適用範囲', () => {
+    it('@v を FM トラックで解析する', () => {
+      const ctx = parseMmlCaretContext('F1 @v100 c', 1, 12);
+      expect(ctx.engine).toBe('fm');
+      expect(ctx.fmVolume).toBe(100);
+    });
+
+    it('@v は PSG トラックでは無視される (正式パーサ準拠)', () => {
+      const ctx = parseMmlCaretContext('P1 @v100 c', 1, 12);
+      expect(ctx.engine).toBe('psg');
+      expect(ctx.fmVolume).toBe(127); // 初期値のまま
+    });
+
+    it('@v の即値指定で音量エンベロープは解除される (正式パーサ準拠)', () => {
+      const ctx = parseMmlCaretContext('F1 @VE2 @v100 c', 1, 17);
+      expect(ctx.volEnvId).toBeUndefined();
+      expect(ctx.fmVolume).toBe(100);
+    });
+  });
 });

@@ -160,6 +160,10 @@ export class SongBuilder {
     return Uint8Array.from([MzsdOp.Pan, value]);
   }
 
+  static fmVolume(value: number): Uint8Array {
+    return Uint8Array.from([MzsdOp.FmVolume, value]);
+  }
+
   static noiseCtl(flags: number): Uint8Array {
     return Uint8Array.from([MzsdOp.NoiseCtl, flags]);
   }

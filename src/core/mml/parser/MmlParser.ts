@@ -26,6 +26,7 @@ const OpLoopStart = 0x0b;
 const OpLoopEnd = 0x0c;
 const OpPan = 0x0d;
 const OpTrackEnd = 0x0e;
+const OpFmVolume = 0x0f;
 
 const MaxLoopDepth = 8;
 
@@ -336,12 +337,13 @@ export class MmlParser {
 
   private processAt(line: string, pos: number, lineNo: number, tracks: TrackBuilder[]): number {
     // 長い語から先に判定する (@PE / @VE / @FM は mml_reference.md 3.4-3.6 のエイリアス)
-    // 音量エンベロープは @VE のみ対応 (旧 @v は将来の拡張用に予約するため解釈しない)
+    // 音量エンベロープは @VE のみ対応 (@v は FM 専用音量コマンドとして再利用)
     if (startsWithWord(line, pos, 'EP')) return this.processPitchEnvelopeCmd(line, pos + 2, lineNo, tracks);
     if (startsWithWord(line, pos, 'PE')) return this.processPitchEnvelopeCmd(line, pos + 2, lineNo, tracks);
     if (startsWithWord(line, pos, 'VE')) return this.processVolumeEnvelopeCmd(line, pos + 2, lineNo, tracks);
     if (startsWithWord(line, pos, 'FM')) return this.processTone(line, pos + 2, lineNo, tracks);
     if (startsWithWord(line, pos, 'SW')) return this.processSweep(line, pos + 2, lineNo, tracks);
+    if (startsWithWord(line, pos, 'v')) return this.processFineVolume(line, pos + 1, lineNo, tracks);
     if (startsWithWord(line, pos, 'wn')) return this.processNoiseWave(line, pos + 2, lineNo, tracks);
     if (startsWithWord(line, pos, 'in')) return this.processNoiseSync(line, pos + 2, lineNo, tracks);
     if (startsWithWord(line, pos, 't')) return this.processFrameTempo(line, pos + 1, lineNo, tracks);
@@ -506,6 +508,40 @@ export class MmlParser {
 
     if (!hasFm) {
       this.diagnostics.push(mmlWarn(lineNo, pos + 1, 'p は FM トラック (F1-F8) でのみ有効です'));
+    }
+
+    return read.next;
+  }
+
+  /** @v<n> : FM 音量指定 (0-127、127 = 最大音量)。YM2151 TL (Total Level) へ 127 - n で反映。FM トラック専用。 */
+  private processFineVolume(line: string, pos: number, lineNo: number, tracks: TrackBuilder[]): number {
+    // pos は 'v' の次 (数値の先頭) を指す (processAt から pos + 1 で呼ばれる)
+    const read = readUnsigned(line, pos, -1);
+    if (read === null) {
+      this.diagnostics.push(mmlError(lineNo, pos + 1, '@v の後に音量 (0-127) が必要です'));
+      return -1;
+    }
+
+    let vol = read.value;
+    if (vol > 127) {
+      this.diagnostics.push(mmlWarn(lineNo, pos + 1, `音量 ${vol} は 0-127 の範囲外です (制限しました)`));
+      vol = 127;
+    }
+
+    let hasFm = false;
+    for (const t of tracks) {
+      if (!t.track.isFm) {
+        continue;
+      }
+
+      hasFm = true;
+      t.state.volumeEnvIndex = -1; // 即値指定でエンベロープ解除
+      t.code.push(OpFmVolume);
+      t.code.push(vol);
+    }
+
+    if (!hasFm) {
+      this.diagnostics.push(mmlWarn(lineNo, pos + 1, '@v は FM トラック (F1-F8) でのみ有効です'));
     }
 
     return read.next;

@@ -77,6 +77,12 @@ export class TrackSequencer {
 
   private attenuation = 0; // レジスタ減衰量 = 15 - 音量 (エンベロープ適用時はその値)
 
+  /** FM 専用音量 (@v コマンド、0-127、127 = 最大)。fineVolume 有効時のみ参照。 */
+  private fmVolume = 127;
+
+  /** true = @v (0-127) モード (TL = 127 - fmVolume) / false = v モード (TL = attenuation × 8)。 */
+  private fineVolume = false;
+
   private transpose = 0;
 
   private detune = 0;
@@ -229,7 +235,16 @@ export class TrackSequencer {
       case MzsdOp.Volume:
         this.volume = Math.min(Math.max(data[this.pointer++], 0), 15);
         this.venvIndex = -1;
+        this.fineVolume = false; // v 指定で @v モード解除 (後勝ち)
         this.attenuation = 15 - this.volume;
+        this.writeAttenuation();
+        break;
+
+      case MzsdOp.FmVolume:
+        // FM 専用音量 (@v コマンド): 即値指定でエンベロープ解除 (OpVolume と同一挙動)
+        this.fmVolume = Math.min(Math.max(data[this.pointer++], 0), 127);
+        this.fineVolume = true;
+        this.venvIndex = -1;
         this.writeAttenuation();
         break;
 
@@ -238,12 +253,14 @@ export class TrackSequencer {
         if (id === 0xff || this.song.volumeEnvelopes.length === 0) {
           this.venvIndex = -1;
           this.venvReleasing = false;
+          this.fineVolume = false; // エンベロープ / 解除指定で @v モード解除 (後勝ち)
           this.attenuation = 15 - this.volume;
           this.writeAttenuation();
         } else {
           this.venvIndex = Math.min(id, this.song.volumeEnvelopes.length - 1);
           this.venvPos = 0;
           this.venvReleasing = false;
+          this.fineVolume = false; // エンベロープ / 解除指定で @v モード解除 (後勝ち)
         }
 
         break;
@@ -549,8 +566,9 @@ export class TrackSequencer {
     if (this.isBeep) {
       this.chips.beep.setGate(this.attenuation < 15);
     } else if (this.isFm) {
-      // v0-15 → TL = (15 - v) × 8。フェーダー音量は TL トリムとして追加
-      const tl = Math.min(Math.max(this.attenuation * 8 + this.chips.getFmTrim(this.fmChannel), 0), 127);
+      // v0-15 → TL = (15 - v) × 8 / @v0-127 → TL = 127 - @v。フェーダー音量は TL トリムとして追加
+      const base = this.fineVolume ? 127 - this.fmVolume : this.attenuation * 8;
+      const tl = Math.min(Math.max(base + this.chips.getFmTrim(this.fmChannel), 0), 127);
       for (let op = 0; op < 4; op++) {
         this.chips.fm.setReg(0x60 + (op << 3) + this.fmChannel, tl);
       }

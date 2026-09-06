@@ -236,11 +236,48 @@ describe('MML reference compliance (mml_reference.md 4章)', () => {
     expect(result.success).toBe(false);
   });
 
-  it('obsolete @v alias is no longer recognized as volume envelope', () => {
-    // 音量エンベロープは @VE のみ対応。旧 @v は将来の拡張用に予約しているため解釈しない。
+  it('obsolete @v envelope definition is not a macro', () => {
+    // 音量エンベロープは @VE のみ対応。@v は FM 専用音量コマンドとして実装済みのため、
+    // 旧形式の定義行 (@vN = { ... }) はマクロ定義として認識されずエラーになる。
     const result = compile('@v1 = {15, 0}\nP1 @v1 c');
     expect(result.success).toBe(false);
     expect(result.diagnostics.some((d) => d.severity === DiagnosticSeverity.Error)).toBe(true);
+  });
+
+  it('@v fine volume is emitted to FM tracks (3.3)', () => {
+    const result = compile('F1 @v100 c');
+    expect(result.success).toBe(true);
+
+    const f1 = getTrackData(result, 'F1');
+    expect(f1[0]).toBe(0x0f); // FMVOL
+    expect(f1[1]).toBe(100);
+  });
+
+  it('@v outside FM tracks is a warning and not emitted', () => {
+    const result = compile('P1 @v100 c');
+    expect(result.success).toBe(true);
+    expect(result.diagnostics.some((d) => d.severity === DiagnosticSeverity.Warning && d.message.includes('@v'))).toBe(true);
+
+    // P1 には NOTE のみが出力され、FMVOL (0x0F) は含まれない
+    const p1 = getTrackData(result, 'P1');
+    expect(p1[0]).toBe(0x00);
+    expect(Array.from(p1).includes(0x0f)).toBe(false);
+  });
+
+  it('@v without a value is error', () => {
+    const result = compile('F1 @v c');
+    expect(result.success).toBe(false);
+    expect(result.diagnostics.some((d) => d.severity === DiagnosticSeverity.Error)).toBe(true);
+  });
+
+  it('@v out of range is clamped to 127 with warning', () => {
+    const result = compile('F1 @v300 c');
+    expect(result.success).toBe(true);
+    expect(result.diagnostics.some((d) => d.severity === DiagnosticSeverity.Warning)).toBe(true);
+
+    const f1 = getTrackData(result, 'F1');
+    expect(f1[0]).toBe(0x0f);
+    expect(f1[1]).toBe(127);
   });
 
   it('sample main.mml compiles with reference syntax', () => {

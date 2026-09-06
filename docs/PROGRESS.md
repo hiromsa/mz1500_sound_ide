@@ -5,6 +5,25 @@
 ---
 
 ## 1. 直近の完了作業（最新）
+- **MML に FM 専用音量コマンド `@v` (0〜127) を新設 (`src/core/mml/parser/MmlParser.ts`, `src/core/player/MzsdSong.ts`, `src/core/player/TrackSequencer.ts`, `driver/mzsd_driver.asm`, `src/core/player/__tests__/SongBuilder.ts` / `MzsdSequencer.test.ts` / `Z80DriverEquivalence.test.ts`, `src/core/mml/__tests__/MmlCompilerAdvanced.test.ts`, `src/utils/mmlCaretParser.ts` / `mmlLanguage.ts` / `__tests__/mmlCaretParser.test.ts`, `scripts/verify-mml-parser.mjs`, [`docs/specification/mml_reference.md`](./specification/mml_reference.md), [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-07):
+  - **背景・ユーザー確定方針**:
+    - 「@v は FM音源用のボリュームにしたいです。新設。0〜127。YM2151の仕様にあると思います。」
+    - 方針確定 (案A): **`@v127` = 最大音量 / `@v0` = 無音** とし、YM2151 の TL (Total Level) へ **`TL = 127 - @v`** を全 4 OP に一括上書き (現行 `v` モデルの高分解能版)。
+    - 背景: YM2151 にチャンネル音量レジスタは無く、音量制御は TL (7bit, 0=最大/127=無音) が唯一の手段。現行 `v` (0-15) は `TL = (15-v)×8` の 16 段階で、FM は `@VE` 非対応のため分解能向上のニーズ。
+  - **対応内容**:
+    1. **MML パーサ**: `processAt` に `@v` 分岐 (`processFineVolume`) を追加。0-127 即値、FM トラック以外は警告 (コード出力なし)、範囲外は警告 + 127 にクランプ、即値指定で音量エンベロープ (@VE) 解除 (`v` と同一挙動)。MZSD 命令 `OpFmVolume (0x0F)` を emit。
+    2. **TrackSequencer**: `fmVolume` (初期 127) / `fineVolume` (初期 false) 状態を追加。`MzsdOp.FmVolume` で `fineVolume=true` + TL 反映。`writeAttenuation` の FM 分岐は `fineVolume ? TL = 127 - fmVolume : TL = att×8` (+TL トリム・0-127 クランプ)。`v` / `@VE` 適用・解除指定で `fineVolume=false` (後勝ち)。
+    3. **実機 Z80 ドライバ (`mzsd_driver.asm`)**: `CH_FVOL (57)` / `CH_FMODE (58)` ワークを新設、dispatch に `0x0F → ev_fvol` 追加 (`ev_volume` / `ev_venv` で FMODE クリア)、`wa_fm` は FMODE で TL 計算を分岐。`init_work` / `init_ch_regs` で FVOL=127 / FMODE=0 初期化。**初期実装の dispatch 判定順では 0x0E (TRACK_END) が 0x0F 判定に到達してトラックが終了しないバグがあり修正** (0x0E → `ev_end` を先に判定)。
+    4. **キャレット解析 (`mmlCaretParser.ts`)**: `MmlCaretContext` / `TrackPlayState` に `fmVolume` (初期 127) を追加。`COMMAND_PATTERN` に `@[vV]\d+` を追加し **`@v100` が `v100` (音量 v15 相当) に誤トークン化される問題を解消**。`@V` 分岐は FM トラック時のみ `fmVolume` 反映 + `volEnvId` 解除 (正式パーサ準拠)。
+    5. **Monaco シンタックス (`mmlLanguage.ts`)**: `@v<数値>` を音量トークンとして色付け。
+    6. **テスト (+11)**: コンパイラ 5 件 (FM emit / 非 FM 警告・命令なし / 数値なしエラー / 範囲外クランプ / 旧定義行エラー)、シーケンサ 3 件 (4 OP へ TL=27 / `v` 後勝ちで TL=40 / `@v` で venv 解除)、等価性テスト 1 件 (TS シーケンサ vs 実機ドライバの `@v` 含む FM 曲)、キャレット解析 3 件。
+    7. **ドキュメント**: `mml_reference.md` 2章対応表 / 3.4 / 4.1 注記 / 5章サンプルに `@v` を追記・更新、`ui.md` にキャレット解析の `@v` (`fmVolume`) 対応を追記。
+  - **検証**:
+    - `npx tsc -b` エラーゼロ / **`npm test` 全 334 件合格** (+11) / `npm run lint` エラーゼロ (既存 UI 警告 2 のみ) / `npm run build` 成功 / `node scripts/verify-mml-parser.mjs` 全パス。
+  - **判明事項**:
+    - `@v` で MZSD 命令 `0x0F` を消費。今後の MZSD 命令追加は `0x10` 以降を使用すること。
+    - キャレット解析の `fmVolume` は仮想キーボードの音量スライダー (`v0-15` 表示) には未連動 (将来拡張)。
+
 - **音量エンベロープを `@VE` に一本化し旧エイリアス `@v` を廃止 (`src/core/mml/MmlCompiler.ts`, `src/core/mml/parser/MmlParser.ts`, `src/core/mml/MmlCompilerMacros.ts`, `src/utils/mmlCaretParser.ts`, `src/utils/mmlContextParser.ts`, `src/utils/mmlLanguage.ts`, `src/utils/mmlDefinitionLoader.ts`, `src/view/VolEnvelopeEditor.tsx`, `src/view/MmlEditor.tsx`, テスト各種, [`docs/specification/mml_reference.md`](./specification/mml_reference.md), [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-07):
   - **背景・ユーザー確定方針**:
     - 「@v は @VE だけにしたいです。あとで使う予定があります。」

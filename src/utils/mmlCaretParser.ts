@@ -14,6 +14,8 @@ export interface MmlCaretContext {
   pitchEnvId?: number;
   detune: number;
   noiseType?: 'periodic' | 'white';
+  /** FM 専用音量 (@v コマンド、0-127、127 = 最大)。FM トラックのみ更新される。 */
+  fmVolume: number;
 }
 
 /** トラックごとに保持される演奏状態 (キャレット位置までのコマンド適用結果) */
@@ -25,6 +27,7 @@ export interface TrackPlayState {
   pitchEnvId: number | undefined;
   detune: number;
   noiseType: 'periodic' | 'white';
+  fmVolume: number;
 }
 
 /** 有効なトラック名 (P1-P6 / N1-N2 / B1 / F1-F8) のパターン (大文字のみ。正式パーサ準拠) */
@@ -36,7 +39,7 @@ const TRACK_NAME_PATTERN = /^(?:P[1-6]|N[1-2]|B1|F[1-8])$/;
  * - `D` (ディチューン) は音符 `d` と区別するため大文字のみ (正式パーサ準拠)
  * - `f2` / `d4` のような音長付き音符はどのパターンにも誤マッチしない
  */
-const COMMAND_PATTERN = /@[fF][mM]\d+|@[pP][eE]\d+|@[eE][pP]\d+|@[vV][eE]\d+|@[wW][nN]\d+|@\d+|[oO][1-8]|[<>]|[vV]\d+|D-?\d+/g;
+const COMMAND_PATTERN = /@[fF][mM]\d+|@[pP][eE]\d+|@[eE][pP]\d+|@[vV][eE]\d+|@[wW][nN]\d+|@[vV]\d+|@\d+|[oO][1-8]|[<>]|[vV]\d+|D-?\d+/g;
 
 /** トラック名から音源種別を判定する (mml_reference.md 2節準拠) */
 export function resolveEngineFromTrackName(trackName: string): SoundEngineType {
@@ -59,6 +62,7 @@ function createDefaultTrackState(): TrackPlayState {
     pitchEnvId: undefined,
     detune: 0,
     noiseType: 'periodic',
+    fmVolume: 127,
   };
 }
 
@@ -221,6 +225,15 @@ export class MmlCaretContextTracker {
       state.pitchEnvId = parseOptionalInt(upper.slice(3));
     } else if (upper.startsWith('@VE')) {
       state.volEnvId = parseOptionalInt(upper.slice(3));
+    } else if (upper.startsWith('@V')) {
+      // @v: FM 専用音量 (0-127、127 = 最大)。即値指定で音量エンベロープ解除 (正式パーサ準拠)
+      const v = parseOptionalInt(upper.slice(2));
+      if (v !== undefined) {
+        state.volEnvId = undefined;
+        if (resolveEngineFromTrackName(trackName) === 'fm') {
+          state.fmVolume = Math.max(0, Math.min(127, v));
+        }
+      }
     } else if (upper.startsWith('@WN')) {
       state.noiseType = parseInt(upper.slice(3), 10) === 1 ? 'white' : 'periodic';
     } else if (upper.startsWith('@FM')) {

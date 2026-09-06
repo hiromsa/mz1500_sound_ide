@@ -203,4 +203,66 @@ describe('FM sequencer', () => {
     sequencer.tick();
     expect(chips.fm.tryGetRegister(0x20)?.value).toBe(0x5c);
   });
+
+  it('writes the @v total level to all four operators', () => {
+    // @v100 → TL = 127 - 100 = 27 を 4 op すべてへ
+    const builder = new SongBuilder();
+    builder.addTrack(9, SongBuilder.fmVolume(100), SongBuilder.note(69, 4, 4), SongBuilder.trackEnd());
+    const chips = new ChipBank();
+    const sequencer = new MzsdSequencer(MzsdSong.parse(builder.build()), chips, false);
+
+    sequencer.tick();
+    for (let op = 0; op < 4; op++) {
+      expect(chips.fm.tryGetRegister(0x60 + (op << 3))?.value).toBe(27);
+    }
+  });
+
+  it('switches back to the coarse volume when v follows @v', () => {
+    // 後勝ち: @v100 (TL=27) の後 v10 → TL = (15-10) × 8 = 40
+    const builder = new SongBuilder();
+    builder.addTrack(
+      9,
+      SongBuilder.fmVolume(100),
+      SongBuilder.note(69, 2, 2),
+      SongBuilder.volume(10),
+      SongBuilder.note(69, 2, 2),
+      SongBuilder.trackEnd(),
+    );
+    const chips = new ChipBank();
+    const sequencer = new MzsdSequencer(MzsdSong.parse(builder.build()), chips, false);
+
+    // tick 1 回目で FMVOL / NOTE まで実行 → @v100 (TL = 27)
+    sequencer.tick();
+    expect(chips.fm.tryGetRegister(0x60)?.value).toBe(27);
+
+    // tick 2 回で残りフレームを消費し、3 つ目の tick で VOLUME / NOTE まで実行 → v10 (TL = 40)
+    sequencer.tick();
+    sequencer.tick();
+    expect(chips.fm.tryGetRegister(0x60)?.value).toBe(40);
+  });
+
+  it('clears the volume envelope with the @v command', () => {
+    // 即値指定 (@v) で音量エンベロープが解除され、TL は @v ベースになる
+    const builder = new SongBuilder();
+    const venv = builder.addVolumeEnvelope([15, 8, 0], 255, 255);
+    builder.addTrack(
+      9,
+      SongBuilder.venv(venv),
+      SongBuilder.note(69, 2, 2),
+      SongBuilder.fmVolume(100),
+      SongBuilder.note(69, 2, 2),
+      SongBuilder.trackEnd(),
+    );
+    const chips = new ChipBank();
+    const sequencer = new MzsdSequencer(MzsdSong.parse(builder.build()), chips, false);
+
+    // tick 1 回目で VENV / NOTE まで実行 → venv 適用中 (venv 値 15 → att 0 → TL = 0)
+    sequencer.tick();
+    expect(chips.fm.tryGetRegister(0x60)?.value).toBe(0);
+
+    // tick 2 回で残りフレームを消費し、3 つ目の tick で FMVOL / NOTE まで実行 → @v100 (TL = 27)
+    sequencer.tick();
+    sequencer.tick();
+    expect(chips.fm.tryGetRegister(0x60)?.value).toBe(27);
+  });
 });

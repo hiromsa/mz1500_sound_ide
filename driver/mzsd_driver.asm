@@ -8,9 +8,10 @@
 ;   - フレーム同期は E008h bit7 (H-BLANK) の 1 -> 0 遷移をポーリング (実機互換)。
 ;   - 対応命令: NOTE / REST / TEMPO / VOLUME / VENV (音量エンベロープ) /
 ;     PENV (ピッチエンベロープ) / SWEEP / DETUNE / TRANSPOSE /
-;     TONE (FM 音色) / LOOP_START / LOOP_END / TRACK_END + 全体ループ (L)。
+;     TONE (FM 音色) / PAN (ステレオ定位) / FMVOL (@v: FM 専用音量) /
+;     LOOP_START / LOOP_END / TRACK_END + 全体ループ (L)。
 ;   - FM トラック (9-16 = OPM ch 0-7) は KC/KF 展開によるピッチ、
-;     TL = att * 8 による音量、@FM 音色 46 パラメータのレジスタ展開に対応。
+;     TL = att * 8 (v) / 127 - @v (@v) による音量、@FM 音色 46 パラメータのレジスタ展開に対応。
 ;   - エンベロープ / スイープ / ディチューンは C# リファレンス実装
 ;     (TrackSequencer.cs) と同一のフレーム進行で振る舞う (等価性テストで検証)。
 ; 構成 (メモリ):
@@ -80,6 +81,8 @@ CH_BASEP        equ     52              ; 2B: ノート基準値 (DCSG period / 
 CH_TONE         equ     54              ; 1B: TONE (FM 音色番号) 直近値
 CH_ALGFB        equ     55              ; 1B: ALG/FB (pan 変更時の 0x20 レジスタ再合成用)
 CH_PAN          equ     56              ; 1B: ステレオ定位 (0: 無出力 / 1: 左 / 2: 右 / 3: 左右)
+CH_FVOL         equ     57              ; 1B: @v FM 専用音量 (0-127、127 = 最大)
+CH_FMODE        equ     58              ; 1B: FM 音量モード (0 = v: TL=att*8 / 1 = @v: TL=127-@v)
 CH_TOTAL        equ     64              ; チャンネルブロック総サイズ (基本部 + ループ + 拡張部)
 
 TRACK_COUNT     equ     17
@@ -459,7 +462,11 @@ re_loop:
         jp      z,ev_loopend            ; 0x0C LOOP_END
         dec     a
         jp      z,ev_pan                ; 0x0D PAN
-        jp      ev_end                  ; 0x0E TRACK_END / 不明命令
+        dec     a
+        jp      z,ev_end                ; 0x0E TRACK_END
+        dec     a
+        jp      z,ev_fvol               ; 0x0F FMVOL (@v: FM 専用音量)
+        jp      ev_end                  ; 0x10+ 不明命令
 
 ; ---- NOTE: note(1) len(2) gate(2)
 ev_note:
@@ -556,6 +563,7 @@ ev_volume:
         ld      a,15
 ev_v1:
         ld      (ix+CH_VOLUME),a
+        ld      (ix+CH_FMODE),0         ; v 指定で @v モード解除 (C# OpVolume 相当)
         ld      (ix+CH_VENV),0xFF       ; 音量指定でエンベロープ解除 (C# OpVolume 相当)
         ld      (ix+CH_VREL),0
         neg
@@ -580,11 +588,13 @@ ev_venv:
         ld      (ix+CH_VENV),a
         ld      (ix+CH_VPOS),0
         ld      (ix+CH_VREL),0
+        ld      (ix+CH_FMODE),0         ; エンベロープ指定で @v モード解除
         ; (att は同フレーム内の venv_frame が書き込む = C# と同一)
         jr      ev_venv_done
 ev_venv_off:
         ld      (ix+CH_VENV),0xFF
         ld      (ix+CH_VREL),0
+        ld      (ix+CH_FMODE),0         ; エンベロープ指定で @v モード解除
         ld      a,15
         sub     (ix+CH_VOLUME)
         ld      (ix+CH_ATT),a
@@ -715,6 +725,20 @@ ev_pan:
         call    write_fm                ; RL bit を即時更新 (FB/ALG は現状維持)
         pop     hl
 ep_n:
+        call    update_ptr
+        jp      re_loop
+
+; ---- FMVOL: vol(1) — @v FM 専用音量 (0-127、127 = 最大)。TL = 127 - vol を 4 op へ
+ev_fvol:
+        ld      a,(hl)
+        inc     hl
+        ld      (ix+CH_FVOL),a
+        ld      (ix+CH_FMODE),1
+        ld      (ix+CH_VENV),0xFF       ; 即値指定でエンベロープ解除 (C# OpFmVolume 相当)
+        ld      (ix+CH_VREL),0
+        push    hl
+        call    write_att
+        pop     hl
         call    update_ptr
         jp      re_loop
 
@@ -1218,14 +1242,23 @@ an_async:
 ; FM 音源 (YM2151 / OPM) 出力 — C# TrackSequencer と同一動作
 ; ============================================================================
 
-; ---- FM 減衰量出力 (write_att の FM 分岐): TL = att * 8 (0-120) を 4 op へ
+; ---- FM 減衰量出力 (write_att の FM 分岐): TL を 4 op へ出力する
+;      v モード (CH_FMODE=0): TL = att * 8 (0-120) / @v モード (CH_FMODE=1): TL = 127 - @v (0-127)
 ;      (フェーダー TL トリムは内蔵コア側では 0 固定 = C# GetFmTrim 既定値と等価)
 ;      write_att から jp で入るため、末尾は wa_done (write_att の pop + ret) へ戻る
 wa_fm:
+        ld      a,(ix+CH_FMODE)
+        or      a
+        jr      z,wa_fm_att
+        ld      a,127
+        sub     (ix+CH_FVOL)            ; a = TL = 127 - @v
+        jr      wa_fm_go
+wa_fm_att:
         ld      a,(ix+CH_ATT)
         add     a,a
         add     a,a
-        add     a,a                     ; a = TL
+        add     a,a                     ; a = TL = att * 8
+wa_fm_go:
         ld      c,a
         ld      a,(ix+CH_PORT)
         ld      e,a                     ; e = FM チャンネル (0-7)
@@ -1957,6 +1990,7 @@ iw_ch:
         push    bc
         ld      (ix+CH_VOLUME),15
         ld      (ix+CH_ATT),15
+        ld      (ix+CH_FVOL),127        ; @v 音量初期値 (最大音量)
         ld      de,CH_TOTAL
         add     ix,de
         pop     bc
@@ -2005,6 +2039,8 @@ init_ch_regs:
         ld      (ix+CH_SWEEP),0
         ld      (ix+CH_ALGFB),0
         ld      (ix+CH_PAN),3           ; 初期定位: 左右出力 (p3 相当)
+        ld      (ix+CH_FVOL),127        ; @v 音量初期値 (最大音量)
+        ld      (ix+CH_FMODE),0         ; 初期モード: v (TL = att * 8)
         cp      3                       ; a = トラック番号 ( xor a 等で壊さないこと )
         jr      c,icr_psg1              ; 0-2
         jr      z,icr_n1                ; 3

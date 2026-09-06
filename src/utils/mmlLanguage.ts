@@ -86,6 +86,7 @@ export const mmlMonarchTokensProvider: languages.IMonarchLanguage = {
       [/q[1-8]\b/i, 'quantize'],
 
       // 音量
+      [/[@]v\d+\b/i, 'volume'],               // @v: FM 専用音量 (0-127)
       [/v(?:1[0-5]|[0-9])\b/i, 'volume'],
 
       // デフォルト音長
