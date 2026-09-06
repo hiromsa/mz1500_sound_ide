@@ -5,6 +5,25 @@
 ---
 
 ## 1. 直近の完了作業（最新）
+- **MMLキャレット解析の複数行・複数トラック対応 (`src/utils/mmlCaretParser.ts`, `src/utils/__tests__/mmlCaretParser.test.ts` 新設, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-06):
+  - **背景・ユーザー報告**:
+    - 「仮想キーボード、FM TONE、VOLUME ENV、PITCH ENVにおいて、MMLのキャレットの位置に応じた、IDその他のパラメータが連動して表示されるようになっているのですが、複数行に対応していません。」
+    - 同一トラック (例: `F1`) の記述が 2 行に分かれた場合 (2行目も `F1` で開始)、2行目ではオクターブや音色ID等がデフォルト値に戻ってしまっていた。
+  - **原因**:
+    - 既存 `parseMmlCaretContext` は「最後に現れたトラック宣言以降のテキスト」のみを解析する方式のため、2行目の `F1` (継続行の再宣言) で解析範囲がそこからやり直しになり、1行目で設定した `o4` / `@1` / `@PE1` 等が引き継がれていなかった。
+  - **対応内容**:
+    1. `MmlCaretContextTracker` クラスを新設し、**トラックごとに演奏状態 (オクターブ・音量・FM音色ID・音量/ピッチENV ID・ディチューン・ノイズ波形) を Map で保持**する方式へ改修。同一トラックの継続行でも状態を引き継ぎ、`F1` → `P1` → `F1` のように複数トラックが交互に現れても各トラックの状態を正しく復元する。カンマ区切り複数指定 (`F1,F2`) は全指定トラックへ状態を適用 (正式パーサ準拠)。
+    2. トラック宣言の検出を正式パーサ (`MmlParser.detectTrackSpec`) 準拠に変更: **行頭・大文字のみ** (`P1-6` / `N1-2` / `B1` / `F1-8`)。これにより音長付き音符 (`f2` 等) を `F2` トラックと誤認する潜在バグも解消。
+    3. その他の正式パーサ (`MmlParser`) 整合:
+       - マクロ定義行 (`@1 = { ... }` / `@v1 = { ... }` / `@PE1 = { ... }` 等) を走査対象外に (コンパイラの前処理と同様)。
+       - `@EP` (= `@PE` のエイリアス) 対応、コメント除去を `;` / `/` 準拠に (`stripComment` 準拠)。
+       - ディチューン `D` は大文字のみ (音符 `d` と区別)。
+       - `@` / `@FM` (FM音色) は FM トラック (F1-F8) でのみ voiceId へ反映 (`processTone` の「FM トラックでのみ有効」準拠)。`engine` はトラック名から決定 (旧実装は PSG/BEEP トラック内の `@1` で `engine` が `fm` に化けていた)。
+       - Monaco の 1-indexed column による行切り詰めの off-by-one を修正 (`slice(0, column)` → `slice(0, column - 1)`)。
+  - **検証**:
+    - `npm test`: 全 **321 件合格** (新規 15 件: 単一行互換 / キャレット切り詰め / 複数行継続・複数トラック交互 / マクロ定義行除外 / 音符誤認防止 / `#OCTAVE REVERSE` / `@` 適用範囲)。
+    - `npx tsc -b` エラーゼロ / `npm run lint` エラーゼロ (既存 UI 警告 2 のみ) / `npm run build` 成功。
+
 - **MML にステレオ定位コマンド `p` を追加 & FM 音色 `AME` パラメータの未実装明記 (`src/core/mml/parser/MmlParser.ts`, `src/core/player/MzsdSong.ts`, `src/core/player/TrackSequencer.ts`, `driver/mzsd_driver.asm`, `src/core/player/__tests__/SongBuilder.ts` / `MzsdSequencer.test.ts` / `Z80DriverEquivalence.test.ts`, `src/core/mml/__tests__/MmlCompiler.test.ts`, [`docs/specification/mml_reference.md`](./specification/mml_reference.md))** (2026-09-06):
   - **背景・経緯**:
     - `mml_reference.md` の OPM (YM2151) 制御対応状況を精査し、(1) チップ実装はあるのに MML/MZSD 命令から制御できない機能 (PAN / ハード LFO / FM ノイズ / CSM)、(2) 46 パラメータの最終パラメータ `AME` が OPM の予約 bit (`$40-$5F` bit7) に書かれており実質無効 (デッド) であることを確認。
