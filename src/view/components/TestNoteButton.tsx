@@ -13,7 +13,7 @@ export interface TestNoteButtonProps {
   midiNote?: number;
   /** ノート番号変更コールバック */
   onChangeNote?: (midiNote: number) => void;
-  /** ボタンのラベル (デフォルト: 'TEST NOTE') */
+  /** ボタンのラベル (デフォルト: 'PREVIEW') */
   label?: string;
   /** ホバー時のツールチップ */
   title?: string;
@@ -25,7 +25,7 @@ export function TestNoteButton({
   onStop,
   midiNote = 60,
   onChangeNote,
-  label = 'TEST NOTE',
+  label = 'PREVIEW',
   title = 'Play preview tone',
 }: TestNoteButtonProps) {
   const [isOpen, setIsOpen] = useState(false);

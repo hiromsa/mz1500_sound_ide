@@ -166,6 +166,8 @@ interface MmlEditorProps {
   onActiveSourceChange?: (source: string, fileName: string) => void;
   /** MMLエディタ領域 (上部エディタ/エクスプローラー) にフォーカスが当たった時の通知コールバック */
   onFocusEditor?: () => void;
+  /** キャレット位置解析結果 (コンテキスト) が更新された時の通知コールバック */
+  onCaretContextChange?: (context?: MmlCaretContext) => void;
 }
 
 export function MmlEditor({ 
@@ -200,6 +202,7 @@ export function MmlEditor({
   onEditorMount,
   onActiveSourceChange,
   onFocusEditor,
+  onCaretContextChange,
 }: MmlEditorProps) {
   const [files, setFiles] = useState<MmlFile[]>(DUMMY_FILES);
   const [activeFileId, setActiveFileId] = useState<string>(DUMMY_FILES[0].id);
@@ -256,6 +259,7 @@ export function MmlEditor({
   const onRequestNewPitchEnvRef = useRef(onRequestNewPitchEnv);
   const onTogglePlayRef = useRef(onTogglePlay);
   const onFocusEditorRef = useRef(onFocusEditor);
+  const onCaretContextChangeRef = useRef(onCaretContextChange);
 
   // コールバック更新時にrefを同期
   useEffect(() => { onRequestEditToneRef.current = onRequestEditTone; }, [onRequestEditTone]);
@@ -266,6 +270,12 @@ export function MmlEditor({
   useEffect(() => { onRequestNewPitchEnvRef.current = onRequestNewPitchEnv; }, [onRequestNewPitchEnv]);
   useEffect(() => { onTogglePlayRef.current = onTogglePlay; }, [onTogglePlay]);
   useEffect(() => { onFocusEditorRef.current = onFocusEditor; }, [onFocusEditor]);
+  useEffect(() => { onCaretContextChangeRef.current = onCaretContextChange; }, [onCaretContextChange]);
+
+  // MMLキャレットコンテキスト変更を親コンポーネント (App) へ通知
+  useEffect(() => {
+    onCaretContextChangeRef.current?.(mmlCaretContext);
+  }, [mmlCaretContext]);
 
   /** Monaco editor beforeMount: MML 言語定義・Monarch トークナイザー・テーマを登録 */
   const handleBeforeMount = useCallback((monaco: Monaco) => {

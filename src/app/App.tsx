@@ -31,6 +31,7 @@ import { formatDiagnosticsAsLogLines } from '../utils/diagnosticsLog';
 import type { CompileErrorItem } from '../view/CompileErrorPanel';
 import type { ActiveTabContext } from '../view/VirtualKeyboard';
 import { findDefinitionBlocks, type MmlDefinitionKind } from '../utils/mmlContextParser';
+import type { MmlCaretContext } from '../utils/mmlCaretParser';
 import type { editor } from 'monaco-editor';
 import mz1500Logo from '../assets/mz1500logo.svg';
 
@@ -160,6 +161,37 @@ function App() {
     setFocusedPane('rightPane');
     setShowRightPane(true);
   }, [buildLoadRequest]);
+
+  // キャレット位置からの自動連動でロードされた直近のID (同一IDでの無駄な再ロード防止)
+  const lastAutoLoadedIdsRef = useRef<{ voiceId?: number; volEnvId?: number; pitchEnvId?: number }>({});
+
+  // MMLキャレット位置変更ハンドラ
+  const handleCaretContextChange = useCallback((ctx?: MmlCaretContext) => {
+    if (!ctx) return;
+
+    // MMLペイン操作中 (focusedPane === 'mml') のみ右ペインのIDおよびプレビュー音高を自動追従
+    if (focusedPane === 'mml') {
+      if (ctx.voiceId !== undefined && ctx.voiceId !== lastAutoLoadedIdsRef.current.voiceId) {
+        lastAutoLoadedIdsRef.current.voiceId = ctx.voiceId;
+        setLoadToneId(buildLoadRequest(ctx.voiceId));
+      }
+      if (ctx.volEnvId !== undefined && ctx.volEnvId !== lastAutoLoadedIdsRef.current.volEnvId) {
+        lastAutoLoadedIdsRef.current.volEnvId = ctx.volEnvId;
+        setLoadVolEnvId(buildLoadRequest(ctx.volEnvId));
+      }
+      if (ctx.pitchEnvId !== undefined && ctx.pitchEnvId !== lastAutoLoadedIdsRef.current.pitchEnvId) {
+        lastAutoLoadedIdsRef.current.pitchEnvId = ctx.pitchEnvId;
+        setLoadPitchEnvId(buildLoadRequest(ctx.pitchEnvId));
+      }
+      if (ctx.octave !== undefined) {
+        setTestMidiNote(prevNote => {
+          const semitone = ((prevNote % 12) + 12) % 12;
+          const targetNote = Math.max(12, Math.min(108, (ctx.octave + 1) * 12 + semitone));
+          return targetNote;
+        });
+      }
+    }
+  }, [focusedPane, buildLoadRequest]);
 
   /**
    * 「MMLに反映」ボタン: ID の定義有無で動作が変わる。
@@ -614,6 +646,7 @@ function App() {
             onRequestNewPitchEnv={handleRequestNewPitchEnv}
             onEditorMount={(editorInstance) => { monacoEditorRef.current = editorInstance; }}
             onActiveSourceChange={handleActiveSourceChange}
+            onCaretContextChange={handleCaretContextChange}
           />
         </div>
 

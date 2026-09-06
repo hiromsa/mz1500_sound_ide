@@ -5,6 +5,44 @@
 ---
 
 ## 1. 直近の完了作業（最新）
+- **MMLキャレット位置と仮想キーボード・各エディタの自動連動 & テスト発音ボタンの「PREVIEW」改称 (`src/view/components/TestNoteButton.tsx`, `src/view/MmlEditor.tsx`, `src/app/App.tsx`, `src/view/VirtualKeyboard.tsx`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-06):
+  - **背景・ユーザー要望**:
+    - 「MML で 選択したキャレットの位置により、仮想キーボードの各種パラメータはその位置の設定の内容に変化するようにしてください。
+      FM TONE、VOL ENV、 PITCH ENV、も同様です。IDやTEST NOTEの発音が変化します。
+      TEST NOTE ボタンは PREVIEW ボタンとかの名前でいいように思えます。
+      問題・矛盾などあればご指摘ください。」
+  - **課題・潜在的矛盾の検討と解決策**:
+    1. **編集中パラメータの保護（dirty ガード）**: 右ペインのエディタでパラメータ調整中に MML の別行をクリックした際、無条件で別 ID をリロードすると作成途中のデータが消失してしまう。
+       ➔ **対策**: MML エディタ操作中（`focusedPane === 'mml'`）のみ右ペインの ID をキャレット位置へ自動追従させ、右ペイン操作中（`focusedPane === 'rightPane'`）はエディタ内の手動設定・編集中データを保護。
+    2. **ID 未指定行への追従**: キャレット行に `@N` や `@vN` が書かれていない場合、同一トラックの前方行を遡って直近の指定を自動適用。曲頭から未指定の場合は現在選択中の ID を維持。
+    3. **仮想キーボード手動設定との優先関係**: 手動オーバーライド中であっても、MML のキャレットを動かした瞬間にその行の MML パラメータへ再同期。
+  - **変更内容**:
+    1. **テスト発音ボタンの名称変更 (`TestNoteButton.tsx`)**:
+       - デフォルトラベルを `TEST NOTE` から **`PREVIEW`** に変更（再生中は `STOP`）。全エディタ共通で適用。
+    2. **MML キャレット解析結果の親伝達 (`MmlEditor.tsx`, `App.tsx`)**:
+       - `MmlEditorProps` に `onCaretContextChange` を新設し、キャレット移動時に解析結果（`trackName`, `engine`, `octave`, `volume`, `voiceId`, `volEnvId`, `pitchEnvId`, `detune`）を親（`App.tsx`）へ通知。
+       - `App.tsx` では、`focusedPane === 'mml'` の時に：
+         - `voiceId` ➔ FM TONE エディタへロードリクエスト
+         - `volEnvId` ➔ VOL ENV エディタへロードリクエスト
+         - `pitchEnvId` ➔ PITCH ENV エディタへロードリクエスト
+         - `octave` ➔ `testMidiNote` を該当オクターブへ自動更新（選択中の音名を保持）。
+         - 直近ロード ID の ref キャッシュにより、同一行内でのカーソル移動による無駄な再ロードを防止。
+    3. **仮想キーボードの自動連動 (`VirtualKeyboard.tsx`)**:
+       - `activeTabContext === 'mml'` の時、MML キャレットの変更に応じて：
+         - `typingOctave` および鍵盤スクロールを目的のオクターブへ自動同期。
+         - 音量（`volume`）を手動オーバーライドから MML の値へ再同期。
+         - 音源（`engine`: PSG / FM / NOISE / BEEP）を自動連動。
+         - FM 音色 ID、VOL ENV ID、PITCH ENV ID の選択状態を自動同期。
+  - **検証**:
+    - `npm test`: 全 298 件すべて合格。
+    - `npm run lint`: エラー 0 件。
+    - `npm run build`: 成功。
+    - `browser_subagent` によるブラウザ実機検証:
+      - 右ペイン各タブ（YM2151 TONE, VOL ENV, PITCH ENV）でボタン名が `PREVIEW` になっていることを確認。
+      - MML エディタの `P1` 行クリック時、仮想キーボードのバッジが `MML CARET: P1`、CHIP が `AUTO (PSG)`、PITCH が `@PE1: Vib Mild`、VOL が `@v1: Piano`、OCT が `C4` に即座に連動することを確認。
+      - `drums.mml` の `N1` 行クリック時、バッジが `MML CARET: N1`、CHIP が `AUTO (NOISE)`、VOL が `DIRECT v12` に自動連動することを確認。
+      - PREVIEW ボタン押下で再生（STOP パルス表示）および停止が正しく動作することを確認。
+
 - **右ペイン（TRACK MONITOR ～ SONG SETUP / SETTINGS）ヘッダーのUI統一 & PRESET左詰め・非選択化 & テスト発音ボタン共通化・仮想キーボード相互連動 (`src/view/components/TestNoteButton.tsx`, `src/view/TrackMonitor.tsx`, `src/view/FmToneEditor.tsx`, `src/view/VolEnvelopeEditor.tsx`, `src/view/PitchEnvelopeEditor.tsx`, `src/view/SongSetupPanel.tsx`, `src/view/SettingsPanel.tsx`, `src/app/App.tsx`, `src/view/VirtualKeyboard.tsx`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-06):
   - **背景・ユーザー要望**:
     - 「TRACK MONITOR ～ SONG SETUP 内のヘッダ部分 に統一感が無いように思えます。

@@ -164,6 +164,7 @@ export function VirtualKeyboard({
 
   // スペースキードラッグスクロール（パン操作）用
   const [isSpacePressed, setIsSpacePressed] = useState<boolean>(false);
+  const [isPanning, setIsPanning] = useState<boolean>(false);
   const isSpacePressedRef = useRef<boolean>(false);
   const isPanningRef = useRef<boolean>(false);
   const panStartXRef = useRef<number>(0);
@@ -254,6 +255,52 @@ export function VirtualKeyboard({
       }
     }
   }, [mmlContext?.octave, activeTabContext]);
+
+  // MMLキャレットコンテキストの変化を各種パラメータへ自動連動
+  useEffect(() => {
+    if (activeTabContext !== 'mml' || !mmlContext) return;
+
+    // 1. オクターブ自動追従
+    if (mmlContext.octave !== undefined) {
+      setTypingOctave(mmlContext.octave);
+    }
+
+    // 2. 音源の自動連動 (手動オーバーライドをAUTOに戻す)
+    setManualEngine('auto');
+
+    // 3. 音量の自動連動 (手動オーバーライドをリセットしMML値優先)
+    setManualVolume(null);
+
+    // 4. FM音色ID自動連動
+    if (mmlContext.voiceId !== undefined) {
+      setSelectedFmToneId(mmlContext.voiceId);
+    }
+
+    // 5. ボリュームエンベロープ自動連動
+    if (mmlContext.volEnvId !== undefined) {
+      setPsgVolumeMode('env');
+      setSelectedVolEnv(String(mmlContext.volEnvId));
+    } else {
+      setPsgVolumeMode('direct');
+    }
+
+    // 6. ピッチエンベロープ自動連動
+    if (mmlContext.pitchEnvId !== undefined) {
+      setSelectedPitchEnv(`pe${mmlContext.pitchEnvId}`);
+    } else {
+      setSelectedPitchEnv('none');
+    }
+  }, [
+    activeTabContext,
+    mmlContext,
+    mmlContext?.trackName,
+    mmlContext?.octave,
+    mmlContext?.volume,
+    mmlContext?.engine,
+    mmlContext?.voiceId,
+    mmlContext?.volEnvId,
+    mmlContext?.pitchEnvId,
+  ]);
 
 
 
@@ -346,6 +393,7 @@ export function VirtualKeyboard({
     if (isSpacePressedRef.current && keyboardScrollRef.current) {
       e.preventDefault();
       isPanningRef.current = true;
+      setIsPanning(true);
       panStartXRef.current = e.clientX;
       panStartScrollLeftRef.current = keyboardScrollRef.current.scrollLeft;
       return;
@@ -364,6 +412,7 @@ export function VirtualKeyboard({
   const handleContainerMouseUp = () => {
     if (isPanningRef.current) {
       isPanningRef.current = false;
+      setIsPanning(false);
     }
     if (isMouseDownRef.current) {
       isMouseDownRef.current = false;
@@ -374,6 +423,7 @@ export function VirtualKeyboard({
   useEffect(() => {
     const onMouseUp = () => {
       isPanningRef.current = false;
+      setIsPanning(false);
       if (isMouseDownRef.current) {
         isMouseDownRef.current = false;
         handleAllNotesOff();
@@ -440,6 +490,7 @@ export function VirtualKeyboard({
         isSpacePressedRef.current = false;
         setIsSpacePressed(false);
         isPanningRef.current = false;
+        setIsPanning(false);
         return;
       }
 
@@ -458,6 +509,7 @@ export function VirtualKeyboard({
       isSpacePressedRef.current = false;
       setIsSpacePressed(false);
       isPanningRef.current = false;
+      setIsPanning(false);
       handleAllNotesOff();
     };
 
@@ -734,7 +786,7 @@ export function VirtualKeyboard({
         onMouseMove={handleContainerMouseMove}
         onMouseUp={handleContainerMouseUp}
         className={`flex-1 overflow-x-auto overflow-y-hidden relative bg-[#090a0f] p-1.5 scrollbar-thin scrollbar-thumb-zinc-700 select-none ${
-          isSpacePressed ? (isPanningRef.current ? 'cursor-grabbing' : 'cursor-grab') : ''
+          isSpacePressed ? (isPanning ? 'cursor-grabbing' : 'cursor-grab') : ''
         }`}
         style={{ minHeight: '80px' }}
       >
