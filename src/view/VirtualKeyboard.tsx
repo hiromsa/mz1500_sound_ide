@@ -259,13 +259,9 @@ export function VirtualKeyboard({
       detune: mmlContext?.detune || 0,
     };
 
-    // FM音色設定
-    if (effectiveEngine === 'fm') {
-      if (activeTabContext === 'tone' && activeFmTone) {
-        options.fmTone = activeFmTone;
-      } else {
-        options.fmTone = activeFmTone;
-      }
+    // FM音色設定 (TONEエディタ編集中の音色、またはキーボード共有の音色)
+    if (effectiveEngine === 'fm' && activeFmTone) {
+      options.fmTone = activeFmTone;
     }
 
     // ピッチエンベロープ設定
@@ -285,7 +281,6 @@ export function VirtualKeyboard({
     effectiveEngine,
     effectiveVolume,
     mmlContext,
-    activeTabContext,
     activeFmTone,
     effectivePitchEnvData,
     effectiveVolEnvData
@@ -349,8 +344,17 @@ export function VirtualKeyboard({
     return () => window.removeEventListener('mouseup', onMouseUp);
   }, []);
 
+  // キーボードパネル上のマウス操作はペインフォーカス (focusedPane) を切り替えない。
+  // 右ペインで TONE / ENV エディタ選択中に鍵盤を弾いても、そのエディタのプレビューコンテキストを維持するため。
+  const handleKeyboardMouseDownCapture = (e: React.MouseEvent) => {
+    e.stopPropagation();
+  };
+
   return (
-    <div className="h-full flex flex-col bg-[#14151c] select-none overflow-hidden font-mono text-xs">
+    <div
+      onMouseDownCapture={handleKeyboardMouseDownCapture}
+      className="h-full flex flex-col bg-[#14151c] select-none overflow-hidden font-mono text-xs"
+    >
       {/* 1. 上部コントロール & 設定エリア */}
       <div className="h-8 px-2.5 bg-[#181922] border-b border-white/[0.08] flex items-center justify-between gap-2 shrink-0 overflow-x-auto">
         {/* 左側: コンテキスト状態 & 音源セレクタ */}

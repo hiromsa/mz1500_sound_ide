@@ -5,6 +5,23 @@
 ---
 
 ## 1. 直近の完了作業（最新）
+- **バーチャルキーボードの発音コンテキスト修正 — 「選択中のエディタ」のプレビューとして機能 (`src/view/VirtualKeyboard.tsx`, `src/app/App.tsx`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-06):
+  - **背景・ユーザー意図**:
+    - バーチャルキーボードは「選択しているもの」(MMLエディタ / FM TONE / PITCH ENV / VOL ENV) のプレビュー音が鳴るべきだが、右ペインで TONE / ENV エディタを開いていても、鍵盤をクリックすると強制的に MML キャレットコンテキスト扱いになり、編集中データの音が鳴らなかった。
+    - 原因: キーボードパネルが左ペイン (MmlEditor 下部) 内に配置されており、鍵盤クリックが左ペインの `onMouseDownCapture` → `setFocusedPane('mml')` を発火させ、`activeTabContext` が常に `'mml'` にフォールバックしていた。
+  - **変更内容**:
+    - `VirtualKeyboard.tsx`: ルート要素の `onMouseDownCapture` でイベント伝播を停止し、キーボード上のクリック (鍵盤・コントロール類すべて) がペインフォーカスを奪わないよう修正。「最後に選択したエディタ」の発音コンテキストが鍵盤演奏中も維持される。
+    - `VirtualKeyboard.tsx`: `handleNoteOn` の FM 音色設定分岐を整理 (if/else が同一処理だったのを解消、依存配列から不要な `activeTabContext` を削除)。
+    - `App.tsx`: `focusedPane` / `activeTabContext` に発音コンテキスト決定ルールのコメントを追記 (判定ロジック自体は変更なし)。
+  - **動作**:
+    - MMLエディタ選択中 → キャレット位置のトラック/音色/オクターブ/音量/エンベロープ/デチューンで発音。
+    - 右ペイン `YM2151 TONE` 選択中 → 編集中の 4OP FM 音色で発音 (FM 固定)。
+    - 右ペイン `VOL ENV` 選択中 → 編集中の音量エンベロープを PSG / NOISE で発音。
+    - 右ペイン `PITCH ENV` 選択中 → 編集中のピッチカーブを FM / PSG / BEEP で発音。
+    - 現在のコンテキストはキーボード上部バッジ (`MML CARET: xx` / `FM TONE EDITOR` / `VOL ENV EDITOR` / `PITCH ENV EDITOR`) に常時表示。
+  - **検証**: `npm test` 全 298 合格 / `npm run lint` エラーゼロ / `npm run build` 成功。
+
+
 - **各エディタの ID 数値入力化・MML定義済み/未定義バッジ・反映ボタンの置換/挿入動作 (`src/utils/mmlDefinitionLoader.ts` 新設, `src/view/DefinitionIdInput.tsx` 新設, `src/view/FmToneEditor.tsx`, `src/view/VolEnvelopeEditor.tsx`, `src/view/PitchEnvelopeEditor.tsx`, `src/app/App.tsx`, `src/core/mml/MmlCompilerMacros.ts`, `src/utils/__tests__/mmlDefinitionLoader.test.ts` 新設, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-06):
   - **背景・ユーザー意図**:
     - FM TONE / VOL ENV / PITCH ENV の ID 指定を数値入力にしたい (100 程度まで使用する利用者を想定)。

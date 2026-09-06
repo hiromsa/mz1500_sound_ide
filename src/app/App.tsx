@@ -205,9 +205,13 @@ function App() {
 
 
   // 現在フォーカスされている領域 ('mml' | 'rightPane')
+  // ※ バーチャルキーボード上のクリックはこの状態を変更しない (VirtualKeyboard 側で伝播を停止)。
+  //    そのため右ペインで TONE / ENV エディタを選択中に鍵盤を弾いても、そのエディタのプレビュー音が鳴る。
   const [focusedPane, setFocusedPane] = useState<'mml' | 'rightPane'>('mml');
 
-  // 現在のアクティブコンテキスト判定 (MMLエディタ選択時は常にMMLコンテキスト、右ペイン選択時はそのエディタ)
+  // バーチャルキーボードの発音コンテキスト判定:
+  // - 左ペイン (MMLエディタ等) 選択中 / 右ペイン非表示 / 右ペインがエディタ以外のタブ → MMLキャレットコンテキスト
+  // - 右ペインで FM TONE / VOL ENV / PITCH ENV を選択中 → そのエディタのプレビューコンテキスト
   const activeTabContext: ActiveTabContext = (focusedPane === 'mml' || !showRightPane || activeRightTab === 'track' || activeRightTab === 'song_setup' || activeRightTab === 'settings')
     ? 'mml'
     : (activeRightTab as ActiveTabContext);
