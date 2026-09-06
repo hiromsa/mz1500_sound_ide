@@ -50,7 +50,7 @@ export class SongBuilder {
     return index;
   }
 
-  /** 音量エンベロープ (@v) を登録し、番号を返す。loop/release は 255 で無効。 */
+  /** 音量エンベロープ (@VE) を登録し、番号を返す。loop/release は 255 で無効。 */
   addVolumeEnvelope(values: ArrayLike<number>, loopIndex = 255, releaseIndex = 255): number {
     const entry: number[] = [values.length, loopIndex, releaseIndex];
     for (let i = 0; i < values.length; i++) {

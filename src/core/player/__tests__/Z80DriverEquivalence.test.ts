@@ -456,8 +456,8 @@ describe('Z80Driver 等価性 (SourceInterpreter vs Z80Driver)', () => {
   it('MML コンパイル曲がリファレンスと一致する', () => {
     // MML → コンパイラで生成した実データで両エンジンを比較 (エンベロープ / ノイズ / BEEP / FM / L ループ含む)
     const mml = [
-      '@v0 = {15, 12, 9, |, 6, 3}',
-      '@v1 = {12, 9, 6, 3, 0}',
+      '@VE0 = {15, 12, 9, |, 6, 3}',
+      '@VE1 = {12, 9, 6, 3, 0}',
       '@EP0 = {0, 6, 12, 6}',
       '@FM0 = {',
       '  4, 3',
@@ -468,7 +468,7 @@ describe('Z80Driver 等価性 (SourceInterpreter vs Z80Driver)', () => {
       '}',
       '',
       't140',
-      'P1 @v0 o4 l8 [c d e f]2 @v1 g2 e4',
+      'P1 @VE0 o4 l8 [c d e f]2 @VE1 g2 e4',
       'P2 @EP0 o3 l8 c c d d e2',
       'P4 o2 l4 c c',
       'N1 @in2 o8 l8 c c g g',

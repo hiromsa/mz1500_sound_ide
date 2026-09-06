@@ -3,13 +3,13 @@
  * (移植元: MzSound.MmlCompiler/Envelopes.cs)
  */
 
-/** 音量エンベロープ (@v)。1 要素 = 1 フレーム。 */
+/** 音量エンベロープ (@VE)。1 要素 = 1 フレーム。 */
 export interface VolumeEnvelope {
   readonly number: number;
   readonly values: readonly number[];
   /** ループ位置 (無い場合は -1)。 */
   readonly loopIndex: number;
-  /** リリース位置 (無い場合は -1)。@v のみ対応。 */
+  /** リリース位置 (無い場合は -1)。@VE のみ対応。 */
   readonly releaseIndex: number;
 }
 

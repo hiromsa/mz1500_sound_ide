@@ -22,8 +22,8 @@ describe('findDefinitionBlocks', () => {
     ]);
   });
 
-  it('1行の VOL ENV 定義 (@vN) を | / > マーカー付きで抽出する', () => {
-    const content = '@v1 = { 15, 14, 13, |, 12, 11, >, 8, 5, 2, 0 }';
+  it('1行の VOL ENV 定義 (@VEN) を | / > マーカー付きで抽出する', () => {
+    const content = '@VE1 = { 15, 14, 13, |, 12, 11, >, 8, 5, 2, 0 }';
 
     expect(findDefinitionBlocks(content)).toEqual([
       { kind: 'volEnv', id: 1, startLine: 1, endLine: 1 },
@@ -54,7 +54,7 @@ describe('findDefinitionBlocks', () => {
 
   it('利用箇所のみの行は定義ブロックとして抽出しない (= を伴わないため)', () => {
     const content = [
-      'P1 t120 l8 o4 @1 @v2 @PE3',
+      'P1 t120 l8 o4 @1 @VE2 @PE3',
       'P1 c e g > c < g e c r',
     ].join('\n');
 
@@ -64,7 +64,7 @@ describe('findDefinitionBlocks', () => {
   it('コメント内の定義記述は抽出しない', () => {
     const content = [
       '; @1 = { 1, 2 }',
-      '// @v2 = { 15 }',
+      '// @VE2 = { 15 }',
     ].join('\n');
 
     expect(findDefinitionBlocks(content)).toEqual([]);
@@ -72,7 +72,7 @@ describe('findDefinitionBlocks', () => {
 
   it('コメント内の `}` を無視して複数行定義の終了行を正しく特定する', () => {
     const content = [
-      '@v2 = { 15,',
+      '@VE2 = { 15,',
       '  10, 5 /* } コメント内閉じ */ ,',
       '  0 }',
     ].join('\n');
@@ -96,7 +96,7 @@ describe('findDefinitionAt', () => {
       '  4, 6,',
       '  31, 12',
       '}',
-      'P1 t120 l8 o4 @v1 @PE1',
+      'P1 t120 l8 o4 @VE1 @PE1',
       '',
       '@PE2 = { |, 0, 2 }',
     ].join('\n'),
@@ -137,7 +137,7 @@ describe('analyzeMmlLine (回帰)', () => {
     expect(analyzeMmlLine('P1 @1 o4 c d e')).toEqual({ toneId: 1, volEnvId: null, pitchEnvId: null });
     expect(analyzeMmlLine('@FM3 C D E')).toEqual({ toneId: 3, volEnvId: null, pitchEnvId: null });
     expect(analyzeMmlLine('@VE2 C')).toEqual({ toneId: null, volEnvId: 2, pitchEnvId: null });
-    expect(analyzeMmlLine('@v5 C')).toEqual({ toneId: null, volEnvId: 5, pitchEnvId: null });
+    expect(analyzeMmlLine('@v5 C')).toEqual({ toneId: null, volEnvId: null, pitchEnvId: null }); // 旧 @v は解釈しない
     expect(analyzeMmlLine('@PE4 C')).toEqual({ toneId: null, volEnvId: null, pitchEnvId: 4 });
     expect(analyzeMmlLine('@WN1 @SW15 C')).toEqual({ toneId: null, volEnvId: null, pitchEnvId: null });
   });
@@ -152,7 +152,7 @@ describe('collectUsedIds / nextAvailableId (回帰)', () => {
   it('MML 全文から定義・利用の両方の ID を収集する', () => {
     const content = [
       '@1 = { 4, 6, 31 }',
-      'P1 @1 @FM2 @v4 @PE5 c',
+      'P1 @1 @FM2 @VE4 @PE5 c',
     ].join('\n');
 
     const used = collectUsedIds(content);

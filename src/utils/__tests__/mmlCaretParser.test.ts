@@ -4,7 +4,7 @@ import { parseMmlCaretContext } from '../mmlCaretParser';
 describe('parseMmlCaretContext', () => {
   describe('単一行の解析 (従来互換)', () => {
     it('トラック・オクターブ・音量・各IDを解析する', () => {
-      const content = 'P1 t120 l8 o4 v10 @v2 @PE3 c d e';
+      const content = 'P1 t120 l8 o4 v10 @VE2 @PE3 c d e';
       const ctx = parseMmlCaretContext(content, 1, content.length + 1);
 
       expect(ctx).toMatchObject({
@@ -78,7 +78,7 @@ describe('parseMmlCaretContext', () => {
     it('複数トラックが交互に現れても各トラックの状態を復元する', () => {
       const content = [
         'F1 @1 o5 v10',
-        'P1 o4 v3 @v7',
+        'P1 o4 v3 @VE7',
         'F1 c d e',
       ].join('\n');
 
@@ -94,7 +94,7 @@ describe('parseMmlCaretContext', () => {
     it('マクロ定義行は演奏状態へ影響しない', () => {
       const content = [
         '@1 = { 4, 6, 31, 12 }',
-        '@v1 = { 15, 10, 8 }',
+        '@VE1 = { 15, 10, 8 }',
         '@PE2 = { 0, 3, 6 }',
         'F1 o5 c d e',
       ].join('\n');
@@ -163,6 +163,14 @@ describe('parseMmlCaretContext', () => {
       const ctx = parseMmlCaretContext('F1 @FM4 @EP2 c', 1, 15);
       expect(ctx.voiceId).toBe(4);
       expect(ctx.pitchEnvId).toBe(2);
+    });
+
+    it('旧 @vN は音量エンベロープ ID として解釈しない (@VE に一本化)', () => {
+      const ctx = parseMmlCaretContext('P1 o4 @v7 c', 1, 12);
+      expect(ctx.volEnvId).toBeUndefined();
+
+      const veCtx = parseMmlCaretContext('P1 o4 @VE7 c', 1, 13);
+      expect(veCtx.volEnvId).toBe(7);
     });
   });
 });

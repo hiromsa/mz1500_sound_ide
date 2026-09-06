@@ -11,7 +11,7 @@
 export interface MmlLineAnalysis {
   /** FM音色マクロ ID (@N / @FMN) */
   toneId: number | null;
-  /** ボリュームエンベロープ ID (@vN / @VEN) */
+  /** ボリュームエンベロープ ID (@VEN) */
   volEnvId: number | null;
   /** ピッチエンベロープ ID (@PEN) */
   pitchEnvId: number | null;
@@ -67,10 +67,9 @@ export function analyzeMmlLine(line: string): MmlLineAnalysis {
     pitchEnvId = parseInt(peMatch[1], 10);
   }
 
-  // @VEN / @vN
-  const veMatch = effective.match(/@(?:VE|v)(\d+)/i);
+  // @VEN (音量エンベロープは @VE のみ対応。旧 @v は将来の拡張用に予約)
+  const veMatch = effective.match(/@VE(\d+)/i);
   if (veMatch) {
-    // ただし @VE または @v であり、@PE ではないことを確認
     volEnvId = parseInt(veMatch[1], 10);
   }
 
@@ -78,7 +77,7 @@ export function analyzeMmlLine(line: string): MmlLineAnalysis {
   // @PE や @VE との衝突を避けるためにそれらを除外した後にマッチ
   const stripped = effective
     .replace(/@PE\d+/gi, '')
-    .replace(/@(?:VE|v)\d+/gi, '');
+    .replace(/@VE\d+/gi, '');
   const toneMatch = stripped.match(/@(?:FM)?(\d+)/i);
   if (toneMatch) {
     toneId = parseInt(toneMatch[1], 10);
@@ -100,18 +99,18 @@ export function collectUsedIds(content: string): UsedIds {
   const volEnvIds = new Set<number>();
   const pitchEnvIds = new Set<number>();
 
-  for (const m of content.matchAll(/@PE(\d+)/gi)) {
+  for (const m of content.matchAll(/@(?:PE|EP)(\d+)/gi)) {
     pitchEnvIds.add(parseInt(m[1], 10));
   }
 
-  for (const m of content.matchAll(/@(?:VE|v)(\d+)/gi)) {
+  for (const m of content.matchAll(/@VE(\d+)/gi)) {
     volEnvIds.add(parseInt(m[1], 10));
   }
 
-  // @N / @FMN - ただし @PE / @VE / @v を除いた文字列に対してマッチ
+  // @N / @FMN - ただし @PE / @VE を除いた文字列に対してマッチ
   const stripped = content
     .replace(/@PE\d+/gi, '')
-    .replace(/@(?:VE|v)\d+/gi, '');
+    .replace(/@VE\d+/gi, '');
   for (const m of stripped.matchAll(/@(?:FM)?(\d+)/gi)) {
     toneIds.add(parseInt(m[1], 10));
   }
@@ -150,12 +149,11 @@ export interface MmlDefinitionBlock {
  * 書式はコンパイラ (MmlCompiler.ts の macroRegex) と同一で `=` 必須、
  * `{` はヘッダと同一行に置かれることを要求する。
  */
-const definitionHeaderRegex = /^[ \t]*@(?:(v|VE|EP|PE|FM)(\d+)|(\d+))[ \t]*=[ \t]*\{/;
+const definitionHeaderRegex = /^[ \t]*@(?:(VE|EP|PE|FM)(\d+)|(\d+))[ \t]*=[ \t]*\{/;
 
 /** 定義ヘッダの接頭辞をメニュー用種別へ変換する (コンパイラ parseMacroHeader と同一の対応表)。 */
 function resolveDefinitionKind(prefix: string | undefined): MmlDefinitionKind {
   switch (prefix) {
-    case 'v':
     case 'VE':
       return 'volEnv';
     case 'PE':

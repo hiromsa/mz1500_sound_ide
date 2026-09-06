@@ -1,11 +1,11 @@
 /**
- * MML 定義ブロック (@N = { ... } / @vN = { ... } / @PEN = { ... }) を
+ * MML 定義ブロック (@N = { ... } / @VEN = { ... } / @PEN = { ... }) を
  * 各エディタ (FM TONE / VOL ENV / PITCH ENV) のデータ形状へロードするユーティリティ。
  * UI (React コンポーネント) に依存しない純粋関数として分離する (高凝集・疎結合)。
  *
  * 生成 (各エディタ generateMmlSnippet) と逆変換 (本モジュール) の書式対応表:
  * - FM TONE  : `@N = { /* 音色名 *\/ ... 46 値 ... }` (ALG, FB + OP1〜OP4 各 11 値)
- * - VOL ENV  : `@vN = { | / > マーカー付き音量列 }` (マーカーはループ/リリース開始位置)
+ * - VOL ENV  : `@VEN = { | / > マーカー付き音量列 }` (マーカーはループ/リリース開始位置)
  * - PITCH ENV: `@PEN = { | マーカー付きピッチ列 }`
  */
 import { findDefinitionBlocks, type MmlDefinitionKind } from './mmlContextParser';
@@ -145,7 +145,7 @@ export function loadFmToneDefinition(content: string, id: number): FmToneData | 
 }
 
 // ──────────────────────────────────────────────
-// VOL ENV (@vN / @VEN = { ... })
+// VOL ENV (@VEN = { ... })
 // ──────────────────────────────────────────────
 
 /**

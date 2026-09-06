@@ -5,7 +5,7 @@
  * - バッジ:   MML への定義有無 (DEFINED = 定義済み / UNDEFINED = 未定義) を表示する
  */
 export interface DefinitionIdInputProps {
-  /** ID プレフィックス表示 (例: '@v', '@PE', '@') */
+  /** ID プレフィックス表示 (例: '@VE', '@PE', '@') */
   prefix: string;
   /** 現在の ID */
   value: number;

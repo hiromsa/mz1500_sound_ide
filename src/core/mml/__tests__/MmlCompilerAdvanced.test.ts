@@ -14,14 +14,14 @@ function compile(mml: string) {
 
 describe('MmlCompiler advanced', () => {
   it('volume envelope compiles to table', () => {
-    const result = compile('@v0 = {15, 12, 9, 6, 3, 0}\nP1 @v0 c d');
+    const result = compile('@VE0 = {15, 12, 9, 6, 3, 0}\nP1 @VE0 c d');
     expect(result.success).toBe(true);
     expect(result.musicData).not.toBeNull();
     expect((result.musicData as Uint8Array)[14]).toBe(1); // 音量エンベロープ数
   });
 
   it('volume envelope repeat syntax expands', () => {
-    const result = compile('@v1 = {15x3, 0}\nP1 @v1 c');
+    const result = compile('@VE1 = {15x3, 0}\nP1 @VE1 c');
     expect(result.success).toBe(true);
     expect((result.musicData as Uint8Array)[14]).toBe(1);
   });
@@ -45,7 +45,7 @@ describe('MmlCompiler advanced', () => {
   });
 
   it('undefined envelope is error', () => {
-    const result = compile('P1 @v5 c');
+    const result = compile('P1 @VE5 c');
     expect(result.success).toBe(false);
     expect(result.diagnostics.some((d) => d.severity === DiagnosticSeverity.Error)).toBe(true);
   });
@@ -102,9 +102,9 @@ describe('MmlCompiler advanced', () => {
   it('sample song compiles', () => {
     const mml = [
       '; サンプル',
-      '@v0 = {15, 12, 9, 6, 3, 0}',
+      '@VE0 = {15, 12, 9, 6, 3, 0}',
       't120',
-      'P1 @v0 o4 l8 c d e c e f g2',
+      'P1 @VE0 o4 l8 c d e c e f g2',
       'P2 o3 l8 c2 c2 f2 f2',
       'B1 l4 c c c c',
       'L',
@@ -147,12 +147,12 @@ describe('MML macro multi-line', () => {
 
   it('volume envelope multi-line compiles', () => {
     const result = compile([
-      '@v0 = {',
+      '@VE0 = {',
       '  15, 12',
       '  9, 6',
       '  3, 0',
       '}',
-      'P1 @v0 c',
+      'P1 @VE0 c',
     ].join('\n'));
     expect(result.success).toBe(true);
   });
@@ -232,8 +232,15 @@ describe('MML reference compliance (mml_reference.md 4章)', () => {
   });
 
   it('obsolete |L / |R markers are invalid elements', () => {
-    const result = compile('@v1 = { 15, |L 12, |R 8 }\nP1 @v1 c');
+    const result = compile('@VE1 = { 15, |L 12, |R 8 }\nP1 @VE1 c');
     expect(result.success).toBe(false);
+  });
+
+  it('obsolete @v alias is no longer recognized as volume envelope', () => {
+    // 音量エンベロープは @VE のみ対応。旧 @v は将来の拡張用に予約しているため解釈しない。
+    const result = compile('@v1 = {15, 0}\nP1 @v1 c');
+    expect(result.success).toBe(false);
+    expect(result.diagnostics.some((d) => d.severity === DiagnosticSeverity.Error)).toBe(true);
   });
 
   it('sample main.mml compiles with reference syntax', () => {
@@ -253,10 +260,10 @@ describe('MML reference compliance (mml_reference.md 4章)', () => {
       '  31, 10, 0, 15, 2, 30, 0, 1, 0, 0, 0,',
       '  31,  8, 0,  8, 4,  0, 0, 1, 0, 0, 0',
       '}',
-      '@v1 = { 15, 14, 13, |, 12, 11, >, 8, 5, 2, 0 }',
+      '@VE1 = { 15, 14, 13, |, 12, 11, >, 8, 5, 2, 0 }',
       '@PE1 = { |, 0, 2, 4, 6, 8, 6, 4, 2 }',
       '',
-      'P1 t120 l8 o4 @v1 @PE1',
+      'P1 t120 l8 o4 @VE1 @PE1',
       'P1 c e g > c < g e c r',
       'P1 L [c d e f g2]2',
     ].join('\n');

@@ -62,12 +62,12 @@ describe('MmlCompiler 診断の位置情報 (line / column)', () => {
   });
 
   it('未定義エンベロープは番号の列位置を報告する', () => {
-    // "P1 @v9" → 9 は 6 列目
-    const diagnostics = compile('P1 @v9\n');
+    // "P1 @VE9" → 9 は 7 列目
+    const diagnostics = compile('P1 @VE9\n');
     const error = firstError(diagnostics);
-    expect(error.message).toContain('@v9');
+    expect(error.message).toContain('@VE9');
     expect(error.line).toBe(1);
-    expect(error.column).toBe(6);
+    expect(error.column).toBe(7);
   });
 
   it('トラック未指定行のエラーは行頭 (column 1) を報告する', () => {
@@ -103,8 +103,8 @@ describe('MmlCompiler 診断の位置情報 (line / column)', () => {
   });
 
   it('マクロ定義の無効な要素は定義ヘッダの @ の列位置を報告する', () => {
-    // "  @v1 = { x }" → @ は 3 列目
-    const diagnostics = compile('  @v1 = { x }\nP1 c\n');
+    // "  @VE1 = { x }" → @ は 3 列目
+    const diagnostics = compile('  @VE1 = { x }\nP1 c\n');
     const error = firstError(diagnostics);
     expect(error.message).toContain('無効なエンベロープ要素');
     expect(error.line).toBe(1);

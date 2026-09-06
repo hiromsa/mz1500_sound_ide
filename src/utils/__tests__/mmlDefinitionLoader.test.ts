@@ -12,7 +12,7 @@ import {
 
 describe('loadVolEnvDefinition', () => {
   it('ループ / リリース マーカー付きの 1 行定義を読み込む (エディタ出力の `| 12` 形式にも対応)', () => {
-    const content = '@v2 = { 15, 14, | 12, 11, > 8, 5, 2, 0 }\n';
+    const content = '@VE2 = { 15, 14, | 12, 11, > 8, 5, 2, 0 }\n';
     const loaded = loadVolEnvDefinition(content, 2);
     expect(loaded).not.toBeNull();
     expect(loaded?.data).toEqual([15, 14, 12, 11, 8, 5, 2, 0]);
@@ -21,7 +21,7 @@ describe('loadVolEnvDefinition', () => {
   });
 
   it('カンマ区切りのマーカー書式 (`|,`) も読み込める', () => {
-    const content = '@v2 = { 15, 14, |, 12, 11, >, 8, 5, 2, 0 }\n';
+    const content = '@VE2 = { 15, 14, |, 12, 11, >, 8, 5, 2, 0 }\n';
     const loaded = loadVolEnvDefinition(content, 2);
     expect(loaded?.data).toEqual([15, 14, 12, 11, 8, 5, 2, 0]);
     expect(loaded?.loopPoint).toBe(2);
@@ -30,7 +30,7 @@ describe('loadVolEnvDefinition', () => {
 
   it('複数行 (折り返し) 定義を読み込める', () => {
     const content = [
-      '@v3 = {',
+      '@VE3 = {',
       '  15,',
       '  12, 10,',
       '  8, 5',
@@ -43,22 +43,21 @@ describe('loadVolEnvDefinition', () => {
   });
 
   it('定義されていない ID は null を返す', () => {
-    expect(loadVolEnvDefinition('@v2 = { 15, 14 }\n', 9)).toBeNull();
+    expect(loadVolEnvDefinition('@VE2 = { 15, 14 }\n', 9)).toBeNull();
   });
 
   it('利用箇所のみで定義が無い ID は null を返す', () => {
-    const content = 'P1 c @v3 d\n';
+    const content = 'P1 c @VE3 d\n';
     expect(loadVolEnvDefinition(content, 3)).toBeNull();
   });
 
-  it('エイリアス書式 (@VE) でも読み込める', () => {
-    const content = '@VE4 = { 10, 5 }\n';
-    const loaded = loadVolEnvDefinition(content, 4);
-    expect(loaded?.data).toEqual([10, 5]);
+  it('旧書式 (@v) は @VE へ一本化されたため定義として認識しない', () => {
+    const content = '@v4 = { 10, 5 }\n';
+    expect(loadVolEnvDefinition(content, 4)).toBeNull();
   });
 
   it('範囲外の音量値は 0-15 にクランプされる', () => {
-    const content = '@v1 = { 20, -3, 8 }\n';
+    const content = '@VE1 = { 20, -3, 8 }\n';
     const loaded = loadVolEnvDefinition(content, 1);
     expect(loaded?.data).toEqual([15, 0, 8]);
   });
@@ -121,8 +120,8 @@ describe('loadFmToneDefinition', () => {
 
 describe('isIdDefined', () => {
   const content = [
-    '@v2 = { 15, 14 }',
-    'P1 c @v2 d @v3 e',
+    '@VE2 = { 15, 14 }',
+    'P1 c @VE2 d @VE3 e',
   ].join('\n');
 
   it('定義ブロックが存在する ID は true を返す', () => {

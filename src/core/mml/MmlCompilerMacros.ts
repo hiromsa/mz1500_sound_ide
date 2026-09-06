@@ -1,5 +1,5 @@
 /**
- * マクロ定義 (@v / @EP / @FM) のパース。
+ * マクロ定義 (@VE / @EP / @FM) のパース。
  * (移植元: MzSound.MmlCompiler/MmlCompiler.Macros.cs)
  */
 import {
@@ -82,7 +82,7 @@ export function parseVolumeEnvelope(
   }
 
   if (values.length === 0) {
-    diagnostics.push(mmlError(line, column, `@v${number} の要素がありません`));
+    diagnostics.push(mmlError(line, column, `@VE${number} の要素がありません`));
     return null;
   }
 

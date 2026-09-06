@@ -36,7 +36,7 @@ const TRACK_NAME_PATTERN = /^(?:P[1-6]|N[1-2]|B1|F[1-8])$/;
  * - `D` (ディチューン) は音符 `d` と区別するため大文字のみ (正式パーサ準拠)
  * - `f2` / `d4` のような音長付き音符はどのパターンにも誤マッチしない
  */
-const COMMAND_PATTERN = /@[fF][mM]\d+|@[pP][eE]\d+|@[eE][pP]\d+|@[vV][eE]\d+|@[vV]\d+|@[wW][nN]\d+|@\d+|[oO][1-8]|[<>]|[vV]\d+|D-?\d+/g;
+const COMMAND_PATTERN = /@[fF][mM]\d+|@[pP][eE]\d+|@[eE][pP]\d+|@[vV][eE]\d+|@[wW][nN]\d+|@\d+|[oO][1-8]|[<>]|[vV]\d+|D-?\d+/g;
 
 /** トラック名から音源種別を判定する (mml_reference.md 2節準拠) */
 export function resolveEngineFromTrackName(trackName: string): SoundEngineType {
@@ -79,11 +79,11 @@ function stripLineComment(line: string): string {
 }
 
 /**
- * マクロ定義行 (`@v1 = { ... }` / `@PE1 = { ... }` / `@1 = { ... }` 等) かどうか。
+ * マクロ定義行 (`@VE1 = { ... }` / `@PE1 = { ... }` / `@1 = { ... }` 等) かどうか。
  * 定義行はトラックの演奏状態へ影響しないため走査対象から除外する。
  */
 function isMacroDefinitionLine(line: string): boolean {
-  return /^\s*@(?:v|VE|EP|PE|FM)?\d*\s*=/i.test(line);
+  return /^\s*@(?:VE|EP|PE|FM)?\d*\s*=/i.test(line);
 }
 
 /** 行頭のトラック指定の検出結果 */
@@ -221,8 +221,6 @@ export class MmlCaretContextTracker {
       state.pitchEnvId = parseOptionalInt(upper.slice(3));
     } else if (upper.startsWith('@VE')) {
       state.volEnvId = parseOptionalInt(upper.slice(3));
-    } else if (upper.startsWith('@V')) {
-      state.volEnvId = parseOptionalInt(upper.slice(2));
     } else if (upper.startsWith('@WN')) {
       state.noiseType = parseInt(upper.slice(3), 10) === 1 ? 'white' : 'periodic';
     } else if (upper.startsWith('@FM')) {

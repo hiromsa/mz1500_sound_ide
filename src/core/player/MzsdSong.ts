@@ -4,7 +4,7 @@
  * (移植元: MzSound.Player/Sequencer/MzsdSong.cs)
  */
 
-/** 音量エンベロープ定義 (@v)。 */
+/** 音量エンベロープ定義 (@VE)。 */
 export interface VolumeEnvelopeDef {
   /** 音量値列 (0-15)。 */
   readonly values: Uint8Array;

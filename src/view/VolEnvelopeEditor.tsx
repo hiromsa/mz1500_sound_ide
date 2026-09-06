@@ -100,7 +100,7 @@ export function VolEnvelopeEditor({
   // KEYOFF時リリースポイント (Release Point): -1 はなし
   const [releasePoint, setReleasePoint] = useState<number>(20);
 
-  // エンベロープ定義番号 (例: @v1)
+  // エンベロープ定義番号 (例: @VE1)
   const [envNumber, setEnvNumber] = useState<number>(1);
 
   // アクティブ MML 全文の最新値 (ロードリクエスト処理内で参照するため ref でも保持)
@@ -682,7 +682,7 @@ export function VolEnvelopeEditor({
     }
   };
 
-  // MMLスニペット生成 (mml_reference.md の @vN = { } 書式に準拠。ループ `|` / リリース `>`)
+  // MMLスニペット生成 (mml_reference.md の @VEN = { } 書式に準拠。ループ `|` / リリース `>`)
   const generateMmlSnippet = (): string => {
     const parts: string[] = [];
     envData.forEach((vol, idx) => {
@@ -691,7 +691,7 @@ export function VolEnvelopeEditor({
       if (idx === releasePoint) prefix += '> ';
       parts.push(`${prefix}${vol}`);
     });
-    return `@v${envNumber} = { ${parts.join(', ')} }`;
+    return `@VE${envNumber} = { ${parts.join(', ')} }`;
   };
 
   // 「MMLに反映」ボタン処理
@@ -713,18 +713,18 @@ export function VolEnvelopeEditor({
             <span className="text-[10px] text-zinc-400 px-2 py-0.5 rounded bg-zinc-800/80 border border-white/10 font-medium">
               DCSG (SN76489)
             </span>
-            {/* エンベロープ番号 (@vID) (左寄せ配置) */}
+            {/* エンベロープ番号 (@VEID) (左寄せ配置) */}
             <div className="flex items-center ml-2 border-l border-white/10 pl-2.5">
               <DefinitionIdInput
-                prefix="@v"
+                prefix="@VE"
                 value={envNumber}
                 isDefined={isVolEnvIdDefined}
                 onChange={handleIdChange}
                 maxId={255}
                 accentClassName="text-zinc-200"
                 badgeTitle={isVolEnvIdDefined
-                  ? `@v${envNumber} は MML に定義済み (反映時は定義を置き換え)`
-                  : `@v${envNumber} は MML に未定義 (反映時は最後の定義の後に新規挿入)`}
+                  ? `@VE${envNumber} は MML に定義済み (反映時は定義を置き換え)`
+                  : `@VE${envNumber} は MML に未定義 (反映時は最後の定義の後に新規挿入)`}
               />
             </div>
           </div>
@@ -745,8 +745,8 @@ export function VolEnvelopeEditor({
                 onClick={handleApplyToMml}
                 className="h-6 px-3 rounded bg-emerald-900/50 hover:bg-emerald-800/60 text-emerald-300 border border-emerald-600/60 hover:border-emerald-400 font-medium transition-colors flex items-center gap-1.5 text-xs cursor-pointer shadow-xs"
                 title={isVolEnvIdDefined
-                  ? `@v${envNumber} の MML定義を置き換え`
-                  : `@v${envNumber} を新規定義として最後の定義の後に挿入`}
+                  ? `@VE${envNumber} の MML定義を置き換え`
+                  : `@VE${envNumber} を新規定義として最後の定義の後に挿入`}
               >
                 <span>▶ MMLに反映</span>
               </button>

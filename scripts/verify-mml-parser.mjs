@@ -29,16 +29,16 @@ assert('@VE2 C -> volEnvId=2',
   analyzeMmlLine('@VE2 C'),
   { toneId: null, volEnvId: 2, pitchEnvId: null });
 
-assert('@v5 C -> volEnvId=5',
+assert('@v5 C -> volEnvId=null (旧 @v は @VE に一本化され解釈しない)',
   analyzeMmlLine('@v5 C'),
-  { toneId: null, volEnvId: 5, pitchEnvId: null });
+  { toneId: null, volEnvId: null, pitchEnvId: null });
 
 assert('@PE4 C -> pitchEnvId=4',
   analyzeMmlLine('@PE4 C'),
   { toneId: null, volEnvId: null, pitchEnvId: 4 });
 
-assert('混在行 @1 @v2 @PE3 C -> すべて抽出',
-  analyzeMmlLine('@1 @v2 @PE3 C'),
+assert('混在行 @1 @VE2 @PE3 C -> すべて抽出',
+  analyzeMmlLine('@1 @VE2 @PE3 C'),
   { toneId: 1, volEnvId: 2, pitchEnvId: 3 });
 
 assert('混在行 @FM7 @VE8 @PE9 C -> すべて抽出',
@@ -71,8 +71,8 @@ const sample = `; コメント
 @1 = { /* tone */ }
 @3 = { /* tone */ }
 P1 @1 @FM2 o4 c
-P2 @v1 @VE2 c
-@v4 = { 15, |L 10, |R 5 }
+P2 @VE1 @VE2 c
+@VE4 = { 15, |L 10, |R 5 }
 P3 @PE5 c
 @PE7 = { 0, 3, 6 }
 @WN1 @SW15 @q8

@@ -32,10 +32,11 @@ export interface MmlCompileResult {
 }
 
 /**
- * マクロ定義行 (@v / @VE, @EP / @PE, @FM / @<n>) を行頭から抽出する正規表現。
+ * マクロ定義行 (@VE, @EP / @PE, @FM / @<n>) を行頭から抽出する正規表現。
+ * 音量エンベロープは @VE のみ対応 (旧エイリアス @v は将来の拡張用に予約するため解釈しない)。
  * 書式は docs/specification/mml_reference.md 4 章準拠 (`@<種別><番号> = { ... }`、`=` 必須)。
  */
-const macroRegex = /^[ \t]*@(?:(v|VE|EP|PE|FM)(\d+)|(\d+))[ \t]*=[ \t]*\{([^}]*)\}/gm;
+const macroRegex = /^[ \t]*@(?:(VE|EP|PE|FM)(\d+)|(\d+))[ \t]*=[ \t]*\{([^}]*)\}/gm;
 
 /** マクロ定義の正規種別。 */
 type MacroKind = 'v' | 'EP' | 'FM';
@@ -59,7 +60,6 @@ function parseMacroHeader(
 
   const number = numberStr === undefined ? NaN : parseInt(numberStr, 10);
   switch (prefix.toUpperCase()) {
-    case 'V':
     case 'VE':
       return { kind: 'v', number };
     case 'EP':
@@ -84,7 +84,7 @@ export class MmlCompiler {
   compile(source: string): MmlCompileResult {
     const diagnostics: MmlDiagnostic[] = [];
 
-    // 1) マクロ定義 (@v / @VE, @EP / @PE, @FM / @<n>) を抽出し、ソースからは行位置を崩さずに除去する
+    // 1) マクロ定義 (@VE, @EP / @PE, @FM / @<n>) を抽出し、ソースからは行位置を崩さずに除去する
     const volumeEnvelopes: VolumeEnvelope[] = [];
     const pitchEnvelopes: PitchEnvelope[] = [];
     const fmTones: FmTone[] = [];

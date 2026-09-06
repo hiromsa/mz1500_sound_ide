@@ -336,6 +336,7 @@ export class MmlParser {
 
   private processAt(line: string, pos: number, lineNo: number, tracks: TrackBuilder[]): number {
     // 長い語から先に判定する (@PE / @VE / @FM は mml_reference.md 3.4-3.6 のエイリアス)
+    // 音量エンベロープは @VE のみ対応 (旧 @v は将来の拡張用に予約するため解釈しない)
     if (startsWithWord(line, pos, 'EP')) return this.processPitchEnvelopeCmd(line, pos + 2, lineNo, tracks);
     if (startsWithWord(line, pos, 'PE')) return this.processPitchEnvelopeCmd(line, pos + 2, lineNo, tracks);
     if (startsWithWord(line, pos, 'VE')) return this.processVolumeEnvelopeCmd(line, pos + 2, lineNo, tracks);
@@ -345,7 +346,6 @@ export class MmlParser {
     if (startsWithWord(line, pos, 'in')) return this.processNoiseSync(line, pos + 2, lineNo, tracks);
     if (startsWithWord(line, pos, 't')) return this.processFrameTempo(line, pos + 1, lineNo, tracks);
     if (startsWithWord(line, pos, 'q')) return this.processFrameQuantize(line, pos + 1, lineNo, tracks);
-    if (startsWithWord(line, pos, 'v')) return this.processVolumeEnvelopeCmd(line, pos + 1, lineNo, tracks);
 
     // @<n> : FM 音色指定
     return this.processTone(line, pos, lineNo, tracks);
@@ -435,7 +435,7 @@ export class MmlParser {
 
     const index = this.venvIndexByNumber.get(read.value);
     if (index === undefined) {
-      this.diagnostics.push(mmlError(lineNo, pos + 1, `未定義の音量エンベロープ @v${read.value} です`));
+      this.diagnostics.push(mmlError(lineNo, pos + 1, `未定義の音量エンベロープ @VE${read.value} です`));
       return -1;
     }
 

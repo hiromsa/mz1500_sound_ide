@@ -47,13 +47,13 @@ export const mmlMonarchTokensProvider: languages.IMonarchLanguage = {
       [/^#(?:OCTAVE|OPM|FM)\b/i, { token: 'keyword.directive', next: '@directiveValue' }],
       [/^#\w+\b/i, 'keyword.directive'],
 
-      // マクロ定義行: @1 = { ... }, @v1 = { ... }, @PE1 = { ... }
+      // マクロ定義行: @1 = { ... }, @VE1 = { ... }, @PE1 = { ... }
       [/([@](?:FM)?\d+)(\s*=\s*)(\{)/i, [
         'macro.fm',
         'delimiter',
         { token: 'delimiter.bracket', next: '@macroBody' }
       ]],
-      [/([@](?:VE|v)\d+)(\s*=\s*)(\{)/i, [
+      [/([@](?:VE)\d+)(\s*=\s*)(\{)/i, [
         'macro.vol',
         'delimiter',
         { token: 'delimiter.bracket', next: '@macroBody' }
@@ -72,7 +72,7 @@ export const mmlMonarchTokensProvider: languages.IMonarchLanguage = {
 
       // 音色・エンベロープ・効果音マクロ適用 / 解除
       [/[@](?:FM)?\d+\b/i, 'macro.fm'],
-      [/[@](?:VE|v)\d*\b/i, 'macro.vol'],
+      [/[@](?:VE)\d*\b/i, 'macro.vol'],
       [/[@](?:PE|EP)\d*\b/i, 'macro.pitch'],
       [/[@]SW-?\d+\b/i, 'macro.pitch'],
       [/[@](?:WN|IN)\d+\b/i, 'macro.noise'],

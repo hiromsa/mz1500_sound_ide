@@ -5,6 +5,21 @@
 ---
 
 ## 1. 直近の完了作業（最新）
+- **音量エンベロープを `@VE` に一本化し旧エイリアス `@v` を廃止 (`src/core/mml/MmlCompiler.ts`, `src/core/mml/parser/MmlParser.ts`, `src/core/mml/MmlCompilerMacros.ts`, `src/utils/mmlCaretParser.ts`, `src/utils/mmlContextParser.ts`, `src/utils/mmlLanguage.ts`, `src/utils/mmlDefinitionLoader.ts`, `src/view/VolEnvelopeEditor.tsx`, `src/view/MmlEditor.tsx`, テスト各種, [`docs/specification/mml_reference.md`](./specification/mml_reference.md), [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-07):
+  - **背景・ユーザー確定方針**:
+    - 「@v は @VE だけにしたいです。あとで使う予定があります。」
+    - 音量エンベロープの定義・適用コマンドを **`@VE` のみ**に統一し、旧エイリアス `@v` は将来の別機能用に予約する。
+  - **対応内容**:
+    1. **コンパイラ (`MmlCompiler.ts`)**: `macroRegex` / `parseMacroHeader` から `v` 種別を除去。`@vN = { ... }` 定義行はマクロ定義として認識されず本体パーサへ流れ「トラック指定がありません」エラーになる。
+    2. **パーサ (`MmlParser.ts`)**: `processAt` の `v` 分岐 (`@v` / `@vN` 適用) を削除。`@v` は「不明な @ コマンドです」エラーになる。エラーメッセージを `未定義の音量エンベロープ @VE...` に変更。
+    3. **ユーティリティ**: `mmlCaretParser` (COMMAND_PATTERN / 定義行判定 / `@V` 適用分岐)、`mmlContextParser` (行解析 / ID 収集 / 定義ヘッダ正規表現)、`mmlLanguage` (Monaco シンタックス)、`mmlDefinitionLoader` (コメント) を `@VE` のみに。`collectUsedIds` は併せて `@EP` エイリアスも収集対象に改善。
+    4. **UI**: `VolEnvelopeEditor` の MML スニペット出力 (`@VEN = { ... }`)・ID 入力プレフィックス (`@VE`)・バッジ文言、サンプル main.mml (`@VE1`) を更新。
+    5. **テスト**: 既存テストの `@v` を `@VE` に置換しつつ、「旧 `@v` は音量エンベロープとして解釈されない (エラーになる)」回帰テストをコンパイラ / キャレット解析 / 定義ローダ / 行解析 (`scripts/verify-mml-parser.mjs`) に追加。
+    6. **ドキュメント**: `mml_reference.md` 2章表 / 3.4 / 4.1 / 4.2 / 5章サンプル、`ui.md` の VOL ENV 関連記述を `@VE` 表記に統一し、4.1 に「旧 `@v` は予約 (使用不可・コンパイルエラー)」の注記を追加。
+  - **検証**:
+    - `npx tsc -b` エラーゼロ / **`npm test` 全 323 件合格** / `npm run lint` エラーゼロ (既存 UI 警告 2 のみ) / `npm run build` 成功 / `node scripts/verify-mml-parser.mjs` 全パス。
+  - **判明事項**: `@V1` (大文字 V 単独) も `@v1` 同様に解釈対象外となる (エイリアス廃止により `@VE` 判定に合致しないため)。将来 `@v` を別機能で実装する際は `MmlParser.processAt` への分岐追加と `mml_reference.md` の更新が必要。
+
 - **MMLキャレット解析の複数行・複数トラック対応 (`src/utils/mmlCaretParser.ts`, `src/utils/__tests__/mmlCaretParser.test.ts` 新設, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-06):
   - **背景・ユーザー報告**:
     - 「仮想キーボード、FM TONE、VOLUME ENV、PITCH ENVにおいて、MMLのキャレットの位置に応じた、IDその他のパラメータが連動して表示されるようになっているのですが、複数行に対応していません。」
