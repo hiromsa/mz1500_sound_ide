@@ -769,13 +769,17 @@ export function MmlEditor({
 
   return (
 
-    <div ref={editorContainerRef} className="flex flex-row h-full w-full bg-[#090a0f] overflow-hidden relative">
+    <div ref={editorContainerRef} className="flex flex-col h-full w-full bg-[#090a0f] overflow-hidden relative">
       {/* リサイズ中の全画面オーバーレイ */}
       {(isDraggingExplorer || isDraggingBottomSplitter) && (
         <div className={`fixed inset-0 z-50 select-none ${
           isDraggingExplorer ? 'cursor-col-resize' : 'cursor-row-resize'
         }`} />
       )}
+
+      {/* 上部エリア (横並び): エクスプローラー + エディタ主ペイン。
+           下部タブエリア (PROBLEMS / CONSOLE / KEYBOARD) はこの外側に配置し、エクスプローラーを含む左ペイン全幅で表示する */}
+      <div className="flex flex-row flex-1 min-h-0 overflow-hidden">
 
       {/* 左ペイン内 エクスプローラー (開閉可能 & 幅リサイズ可能) */}
       {isExplorerOpen && (
@@ -801,7 +805,7 @@ export function MmlEditor({
         </>
       )}
 
-      {/* エディタ主ペイン (EXPLORER の右側エリア: タブバー + Monaco + エラーパネル + コンソール) */}
+      {/* エディタ主ペイン (EXPLORER の右側エリア: タブバー + Monaco) */}
       <div className="flex flex-col flex-1 h-full min-w-0 overflow-hidden bg-[#1E1E1E]">
         {/* Tab Bar */}
         <div className="h-9 flex flex-row items-stretch bg-[#282828] border-b border-[#3C3C3C] overflow-x-auto shrink-0">
@@ -916,8 +920,10 @@ export function MmlEditor({
             />
           )}
         </div>
+      </div>
+      </div>
 
-        {/* スプリッター (エディタ ⇔ 下部タブエリア) ※折りたたみ中は非表示 */}
+      {/* 上下スプリッター (エディタ ⇔ 下部タブエリア) ※折りたたみ中は非表示・左ペイン全幅 */}
         <div
           hidden={isBottomCollapsed}
           onMouseDown={handleBottomSplitterMouseDown}
@@ -1070,7 +1076,6 @@ export function MmlEditor({
             )}
           </div>
         </div>
-      </div>
     </div>
   );
 }
