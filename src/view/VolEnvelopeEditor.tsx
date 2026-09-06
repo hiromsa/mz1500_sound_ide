@@ -271,7 +271,7 @@ export function VolEnvelopeEditor({
 
   // Web Audio 試聴ステート
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
-  const [isKeyOff, setIsKeyOff] = useState<boolean>(false);
+  const isKeyOffRef = useRef<boolean>(false);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const oscNodeRef = useRef<OscillatorNode | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
@@ -564,7 +564,7 @@ export function VolEnvelopeEditor({
       gainNodeRef.current = null;
     }
     setIsPlaying(false);
-    setIsKeyOff(false);
+    isKeyOffRef.current = false;
     setPreviewActiveStep(-1);
     activeStepRef.current = -1;
   };
@@ -609,9 +609,8 @@ export function VolEnvelopeEditor({
     oscNodeRef.current = osc;
     gainNodeRef.current = gain;
     setIsPlaying(true);
-    setIsKeyOff(false);
+    isKeyOffRef.current = false;
 
-    let currentStep = 0;
     activeStepRef.current = 0;
     setPreviewActiveStep(0);
 
@@ -621,36 +620,51 @@ export function VolEnvelopeEditor({
     playbackTimerRef.current = window.setInterval(() => {
       if (!gainNodeRef.current || !audioCtxRef.current) return;
 
-      const val = envData[currentStep] ?? 0;
+      const step = activeStepRef.current;
+      if (step < 0 || step >= envData.length) {
+        stopAudio();
+        return;
+      }
+
+      const val = envData[step] ?? 0;
       const gainVal = (val / 15) * 0.25;
       gainNodeRef.current.gain.setValueAtTime(gainVal, audioCtxRef.current.currentTime);
 
-      setPreviewActiveStep(currentStep);
+      setPreviewActiveStep(step);
 
       // 次のステップを計算
-      if (!isKeyOff && loopPoint >= 0 && currentStep === releasePoint - 1) {
+      let nextStep = step + 1;
+      if (!isKeyOffRef.current && loopPoint >= 0 && step === releasePoint - 1) {
         // キーオン中はリリース直前でループポイントに戻る
-        currentStep = loopPoint;
-      } else if (!isKeyOff && loopPoint >= 0 && currentStep >= envData.length - 1) {
+        nextStep = loopPoint;
+      } else if (!isKeyOffRef.current && loopPoint >= 0 && step >= envData.length - 1) {
         // ループ指定があるがリリース未指定の場合は末尾からループ
-        currentStep = loopPoint;
-      } else {
-        currentStep++;
-        if (currentStep >= envData.length) {
-          // 末尾に達したら再生終了
-          stopAudio();
-        }
+        nextStep = loopPoint;
+      } else if (nextStep >= envData.length) {
+        // 末尾に達したら再生終了
+        stopAudio();
+        return;
       }
+      activeStepRef.current = nextStep;
     }, FRAME_MS);
   };
 
-  // KEY OFF 実行
+  // KEY OFF 実行 (リリースフェーズへ移行)
   const handleTriggerKeyOff = () => {
     if (!isPlaying) return;
-    setIsKeyOff(true);
+    isKeyOffRef.current = true;
     if (releasePoint >= 0 && releasePoint < envData.length) {
       activeStepRef.current = releasePoint;
       setPreviewActiveStep(releasePoint);
+    }
+  };
+
+  // STOP押下時: リリースポイントがあればリリースフェーズへ移行して自然終了、無ければ即時停止
+  const handleStopOrRelease = () => {
+    if (isPlaying && !isKeyOffRef.current && releasePoint >= 0 && releasePoint < envData.length) {
+      handleTriggerKeyOff();
+    } else {
+      stopAudio();
     }
   };
 
@@ -706,25 +720,11 @@ export function VolEnvelopeEditor({
             <TestNoteButton
               isPlaying={isPlaying}
               onPlay={(note) => handlePlayKeyOn(note)}
-              onStop={stopAudio}
+              onStop={handleStopOrRelease}
               midiNote={testMidiNote}
               onChangeNote={onChangeTestMidiNote}
               title="Play Volume Envelope Preview"
             />
-            {isPlaying && releasePoint >= 0 && (
-              <button
-                onClick={handleTriggerKeyOff}
-                disabled={isKeyOff}
-                className={`h-6 px-2 rounded text-[10px] font-medium border transition-colors flex items-center gap-1 cursor-pointer ${
-                  isKeyOff
-                    ? 'bg-zinc-900 text-zinc-600 border-white/[0.04]'
-                    : 'bg-amber-600 hover:bg-amber-500 text-white border-amber-500 shadow-xs'
-                }`}
-                title="Trigger Release Phase"
-              >
-                <span>KEY OFF</span>
-              </button>
-            )}
             {/* MMLに反映ボタン (onApplyToMml が設定されている場合のみ表示) */}
             {onApplyToMml && (
               <button
