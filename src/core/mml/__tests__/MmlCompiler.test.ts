@@ -3,6 +3,7 @@
  * (移植元: tests/MzSound.MmlCompiler.Tests/MmlCompilerTests.cs)
  */
 import { describe, expect, it } from 'vitest';
+import { DiagnosticSeverity } from '../TrackId';
 import { MmlCompiler, type MmlCompileResult } from '../MmlCompiler';
 
 function compile(mml: string): MmlCompileResult {
@@ -106,5 +107,36 @@ describe('MmlCompiler', () => {
     const result = compile('P1 @t1,86 c');
     expect(result.success).toBe(true);
     expect(result.quarterFrames).toBe(344);
+  });
+
+  it('FM トラックの p コマンドで PAN 命令を出力する', () => {
+    const result = compile('F1 p1 c');
+    expect(result.success).toBe(true);
+
+    const data = getTrackData(result, 'F1');
+    expect(data[0]).toBe(0x0d); // PAN
+    expect(data[1]).toBe(1); // 左出力
+    expect(data[2]).toBe(0x00); // NOTE
+  });
+
+  it('p コマンドは FM トラック以外では警告になる', () => {
+    const result = compile('P1 p1 c');
+    expect(result.success).toBe(true);
+    expect(
+      result.diagnostics.some(
+        (d) => d.severity === DiagnosticSeverity.Warning && d.message.includes('p は FM トラック'),
+      ),
+    ).toBe(true);
+
+    const data = getTrackData(result, 'P1');
+    expect(Array.from(data).includes(0x0d)).toBe(false);
+  });
+
+  it('p の定位値は 0-3 のみ許可する', () => {
+    const overflow = compile('F1 p4 c');
+    expect(overflow.success).toBe(false);
+
+    const missing = compile('F1 p c');
+    expect(missing.success).toBe(false);
   });
 });

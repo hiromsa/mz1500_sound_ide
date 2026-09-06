@@ -24,6 +24,7 @@ const OpTone = 0x09;
 const OpNoiseCtl = 0x0a;
 const OpLoopStart = 0x0b;
 const OpLoopEnd = 0x0c;
+const OpPan = 0x0d;
 const OpTrackEnd = 0x0e;
 
 const MaxLoopDepth = 8;
@@ -184,6 +185,7 @@ export class MmlParser {
       case c === 'q': return this.processQuantize(line, pos, lineNo, tracks);
       case c === 'K': return this.processTranspose(line, pos, lineNo, tracks);
       case c === 'D': return this.processDetune(line, pos, lineNo, tracks);
+      case c === 'p': return this.processPan(line, pos, lineNo, tracks);
       case c === 'r': return this.emitRestSequence(line, pos, lineNo, tracks);
       case c === '^': return this.emitTie(line, pos, lineNo, tracks);
       case c === '{': return this.emitTuplet(line, pos, lineNo, tracks);
@@ -473,6 +475,37 @@ export class MmlParser {
       t.state.pitchEnvIndex = index;
       t.code.push(OpPenv);
       t.code.push(index);
+    }
+
+    return read.next;
+  }
+
+  /** p<n> : ステレオ定位指定 (0: 無出力 / 1: 左 / 2: 右 / 3: 左右)。FM トラック専用。 */
+  private processPan(line: string, pos: number, lineNo: number, tracks: TrackBuilder[]): number {
+    const read = readUnsigned(line, pos + 1, -1);
+    if (read === null) {
+      this.diagnostics.push(mmlError(lineNo, pos + 1, 'p の後に定位値 (0-3) が必要です'));
+      return -1;
+    }
+
+    if (read.value > 3) {
+      this.diagnostics.push(mmlError(lineNo, pos + 1, `p の定位値は 0-3 で指定してください (${read.value})`));
+      return -1;
+    }
+
+    let hasFm = false;
+    for (const t of tracks) {
+      if (!t.track.isFm) {
+        continue;
+      }
+
+      hasFm = true;
+      t.code.push(OpPan);
+      t.code.push(read.value);
+    }
+
+    if (!hasFm) {
+      this.diagnostics.push(mmlWarn(lineNo, pos + 1, 'p は FM トラック (F1-F8) でのみ有効です'));
     }
 
     return read.next;

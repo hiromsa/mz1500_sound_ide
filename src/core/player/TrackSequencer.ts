@@ -107,6 +107,12 @@ export class TrackSequencer {
 
   private fmToneIndex = -1;
 
+  /** ステレオ定位 (p コマンド)。0: 無出力 / 1: 左 / 2: 右 / 3: 左右 (初期値)。 */
+  private pan = 3;
+
+  /** 現在の ALG/FB (pan 変更時の 0x20 レジスタ再合成用)。 */
+  private fmAlgFb = 0;
+
   /** 非連動ノイズの分周ヒント (直近のノート周波数から算出)。 */
   private noiseRateHint = 0;
 
@@ -265,6 +271,15 @@ export class TrackSequencer {
 
       case MzsdOp.Transpose:
         this.transpose = toSignedByte(data[this.pointer++]);
+        break;
+
+      case MzsdOp.Pan:
+        // ステレオ定位 (0: 無出力 / 1: 左 / 2: 右 / 3: 左右)。FM トラックのみ即時反映
+        this.pan = data[this.pointer++] & 3;
+        if (this.isFm) {
+          this.writeFmPan();
+        }
+
         break;
 
       case MzsdOp.Tone:
@@ -426,8 +441,9 @@ export class TrackSequencer {
     const ch = this.fmChannel;
     const p = tone.parameters;
 
-    // RL/RR (PAN: 両チャンネル出力) / FB / ALG
-    this.chips.fm.setReg(0x20 + ch, (3 << 6) | ((p[1] & 7) << 3) | (p[0] & 7));
+    // RL (PAN: p コマンド値) / FB / ALG
+    this.fmAlgFb = ((p[1] & 7) << 3) | (p[0] & 7);
+    this.chips.fm.setReg(0x20 + ch, (this.pan << 6) | this.fmAlgFb);
 
     for (let op = 0; op < 4; op++) {
       const o = 2 + op * 11; // AR, D1R, D2R, RR, D1L, TL, KS, MUL, DT1, DT2, AME
@@ -438,6 +454,11 @@ export class TrackSequencer {
       this.chips.fm.setReg(0xc0 + (op << 3) + ch, ((p[o + 9] & 3) << 6) | (p[o + 2] & 31));
       this.chips.fm.setReg(0xe0 + (op << 3) + ch, ((p[o + 4] & 15) << 4) | (p[o + 3] & 15));
     }
+  }
+
+  /** ステレオ定位 (p コマンド) を 0x20 レジスタ (RL bit) へ即時反映する。 */
+  private writeFmPan(): void {
+    this.chips.fm.setReg(0x20 + this.fmChannel, (this.pan << 6) | this.fmAlgFb);
   }
 
   /** 音量エンベロープを 1 フレーム進め、減衰量へ反映する。 */

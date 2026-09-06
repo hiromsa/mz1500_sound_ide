@@ -372,6 +372,28 @@ describe('Z80Driver 等価性 (SourceInterpreter vs Z80Driver)', () => {
     runBoth(builder, 40, false, 'FM 音色 / ノート / 音量');
   });
 
+  it('FM ステレオ定位 (PAN) がリファレンスと一致する', () => {
+    const builder = new SongBuilder();
+    const tone = new Uint8Array(FmToneParameterCount);
+    tone[0] = 4;
+    tone[1] = 3;
+    const toneIndex = builder.addFmTone(tone);
+    builder.addTrack(
+      9,
+      SongBuilder.tone(toneIndex),
+      SongBuilder.pan(1),
+      SongBuilder.note(69, 6, 6),
+      SongBuilder.pan(2),
+      SongBuilder.note(72, 6, 6),
+      SongBuilder.pan(0),
+      SongBuilder.note(64, 6, 6),
+      SongBuilder.pan(3),
+      SongBuilder.note(65, 6, 6),
+      SongBuilder.trackEnd(),
+    );
+    runBoth(builder, 40, false, 'FM PAN');
+  });
+
   it('FM ピッチエンベロープ / スイープ / ディチューン / トランスポーズがリファレンスと一致する', () => {
     const builder = new SongBuilder();
     builder.addFmTone(new Uint8Array(FmToneParameterCount)); // 音色 0 (全 0)

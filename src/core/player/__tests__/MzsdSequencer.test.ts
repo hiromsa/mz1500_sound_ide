@@ -181,4 +181,26 @@ describe('FM sequencer', () => {
 
     sequencer.tick(); // NOTE (発音)
   });
+
+  it('applies the pan command to the RL bits and keeps ALG/FB', () => {
+    // p1 (左) → $20+ch = (1 << 6) | (3 << 3) | 4 = 0x5C
+    const builder = new SongBuilder();
+    const parameters = new Uint8Array(46);
+    parameters[0] = 4;
+    parameters[1] = 3;
+    const toneIndex = builder.addFmTone(parameters);
+    builder.addTrack(
+      9,
+      SongBuilder.tone(toneIndex),
+      SongBuilder.pan(1),
+      SongBuilder.note(69, 4, 4),
+      SongBuilder.trackEnd(),
+    );
+    const chips = new ChipBank();
+    const sequencer = new MzsdSequencer(MzsdSong.parse(builder.build()), chips, false);
+
+    // tick 1 回で TONE / PAN / NOTE まで連続実行され、最後の PAN (左) が最終値になる
+    sequencer.tick();
+    expect(chips.fm.tryGetRegister(0x20)?.value).toBe(0x5c);
+  });
 });

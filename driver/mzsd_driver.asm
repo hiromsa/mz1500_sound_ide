@@ -78,6 +78,8 @@ CH_DETUNE       equ     48              ; 2B: ディチューン (符号付き�
 CH_PITCH        equ     50              ; 2B: スイープ累積ピッチ変位 (NOTE 開始 / キーオフで 0)
 CH_BASEP        equ     52              ; 2B: ノート基準値 (DCSG period / BEEP counter / FM pitch)
 CH_TONE         equ     54              ; 1B: TONE (FM 音色番号) 直近値
+CH_ALGFB        equ     55              ; 1B: ALG/FB (pan 変更時の 0x20 レジスタ再合成用)
+CH_PAN          equ     56              ; 1B: ステレオ定位 (0: 無出力 / 1: 左 / 2: 右 / 3: 左右)
 CH_TOTAL        equ     64              ; チャンネルブロック総サイズ (基本部 + ループ + 拡張部)
 
 TRACK_COUNT     equ     17
@@ -455,7 +457,9 @@ re_loop:
         jp      z,ev_loopstart          ; 0x0B LOOP_START
         dec     a
         jp      z,ev_loopend            ; 0x0C LOOP_END
-        jp      ev_end                  ; 0x0D GOTO (不使用) / 0x0E TRACK_END / 不明命令
+        dec     a
+        jp      z,ev_pan                ; 0x0D PAN
+        jp      ev_end                  ; 0x0E TRACK_END / 不明命令
 
 ; ---- NOTE: note(1) len(2) gate(2)
 ev_note:
@@ -685,6 +689,32 @@ ev_noisectl:
         call    apply_noise             ; ノイズトラックは即レジスタ反映
         pop     hl
 enc_c:
+        call    update_ptr
+        jp      re_loop
+
+; ---- PAN: val(1) (0: 無出力 / 1: 左 / 2: 右 / 3: 左右出力)
+ev_pan:
+        ld      a,(hl)
+        inc     hl
+        and     0x03
+        ld      (ix+CH_PAN),a
+        add     a,a
+        add     a,a
+        add     a,a
+        add     a,a
+        add     a,a
+        add     a,a                     ; a = pan << 6
+        or      (ix+CH_ALGFB)
+        bit     3,(ix+CH_FLAGS)
+        jr      z,ep_n                  ; FM 以外は状態保持のみ
+        push    hl
+        ld      d,(ix+CH_PORT)          ; d = FM チャンネル (0-7)
+        ld      c,a
+        ld      a,0x20
+        add     a,d
+        call    write_fm                ; RL bit を即時更新 (FB/ALG は現状維持)
+        pop     hl
+ep_n:
         call    update_ptr
         jp      re_loop
 
@@ -1339,7 +1369,7 @@ apply_fm_tone:
         call    fmtone_addr             ; hl = 音色データ先頭 (p[0])
         ld      a,(ix+CH_PORT)
         ld      d,a                     ; d = FM チャンネル
-        ; reg 0x20+ch = 0xC0 | (FB << 3) | ALG   <- p1, p0
+        ; reg 0x20+ch = (PAN << 6) | (FB << 3) | ALG   <- p1, p0
         ld      a,(hl)
         and     0x07
         ld      c,a
@@ -1349,8 +1379,17 @@ apply_fm_tone:
         add     a,a
         add     a,a
         add     a,a
+        or      c                       ; a = (FB << 3) | ALG
+        ld      c,a
+        ld      (ix+CH_ALGFB),a         ; ALG/FB 保存 (pan 変更時の再合成用)
+        ld      a,(ix+CH_PAN)
+        add     a,a
+        add     a,a
+        add     a,a
+        add     a,a
+        add     a,a
+        add     a,a                     ; a = PAN << 6
         or      c
-        or      0xC0
         ld      c,a
         ld      a,0x20
         add     a,d
@@ -1964,6 +2003,8 @@ init_ch_regs:
         ld      (ix+CH_VENV),0xFF       ; エンベロープ未使用
         ld      (ix+CH_PENV),0xFF
         ld      (ix+CH_SWEEP),0
+        ld      (ix+CH_ALGFB),0
+        ld      (ix+CH_PAN),3           ; 初期定位: 左右出力 (p3 相当)
         cp      3                       ; a = トラック番号 ( xor a 等で壊さないこと )
         jr      c,icr_psg1              ; 0-2
         jr      z,icr_n1                ; 3

@@ -25,7 +25,10 @@ export interface PitchEnvelopeDef {
   readonly loopIndex: number;
 }
 
-/** FM 音色の 1 音色あたりパラメータ数。 */
+/** FM 音色の 1 音色あたりパラメータ数。
+ *  構成: ALG, FB + OP1〜OP4 各 11 値 (AR, D1R, D2R, RR, D1L, TL, KS, MUL, DT1, DT2, AME)。
+ *  最終パラメータ (AME) はドライバ未実装のため未使用 (予約)。
+ */
 export const FmToneParameterCount = 46;
 
 /** FM 音色定義 (@FM、46 パラメータ)。 */
@@ -48,6 +51,7 @@ export const MzsdOp = {
   NoiseCtl: 0x0a,
   LoopStart: 0x0b,
   LoopEnd: 0x0c,
+  Pan: 0x0d,
   TrackEnd: 0x0e,
 } as const;
 
