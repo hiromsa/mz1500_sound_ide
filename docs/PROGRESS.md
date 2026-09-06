@@ -5,6 +5,29 @@
 ---
 
 ## 1. 直近の完了作業（最新）
+- **MML にステレオ定位コマンド `p` を追加 & FM 音色 `AME` パラメータの未実装明記 (`src/core/mml/parser/MmlParser.ts`, `src/core/player/MzsdSong.ts`, `src/core/player/TrackSequencer.ts`, `driver/mzsd_driver.asm`, `src/core/player/__tests__/SongBuilder.ts` / `MzsdSequencer.test.ts` / `Z80DriverEquivalence.test.ts`, `src/core/mml/__tests__/MmlCompiler.test.ts`, [`docs/specification/mml_reference.md`](./specification/mml_reference.md))** (2026-09-06):
+  - **背景・経緯**:
+    - `mml_reference.md` の OPM (YM2151) 制御対応状況を精査し、(1) チップ実装はあるのに MML/MZSD 命令から制御できない機能 (PAN / ハード LFO / FM ノイズ / CSM)、(2) 46 パラメータの最終パラメータ `AME` が OPM の予約 bit (`$40-$5F` bit7) に書かれており実質無効 (デッド) であることを確認。
+    - ユーザー確定方針: `AME` は定番 FM 音色フォーマットに合わせ **MML 仕様には残し「未実装」であることを明記** / MZSD バイナリは **46 パラメータ維持** (最終 1 パラメータは未使用・予約) / 定位は `p0`-`p3` で実装。
+  - **対応内容**:
+    1. **ステレオ定位コマンド `p` (FM トラック専用)**:
+       - 書式: `p0` 無出力 / `p1` 左出力 / `p2` 右出力 / `p3` 左右出力 (初期値)。OPM `$20+ch` の RL bit (bit7-6) と 1:1 対応 (チップ内部は `ibuf[pan]` へ振り分け: 0=どこにも出力されない / 1=L / 2=R / 3=L+R)。
+       - MML パーサ (`processPan`): FM トラック以外では警告 (コードへ出力しない)、範囲外・数値なしはエラー。
+       - MZSD 命令 `0x0D` に `Pan` を追加 (`MzsdOp.Pan`)。`TrackSequencer` は `pan` 状態 + `fmAlgFb` (音色の ALG/FB 保存) を持ち、`$20+ch` へ `(pan << 6) | algfb` を即時書き込み。
+       - 実機 Z80 ドライバ (`mzsd_driver.asm`): `CH_PAN` / `CH_ALGFB` ワークを新設し `ev_pan` ルーチンを実装 (ディスパッチ `0x0D` 追加、`init_ch_regs` で pan=3 初期化)。`apply_fm_tone` の `0xC0` 固定を廃止し CH_PAN と合成するよう変更。
+       - `Z80DriverEquivalence.test.ts` に PAN を含む曲の等価性テストを新設 (TS シーケンサと実機ドライバの同一動作を検証)。
+    2. **`AME` 未実装の明記**:
+       - `mml_reference.md` 4.3 に「`AME` は未実装 (設定しても音に影響なし)、MZSD 上も最終 1 パラメータは未使用 (予約)」の注記を追加。
+       - `MzsdSong.ts` の `FmToneParameterCount` コメントにパラメータ構成と AME 未使用を記載。
+  - **検証**:
+    - `npm test`: 全 **306 件合格** (新規 5 件: MML パース 3 + シーケンサ PAN レジスタ 1 + Z80 等価性 1)。
+    - `npm run lint`: エラー 0 件 (既存 UI 警告 2 のみ)。
+    - `npm run build`: 成功。
+  - **残課題 (OPM 制御の拡張候補 — チップ実装済み・MML/MZSD 命令未接続)**:
+    - ハードウェア LFO (PMD/AMD: `$01` enable / `$18` LFRQ / `$19` PMD-AMD / `$1B` 波形 / `$38-$3F` PMS-AMS / `$A0-$BF` bit7 AMON)。
+    - FM ノイズ (`$0F` NE+NFRQ + `$20-$27` bit5)、CSM (`$10-$14` Timer A)。
+    - `y` レジスタ直接書き込みコマンド (上記の一括代替手段)。
+
 - **FM音源音色エディタの用語統一（`FM TONE` / `FM TONE EDITOR`） & PITCH ENV への `SPACE: PAN` 表示追加 & 仮想キーボードからの SPACE PAN 撤廃 (`src/app/App.tsx`, `src/view/FmToneEditor.tsx`, `src/view/PitchEnvelopeEditor.tsx`, `src/view/VirtualKeyboard.tsx`, `docs/specification/ui.md`)** (2026-09-06):
   - **背景・ユーザー要望**:
     - 「FM 音源の 音色エディタは FM TONE / FM TONE EDITOR という用語にしたいです。 YM2151 とか OPM というのは 補足説明的なかんじで。たとえば タブ名は FM TONE、タブの中の表示は FM TONE EDITOR   YM2151(OPM) 4-OPERATOR FM とか・・・　他の箇所も違和感ないようにしたいです。　仮想キーボードのCHIP:FM (YM2151) とかは違和感ないように思えます。
