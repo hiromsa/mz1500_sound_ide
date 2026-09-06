@@ -80,6 +80,50 @@ const OCTAVE_WHITE_INDICES: Record<number, number> = {
   7: 44,  // C7
 };
 
+// PCキーボード (QWERTY) による演奏用マッピング (C=0, C#=1... 基準オクターブ加算)
+const PC_KEY_TO_SEMITONE: Record<string, number> = {
+  KeyA: 0,        // C
+  KeyW: 1,        // C#
+  KeyS: 2,        // D
+  KeyE: 3,        // D#
+  KeyD: 4,        // E
+  KeyF: 5,        // F
+  KeyT: 6,        // F#
+  KeyG: 7,        // G
+  KeyY: 8,        // G#
+  KeyH: 9,        // A
+  KeyU: 10,       // A#
+  KeyJ: 11,       // B
+  KeyK: 12,       // C (+1)
+  KeyO: 13,       // C# (+1)
+  KeyL: 14,       // D (+1)
+  KeyP: 15,       // D# (+1)
+  Semicolon: 16,  // E (+1)
+  Quote: 17,      // F (+1)
+};
+
+// 鍵盤上に表示するPCキーボードラベル
+const SEMITONE_TO_KEY_LABEL: Record<number, string> = {
+  0: 'A',
+  1: 'W',
+  2: 'S',
+  3: 'E',
+  4: 'D',
+  5: 'F',
+  6: 'T',
+  7: 'G',
+  8: 'Y',
+  9: 'H',
+  10: 'U',
+  11: 'J',
+  12: 'K',
+  13: 'O',
+  14: 'L',
+  15: 'P',
+  16: ';',
+  17: "'",
+};
+
 export type ActiveTabContext = 'mml' | 'tone' | 'vol_envelope' | 'pitch_envelope';
 
 interface VirtualKeyboardProps {
@@ -120,6 +164,9 @@ export function VirtualKeyboard({
   const isPanningRef = useRef<boolean>(false);
   const panStartXRef = useRef<number>(0);
   const panStartScrollLeftRef = useRef<number>(0);
+
+  // PCキーボードタイピング演奏用の基準オクターブ (初期値 4 = C4基準)
+  const [typingOctave, setTypingOctave] = useState<number>(() => mmlContext?.octave ?? 4);
 
   // 1. 実効音源判定
   const effectiveEngine: SoundEngineType = useMemo(() => {
@@ -204,35 +251,7 @@ export function VirtualKeyboard({
     }
   }, [mmlContext?.octave, activeTabContext]);
 
-  // スペースキー押下検知 (パン操作)
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.code === 'Space') {
-        const tag = (e.target as HTMLElement)?.tagName;
-        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
 
-        if (!isSpacePressedRef.current) {
-          isSpacePressedRef.current = true;
-          setIsSpacePressed(true);
-        }
-      }
-    };
-
-    const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.code === 'Space') {
-        isSpacePressedRef.current = false;
-        setIsSpacePressed(false);
-        isPanningRef.current = false;
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
-    };
-  }, []);
 
   // オクターブジャンプハンドラ
   const handleJumpOctave = (oct: number) => {
@@ -344,15 +363,87 @@ export function VirtualKeyboard({
     return () => window.removeEventListener('mouseup', onMouseUp);
   }, []);
 
-  // キーボードパネル上のマウス操作はペインフォーカス (focusedPane) を切り替えない。
-  // 右ペインで TONE / ENV エディタ選択中に鍵盤を弾いても、そのエディタのプレビューコンテキストを維持するため。
-  const handleKeyboardMouseDownCapture = (e: React.MouseEvent) => {
-    e.stopPropagation();
-  };
+  // PCキーボード (QWERTY) 演奏 & スペースキーパン操作の統合フック
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const activeEl = document.activeElement as HTMLElement | null;
+      const tag = activeEl?.tagName;
+      // テキスト入力・エディタ操作中はキー演奏をバイパス
+      if (
+        tag === 'INPUT' ||
+        tag === 'TEXTAREA' ||
+        tag === 'SELECT' ||
+        activeEl?.isContentEditable ||
+        activeEl?.closest('.monaco-editor')
+      ) {
+        return;
+      }
+
+      // スペースキー: パン操作
+      if (e.code === 'Space') {
+        if (!isSpacePressedRef.current) {
+          isSpacePressedRef.current = true;
+          setIsSpacePressed(true);
+        }
+        return;
+      }
+
+      // オクターブ切り替え (Z: -1 / X: +1)
+      if (e.code === 'KeyZ') {
+        setTypingOctave(prev => Math.max(1, prev - 1));
+        return;
+      }
+      if (e.code === 'KeyX') {
+        setTypingOctave(prev => Math.min(7, prev + 1));
+        return;
+      }
+
+      // QWERTYキーによるノート発音
+      const semitone = PC_KEY_TO_SEMITONE[e.code];
+      if (semitone !== undefined) {
+        if (e.repeat) return;
+        e.preventDefault();
+        const midiNote = (typingOctave + 1) * 12 + semitone;
+        if (midiNote >= 21 && midiNote <= 108) {
+          handleNoteOn(midiNote);
+        }
+      }
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.code === 'Space') {
+        isSpacePressedRef.current = false;
+        setIsSpacePressed(false);
+        isPanningRef.current = false;
+        return;
+      }
+
+      const semitone = PC_KEY_TO_SEMITONE[e.code];
+      if (semitone !== undefined) {
+        const midiNote = (typingOctave + 1) * 12 + semitone;
+        handleNoteOff(midiNote);
+      }
+    };
+
+    const handleBlur = () => {
+      isSpacePressedRef.current = false;
+      setIsSpacePressed(false);
+      isPanningRef.current = false;
+      handleAllNotesOff();
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('blur', handleBlur);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('blur', handleBlur);
+    };
+  }, [typingOctave, handleNoteOn, handleNoteOff]);
 
   return (
     <div
-      onMouseDownCapture={handleKeyboardMouseDownCapture}
       className="h-full flex flex-col bg-[#14151c] select-none overflow-hidden font-mono text-xs"
     >
       {/* 1. 上部コントロール & 設定エリア */}
@@ -535,8 +626,30 @@ export function VirtualKeyboard({
           </div>
         </div>
 
-        {/* 右側: スペースキードラッグ案内 & オクターブジャンプ & Panicボタン */}
+        {/* 右側: PCキーボード演奏案内 & スペースドラッグ案内 & オクターブジャンプ & Panicボタン */}
         <div className="flex items-center gap-1 shrink-0 ml-auto">
+          {/* PCキーボード演奏インジケータ & オクターブ切替 */}
+          <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-zinc-900/90 border border-white/[0.08] text-[9px] text-zinc-400">
+            <span className="text-zinc-500 font-semibold hidden md:inline">⌨ PC:</span>
+            <span className="text-cyan-300 font-mono font-bold">A-K</span>
+            <span className="text-zinc-600">|</span>
+            <span className="text-zinc-300 font-bold">OCT {typingOctave}</span>
+            <button
+              onClick={() => setTypingOctave(o => Math.max(1, o - 1))}
+              className="px-1 py-0.2 bg-[#222430] hover:bg-zinc-700 text-zinc-300 hover:text-white rounded border border-white/[0.06] cursor-pointer"
+              title="オクターブ下げる (Zキー)"
+            >
+              Z-
+            </button>
+            <button
+              onClick={() => setTypingOctave(o => Math.min(7, o + 1))}
+              className="px-1 py-0.2 bg-[#222430] hover:bg-zinc-700 text-zinc-300 hover:text-white rounded border border-white/[0.06] cursor-pointer"
+              title="オクターブ上げる (Xキー)"
+            >
+              X+
+            </button>
+          </div>
+
           {/* スペースドラッグインジケータ */}
           <div className={`hidden lg:flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] border transition-colors ${
             isSpacePressed 
@@ -608,6 +721,7 @@ export function VirtualKeyboard({
                 onMouseDown={(e) => {
                   if (isSpacePressedRef.current) return;
                   e.preventDefault();
+                  isMouseDownRef.current = true;
                   handleNoteOn(key.midiNote);
                 }}
                 onMouseEnter={() => {
@@ -625,16 +739,30 @@ export function VirtualKeyboard({
                     handleNoteOff(key.midiNote);
                   }
                 }}
-                className={`absolute top-0 bottom-0 rounded-b border transition-all select-none z-0 flex flex-col justify-end pb-1 items-center ${
+                className={`absolute top-0 bottom-0 rounded-b border select-none z-0 flex flex-col justify-end pb-1 items-center transition-colors duration-75 ${
                   isSpacePressed ? 'pointer-events-none' : 'cursor-pointer'
                 } ${
                   isPressed
-                    ? 'bg-gradient-to-t from-cyan-400 to-cyan-200 border-cyan-300 shadow-[0_0_12px_rgba(34,211,238,0.8)] z-10 translate-y-0.5'
+                    ? 'bg-gradient-to-t from-cyan-400 to-cyan-200 border-cyan-300 shadow-[inset_0_3px_6px_rgba(0,0,0,0.35),0_0_14px_rgba(34,211,238,0.9)] z-10 translate-y-1'
                     : isC
-                      ? 'bg-zinc-100 hover:bg-white border-zinc-400/80'
-                      : 'bg-zinc-200 hover:bg-zinc-100 border-zinc-400/60'
+                      ? 'bg-zinc-100 hover:bg-white border-zinc-400/80 active:translate-y-1'
+                      : 'bg-zinc-200 hover:bg-zinc-100 border-zinc-400/60 active:translate-y-1'
                 }`}
               >
+                {/* PCキーボード対応キー文字ガイド */}
+                {(() => {
+                  const diff = key.midiNote - ((typingOctave + 1) * 12);
+                  const pcKey = SEMITONE_TO_KEY_LABEL[diff];
+                  if (!pcKey) return null;
+                  return (
+                    <span className={`text-[8px] font-mono font-bold select-none ${
+                      isPressed ? 'text-black' : 'text-cyan-700/80 font-semibold'
+                    }`}>
+                      {pcKey}
+                    </span>
+                  );
+                })()}
+
                 {/* C音にはオクターブラベル表示 */}
                 {isC && (
                   <span className={`text-[9px] font-extrabold tracking-tighter ${
@@ -664,7 +792,7 @@ export function VirtualKeyboard({
                 onMouseDown={(e) => {
                   if (isSpacePressedRef.current) return;
                   e.preventDefault();
-                  e.stopPropagation();
+                  isMouseDownRef.current = true;
                   handleNoteOn(key.midiNote);
                 }}
                 onMouseEnter={() => {
@@ -677,21 +805,32 @@ export function VirtualKeyboard({
                     handleNoteOff(key.midiNote);
                   }
                 }}
-                onMouseUp={(e) => {
+                onMouseUp={() => {
                   if (!isSpacePressedRef.current) {
-                    e.stopPropagation();
                     handleNoteOff(key.midiNote);
                   }
                 }}
-                className={`absolute top-0 rounded-b border transition-all select-none z-20 flex flex-col justify-end pb-1 items-center shadow-md ${
+                className={`absolute top-0 rounded-b border select-none z-20 flex flex-col justify-end pb-1 items-center shadow-md transition-colors duration-75 ${
                   isSpacePressed ? 'pointer-events-none' : 'cursor-pointer'
                 } ${
                   isPressed
-                    ? 'bg-gradient-to-t from-cyan-500 to-cyan-300 border-cyan-200 shadow-[0_0_12px_rgba(6,182,212,0.9)] translate-y-0.5'
-                    : 'bg-[#181920] hover:bg-[#252834] border-black/80'
+                    ? 'bg-gradient-to-t from-cyan-500 to-cyan-300 border-cyan-200 shadow-[inset_0_3px_6px_rgba(0,0,0,0.6),0_0_14px_rgba(6,182,212,0.9)] translate-y-1'
+                    : 'bg-[#181920] hover:bg-[#252834] border-black/80 active:translate-y-1'
                 }`}
               >
-                <span className="w-1 h-2 rounded-full bg-zinc-600/40 mb-0.5" />
+                {/* PCキーボード対応キー文字ガイド */}
+                {(() => {
+                  const diff = key.midiNote - ((typingOctave + 1) * 12);
+                  const pcKey = SEMITONE_TO_KEY_LABEL[diff];
+                  if (!pcKey) return <span className="w-1 h-2 rounded-full bg-zinc-600/40 mb-0.5" />;
+                  return (
+                    <span className={`text-[8px] font-mono font-bold select-none ${
+                      isPressed ? 'text-black' : 'text-cyan-300/90'
+                    }`}>
+                      {pcKey}
+                    </span>
+                  );
+                })()}
               </div>
             );
           })}

@@ -5,6 +5,33 @@
 ---
 
 ## 1. 直近の完了作業（最新）
+- **バーチャルキーボードのクリック無反応不具合の解消 & 押し込み打鍵感強化 & PCキーボード (QWERTY) 演奏対応 (`src/view/VirtualKeyboard.tsx`, `src/view/MmlEditor.tsx`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-06):
+  - **背景・ユーザー報告**:
+    - 「仮想キーボードが押し込めません。弾けてない？」（鍵盤をクリックしても色が変わらず無反応、沈み込みがない）。
+  - **原因**:
+    - 前回の修正で下部ツールエリアのコンテナ `div`（`MmlEditor.tsx`）および `VirtualKeyboard.tsx` のルート `div` に追加された `onMouseDownCapture={(e) => e.stopPropagation()}` により、**キャプチャフェーズ（Capture Phase: 親から子へ向かう）でイベント伝播が完全に停止**していた。そのため、子要素である各鍵盤の `onMouseDown` にイベントが一切到達せず、マウスクリックが完全に無反応になっていた。
+  - **変更内容**:
+    - `MmlEditor.tsx`: 下部エリアコンテナから `onMouseDownCapture={(e) => e.stopPropagation()}` を削除。
+    - `VirtualKeyboard.tsx`: ルート要素から `handleKeyboardMouseDownCapture` を削除し、鍵盤へのイベント伝播を完全復旧。
+    - `VirtualKeyboard.tsx`: 鍵盤押下時の視覚スタイルを強化（`translate-y-1` で 4px 沈み込み＋インナーシャドウ `shadow-[inset_0_3px_6px_rgba(0,0,0,0.35)]`＋シアン発光）。150ms トランジション遅延を排除し、打鍵した瞬間にスパッと沈み込むリアルな打鍵フィーリングを実現。
+    - `VirtualKeyboard.tsx`: 黒鍵・白鍵ともに `onMouseDown` で `isMouseDownRef.current = true` を設定し、白鍵/黒鍵をまたぐスムーズなドラッグ演奏（グリッサンド）に対応。
+    - **PCキーボード (QWERTY) 演奏対応 (新設)**:
+      - 白鍵: `A`, `S`, `D`, `F`, `G`, `H`, `J`, `K`（C〜C+1）、黒鍵: `W`, `E`, `T`, `Y`, `U`, `O`, `P` による直接タイピング演奏を実装。
+      - `Z` / `X` キーで演奏オクターブ（1〜7）を即座にシフト可能。
+      - 鍵盤上に対応する PC キーの文字ガイドラベルを表示。
+      - コントロールバー右側に `⌨ PC: A-K | OCT X [Z-][X+]` インジケータを表示。
+      - Monaco Editor や入力欄へのテキスト入力中は演奏を自動バイパス。
+  - **検証**:
+    - `npm test`: 全 298 件すべて合格。
+    - `npm run lint`: エラーゼロ。
+    - `npm run build`: 成功。
+    - 組み込みブラウザサブエージェント（`browser_subagent`）により実機検証:
+      1. 白鍵 C4 (A) をマウスでクリック ➔ 即座に `translate-y-1` とインナーシャドウ・シアン発光で沈み込みを確認。
+      2. 黒鍵 C#4 (W) をマウスでクリック ➔ シアン発光と押し込みを確認。
+      3. PC キーボードの `KeyA` を押下 ➔ C4 が光って沈み込み、離すと戻る連動を確認。
+      4. 鍵盤上のキーラベル表示およびコントロールバーの `⌨ PC: A-K` インジケータを確認。
+
+
 - **バーチャルキーボード演奏時の発音モード意図せぬMML切替の修正 (`src/view/MmlEditor.tsx`, `src/app/App.tsx`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-06):
   - **背景・ユーザー報告**:
     - TONE エディタ、PITCH ENV、VOLUME ENV 等を選択してから仮想キーボードで演奏すると、MML のモード（MML CARET）に変化してしまう。

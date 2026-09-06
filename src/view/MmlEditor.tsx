@@ -955,7 +955,6 @@ export function MmlEditor({
         <div 
           style={{ height: `${isBottomCollapsed ? BOTTOM_COLLAPSED_HEIGHT_PX : bottomHeight}px` }} 
           className="bg-[#1E1E1E] border-t border-[#3C3C3C] flex flex-col font-mono text-xs select-none shrink-0 overflow-hidden"
-          onMouseDownCapture={(e) => e.stopPropagation()}
         >
           {/* 下部タブバー */}
           <div className="h-7 px-2 bg-[#242424] border-b border-[#3C3C3C] flex items-center justify-between shrink-0">
