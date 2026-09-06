@@ -2,8 +2,6 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { 
   ChevronUp, 
   ChevronDown, 
-  Play, 
-  Square, 
   Copy, 
   ClipboardPaste, 
   AudioWaveform 
@@ -23,6 +21,8 @@ import {
 } from '../core/fm/FmTone';
 import { isIdDefined, loadFmToneDefinition } from '../utils/mmlDefinitionLoader';
 import { DefinitionIdInput } from './DefinitionIdInput';
+import { TestNoteButton } from './components/TestNoteButton';
+import { midiNoteToFrequency } from '../utils/virtualSynth';
 
 // プリセット音色定義
 const PRESET_TONES: FmToneData[] = [
@@ -1147,9 +1147,20 @@ export interface FmToneEditorProps {
   mmlSource?: string;
   /** 「MMLに反映」ボタン押下時に呼ばれるコールバック。生成されたMMLスニペットとIDを渡す。 */
   onApplyToMml?: (mmlSnippet: string, id: number) => void;
+  /** テスト発音・プレビュー用MIDIノート番号 (仮想キーボード連動) */
+  testMidiNote?: number;
+  /** テストノート変更コールバック */
+  onChangeTestMidiNote?: (note: number) => void;
 }
 
-export function FmToneEditor({ onChangeToneData, loadToneId, mmlSource, onApplyToMml }: FmToneEditorProps = {}) {
+export function FmToneEditor({
+  onChangeToneData,
+  loadToneId,
+  mmlSource,
+  onApplyToMml,
+  testMidiNote,
+  onChangeTestMidiNote,
+}: FmToneEditorProps = {}) {
   // 現在編集中の音色データ
   const [toneData, setToneData] = useState<FmToneData>(PRESET_TONES[0]);
 
@@ -1369,7 +1380,7 @@ export function FmToneEditor({ onChangeToneData, loadToneId, mmlSource, onApplyT
   }, [stopAudio]);
 
   // Web Audio 試聴プレビュー開始 (4-Operator FM 合成)
-  const playPreviewTone = () => {
+  const playPreviewTone = (previewNote?: number) => {
     stopAudio();
 
     const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
@@ -1380,7 +1391,8 @@ export function FmToneEditor({ onChangeToneData, loadToneId, mmlSource, onApplyT
     if (ctx.state === 'suspended') ctx.resume();
 
     const now = ctx.currentTime;
-    const baseFreq = 440; // A4
+    const note = previewNote ?? testMidiNote ?? 60;
+    const baseFreq = midiNoteToFrequency(note);
 
     const masterGain = ctx.createGain();
     masterGain.gain.setValueAtTime(0.35, now);
@@ -1487,71 +1499,42 @@ export function FmToneEditor({ onChangeToneData, loadToneId, mmlSource, onApplyT
   return (
     <div className="flex flex-col h-full bg-[#090a0f] p-3.5 overflow-y-auto font-mono text-zinc-300 gap-3">
       {/* 1. Bento Card: ヘッダー・プリセット・試聴 (Linear Transport Style) */}
-      <div className="flex flex-wrap items-center justify-between gap-3 bg-[#12131a] p-3 rounded-lg border border-white/[0.08] shrink-0 shadow-xs">
-        <div className="flex items-center gap-2">
-          <AudioWaveform className="w-4 h-4 text-zinc-400" />
-          <h2 className="text-xs font-semibold text-zinc-200 tracking-wide">
-            YM2151 (OPM) TONE EDITOR
-          </h2>
-          <span className="text-[10px] text-zinc-400 px-2 py-0.5 rounded bg-zinc-800 border border-white/10 font-medium">
-            4-OPERATOR FM
-          </span>
-        </div>
-
-        {/* プリセット選択 & 試聴ボタン */}
-        <div className="flex items-center gap-3">
-          {/* 音色番号 (@ID) 指定 & MML定義状態 */}
-          <DefinitionIdInput
-            prefix="@"
-            value={toneData.id}
-            isDefined={isToneIdDefined}
-            onChange={handleIdChange}
-            maxId={255}
-            badgeTitle={isToneIdDefined
-              ? `@${toneData.id} は MML に定義済み (反映時は定義を置き換え)`
-              : `@${toneData.id} は MML に未定義 (反映時は最後の定義の後に新規挿入)`}
-          />
-
-          <div className="flex items-center gap-1.5 text-xs">
-            <span className="text-zinc-500 text-[10px] font-medium">PRESET:</span>
-            <div className="flex gap-1">
-              {PRESET_TONES.map(p => (
-                <button
-                  key={p.id}
-                  onClick={() => handleApplyPreset(p)}
-                  className={`px-2.5 h-6 rounded text-[10px] font-medium border transition-colors cursor-pointer ${
-                    toneData.name === p.name
-                      ? 'bg-zinc-700 text-white border-white/20 shadow-xs'
-                      : 'bg-zinc-900/60 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 border-white/[0.06]'
-                  }`}
-                >
-                  {p.name}
-                </button>
-              ))}
+      <div className="flex flex-col gap-2.5 bg-[#12131a] p-3 rounded-lg border border-white/[0.08] shrink-0 shadow-xs">
+        {/* 1行目: [左] アイコン + タイトル + バッジ + [縦区切り] + @ID入力  ---- [右] テスト発音 + MML反映 */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <AudioWaveform className="w-4 h-4 text-[#00A8FF]" />
+            <h2 className="text-xs font-semibold text-zinc-200 tracking-wide">
+              YM2151 (OPM) TONE EDITOR
+            </h2>
+            <span className="text-[10px] text-zinc-400 px-2 py-0.5 rounded bg-zinc-800 border border-white/10 font-medium">
+              4-OPERATOR FM
+            </span>
+            {/* 音色番号 (@ID) 指定 & MML定義状態 (左寄せ配置) */}
+            <div className="flex items-center ml-2 border-l border-white/10 pl-2.5">
+              <DefinitionIdInput
+                prefix="@"
+                value={toneData.id}
+                isDefined={isToneIdDefined}
+                onChange={handleIdChange}
+                maxId={255}
+                badgeTitle={isToneIdDefined
+                  ? `@${toneData.id} は MML に定義済み (反映時は定義を置き換え)`
+                  : `@${toneData.id} は MML に未定義 (反映時は最後の定義の後に新規挿入)`}
+              />
             </div>
           </div>
 
           {/* プレビュー試聴ボタン & MMLに反映ボタン */}
           <div className="flex items-center gap-2">
-            {!isPlaying ? (
-              <button
-                onClick={playPreviewTone}
-                className="h-6 px-3 rounded bg-[#00A8FF]/20 hover:bg-[#00A8FF]/30 text-[#00A8FF] border border-[#00A8FF]/60 font-medium transition-colors flex items-center gap-1.5 text-xs cursor-pointer shadow-xs"
-                title="Play 4-Op FM Tone Preview"
-              >
-                <Play className="w-3 h-3 fill-current" />
-                <span>TEST NOTE</span>
-              </button>
-            ) : (
-              <button
-                onClick={stopAudio}
-                className="h-6 px-2.5 rounded bg-red-950/80 text-red-300 border border-red-500 hover:bg-red-900 transition-colors flex items-center gap-1 text-xs font-medium shadow-xs cursor-pointer"
-                title="Stop Preview"
-              >
-                <Square className="w-3 h-3 fill-current" />
-                <span>STOP</span>
-              </button>
-            )}
+            <TestNoteButton
+              isPlaying={isPlaying}
+              onPlay={(note) => playPreviewTone(note)}
+              onStop={stopAudio}
+              midiNote={testMidiNote}
+              onChangeNote={onChangeTestMidiNote}
+              title="Play 4-Op FM Tone Preview"
+            />
             {/* MMLに反映ボタン (onApplyToMml が設定されている場合のみ表示) */}
             {onApplyToMml && (
               <button
@@ -1564,6 +1547,25 @@ export function FmToneEditor({ onChangeToneData, loadToneId, mmlSource, onApplyT
                 <span>▶ MMLに反映</span>
               </button>
             )}
+          </div>
+        </div>
+
+        {/* 2行目: プリセット選択 (左詰め・非トグル選択のアクションボタン) */}
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-white/[0.06]">
+          <div className="flex items-center gap-2 text-xs">
+            <span className="text-zinc-500 text-[10px] font-medium shrink-0">PRESET:</span>
+            <div className="flex flex-wrap gap-1">
+              {PRESET_TONES.map(p => (
+                <button
+                  key={p.id}
+                  onClick={() => handleApplyPreset(p)}
+                  className="h-5 px-2 rounded bg-zinc-900/80 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 border border-white/[0.06] transition-colors text-[10px] font-medium cursor-pointer"
+                  title={`${p.name} (ALG ${p.alg})`}
+                >
+                  {p.name}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       </div>

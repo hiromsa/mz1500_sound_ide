@@ -1,7 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
-  Play,
-  Square,
   X,
   Activity,
   FlipHorizontal,
@@ -9,7 +7,6 @@ import {
   Trash2,
   Copy,
   LineChart,
-  Sparkles,
   RefreshCw,
   ArrowLeft,
   ArrowRight,
@@ -18,6 +15,8 @@ import {
 } from 'lucide-react';
 import { isIdDefined, loadPitchEnvDefinition } from '../utils/mmlDefinitionLoader';
 import { DefinitionIdInput } from './DefinitionIdInput';
+import { TestNoteButton } from './components/TestNoteButton';
+import { midiNoteToFrequency } from '../utils/virtualSynth';
 
 const MAX_FRAMES = 128;
 
@@ -122,9 +121,20 @@ export interface PitchEnvelopeEditorProps {
   mmlSource?: string;
   /** 「MMLに反映」ボタン押下時に呼び出されるコールバック。 */
   onApplyToMml?: (mmlSnippet: string, id: number) => void;
+  /** テスト発音・プレビュー用MIDIノート番号 (仮想キーボード連動) */
+  testMidiNote?: number;
+  /** テストノート変更コールバック */
+  onChangeTestMidiNote?: (note: number) => void;
 }
 
-export function PitchEnvelopeEditor({ onChangeEnvData, loadEnvId, mmlSource, onApplyToMml }: PitchEnvelopeEditorProps = {}) {
+export function PitchEnvelopeEditor({
+  onChangeEnvData,
+  loadEnvId,
+  mmlSource,
+  onApplyToMml,
+  testMidiNote,
+  onChangeTestMidiNote,
+}: PitchEnvelopeEditorProps = {}) {
   // ピッチエンベロープデータ (各フレームの周波数/ピッチオフセット値)
   const [envData, setEnvData] = useState<number[]>(createInitialPitchData());
 
@@ -617,7 +627,7 @@ export function PitchEnvelopeEditor({ onChangeEnvData, loadEnvId, mmlSource, onA
   }, []);
 
   // Web Audio 試聴開始 (KEY ON - ピッチ変調をリアルタイムシミュレート)
-  const handlePlayKeyOn = () => {
+  const handlePlayKeyOn = (previewNote?: number) => {
     stopAudio();
 
     const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
@@ -627,7 +637,8 @@ export function PitchEnvelopeEditor({ onChangeEnvData, loadEnvId, mmlSource, onA
     audioCtxRef.current = ctx;
     if (ctx.state === 'suspended') ctx.resume();
 
-    const baseFreq = 440; // A4
+    const note = previewNote ?? testMidiNote ?? 60;
+    const baseFreq = midiNoteToFrequency(note);
 
     const osc = ctx.createOscillator();
     osc.type = 'sawtooth';
@@ -724,25 +735,14 @@ export function PitchEnvelopeEditor({ onChangeEnvData, loadEnvId, mmlSource, onA
 
         {/* 試聴トランスポート & MMLに反映ボタン */}
         <div className="flex items-center gap-2">
-          {!isPlaying ? (
-            <button
-              onClick={handlePlayKeyOn}
-              className="h-6 px-2.5 rounded text-[11px] font-semibold bg-[#122b1f] hover:bg-[#163827] text-emerald-400 hover:text-emerald-300 border border-emerald-500/50 transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
-              title="Play preview tone with pitch modulation (KEY ON)"
-            >
-              <Play className="w-3 h-3 fill-current" />
-              <span>TEST TONE</span>
-            </button>
-          ) : (
-            <button
-              onClick={stopAudio}
-              className="h-6 px-2.5 rounded text-[11px] font-semibold bg-red-950/80 hover:bg-red-900 text-red-300 border border-red-500/60 transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs animate-pulse"
-              title="Stop audio playback"
-            >
-              <Square className="w-3 h-3 fill-current" />
-              <span>STOP</span>
-            </button>
-          )}
+          <TestNoteButton
+            isPlaying={isPlaying}
+            onPlay={(note) => handlePlayKeyOn(note)}
+            onStop={stopAudio}
+            midiNote={testMidiNote}
+            onChangeNote={onChangeTestMidiNote}
+            title="Play preview tone with pitch modulation"
+          />
           {/* MMLに反映ボタン (onApplyToMml が設定されている場合のみ表示) */}
           {onApplyToMml && (
             <button
@@ -758,12 +758,9 @@ export function PitchEnvelopeEditor({ onChangeEnvData, loadEnvId, mmlSource, onA
         </div>
 
         {/* プリセット選択 & ループ/リリース情報 */}
-        <div className="flex flex-wrap items-center gap-4 w-full pt-2 border-t border-white/[0.06]">
-          <div className="flex items-center gap-1.5 text-xs">
-            <span className="text-zinc-500 text-[10px] font-medium flex items-center gap-1">
-              <Sparkles className="w-3 h-3 text-amber-400" />
-              PRESET:
-            </span>
+        <div className="flex flex-wrap items-center justify-between gap-2 w-full pt-2 border-t border-white/[0.06]">
+          <div className="flex items-center gap-2 text-xs">
+            <span className="text-zinc-500 text-[10px] font-medium shrink-0">PRESET:</span>
             <div className="flex flex-wrap gap-1">
               {Object.entries(PRESETS).map(([key, p]) => (
                 <button

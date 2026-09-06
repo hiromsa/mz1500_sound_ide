@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Volume2, VolumeX } from 'lucide-react';
+import { Volume2, VolumeX, Sliders } from 'lucide-react';
 import { allTracks } from '../core/mml/TrackId';
 import type { MmlMap } from '../core/mml/MmlMap';
 
@@ -268,13 +268,14 @@ export function TrackMonitor({
   return (
     <div className="flex flex-col h-full bg-[#1E1E1E] p-3.5 overflow-y-auto font-mono text-zinc-300 gap-3">
       {/* ヘッダー Bento Bar: タイトル & マスターボリューム */}
-      <div className="flex flex-wrap justify-between items-center gap-3 bg-[#2D2D2D] px-3.5 py-2.5 rounded-lg border border-[#3C3C3C] shrink-0 shadow-xs">
+      <div className="flex flex-wrap justify-between items-center gap-3 bg-[#12131a] p-3 rounded-lg border border-white/[0.08] shrink-0 shadow-xs">
         {/* タイトル領域 */}
         <div className="flex items-center gap-2.5">
-          <h2 className="text-xs font-semibold text-zinc-100 tracking-wide">
+          <Sliders className="w-4 h-4 text-[#00A8FF]" />
+          <h2 className="text-xs font-semibold text-zinc-200 tracking-wide">
             TRACK MONITOR
           </h2>
-          <span className="px-2 py-0.5 rounded-full bg-[#3A3A3A] text-zinc-200 text-[10px] font-medium tracking-tight">
+          <span className="text-[10px] text-zinc-400 px-2 py-0.5 rounded bg-zinc-800/80 border border-white/10 font-medium">
             {enableYM2151 ? '17 CH' : '9 CH (MZ-1500 BASICS)'}
           </span>
         </div>

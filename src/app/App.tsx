@@ -98,6 +98,10 @@ function App() {
   //    そのため右ペインで TONE / ENV エディタを選択中に鍵盤を弾いても、そのエディタのプレビュー音が鳴る。
   const [focusedPane, setFocusedPane] = useState<'mml' | 'rightPane'>('mml');
 
+  // テスト発音・プレビュー用MIDIノート番号 (デフォルト: 60 = C4)
+  // バーチャルキーボードおよび各エディタの TEST NOTE コントロールで双方向同期
+  const [testMidiNote, setTestMidiNote] = useState<number>(60);
+
   // バーチャルキーボードの発音コンテキスト判定:
   // - 左ペイン (MMLエディタ等) 選択中 / 右ペイン非表示 / 右ペインがエディタ以外のタブ → MMLキャレットコンテキスト
   // - 右ペインで FM TONE / VOL ENV / PITCH ENV を選択中 → そのエディタのプレビューコンテキスト
@@ -600,6 +604,8 @@ function App() {
             activePitchEnvLoop={activePitchEnvLoop}
             activeVolEnv={activeVolEnv}
             activeVolEnvLoop={activeVolEnvLoop}
+            testMidiNote={testMidiNote}
+            onChangeTestMidiNote={setTestMidiNote}
             onRequestEditTone={handleRequestEditTone}
             onRequestEditVolEnv={handleRequestEditVolEnv}
             onRequestEditPitchEnv={handleRequestEditPitchEnv}
@@ -763,6 +769,8 @@ function App() {
                     loadToneId={loadToneId}
                     mmlSource={activeMmlSource}
                     onApplyToMml={handleApplyToneToMml}
+                    testMidiNote={testMidiNote}
+                    onChangeTestMidiNote={setTestMidiNote}
                   />
                 ) : (
                   <div className="flex-grow p-6 flex flex-col items-center justify-center text-slate-400 font-mono text-xs">
@@ -791,6 +799,8 @@ function App() {
                   loadEnvId={loadVolEnvId}
                   mmlSource={activeMmlSource}
                   onApplyToMml={handleApplyVolEnvToMml}
+                  testMidiNote={testMidiNote}
+                  onChangeTestMidiNote={setTestMidiNote}
                 />
               )}
 
@@ -803,6 +813,8 @@ function App() {
                   loadEnvId={loadPitchEnvId}
                   mmlSource={activeMmlSource}
                   onApplyToMml={handleApplyPitchEnvToMml}
+                  testMidiNote={testMidiNote}
+                  onChangeTestMidiNote={setTestMidiNote}
                 />
               )}
 

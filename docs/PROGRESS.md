@@ -5,6 +5,48 @@
 ---
 
 ## 1. 直近の完了作業（最新）
+- **右ペイン（TRACK MONITOR ～ SONG SETUP / SETTINGS）ヘッダーのUI統一 & PRESET左詰め・非選択化 & テスト発音ボタン共通化・仮想キーボード相互連動 (`src/view/components/TestNoteButton.tsx`, `src/view/TrackMonitor.tsx`, `src/view/FmToneEditor.tsx`, `src/view/VolEnvelopeEditor.tsx`, `src/view/PitchEnvelopeEditor.tsx`, `src/view/SongSetupPanel.tsx`, `src/view/SettingsPanel.tsx`, `src/app/App.tsx`, `src/view/VirtualKeyboard.tsx`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-06):
+  - **背景・ユーザー要望**:
+    - 「TRACK MONITOR ～ SONG SETUP 内のヘッダ部分 に統一感が無いように思えます。
+      ・アイコンが無い、タブと違う→タブと同じがよさそう
+      ・IDの位置が異なる→左に配置で統一がよさそう
+      ・PRESETの動き・配置が異なる→左詰めで統一がよさそう＆押せるけど選択状態にはしなくてよさそう（あくまでもテンプレのデフォルト値のような扱いなので）
+      ・テスト発音のボタンの名称など→いいかんじに統一したい※
+      ※ボタン一つで試しにならせるのは良い、ただオクターブと音名くらい変えたいこともありそう、ただこだわると仮想キーボード使えってなっちゃうけど、ボタン一つで試しにならせるというシンプルさも捨てがたい、仮想キーボード上の設定とうまく連動できないか」
+  - **変更内容**:
+    1. **ヘッダー Bento Card スタイルの統一**:
+       - 右ペインの全タブ（`TRACK MONITOR`, `YM2151 TONE`, `VOL ENV`, `PITCH ENV`, `SONG SETUP`, `SETTINGS`）のヘッダーを `bg-[#12131a] p-3 rounded-lg border border-white/[0.08]` の Bento Card デザインに統一。
+    2. **タブアイコンとの完全一致**:
+       - `TRACK MONITOR`: 左端に `<Sliders className="w-4 h-4 text-[#00A8FF]" />` を新設。
+       - `YM2151 TONE`: `<AudioWaveform className="w-4 h-4 text-[#00A8FF]" />`（シアン色統一）。
+       - `VOL ENV`: 旧デザインの青丸ポチを廃止し、タブと同一の `<TrendingUp className="w-4 h-4 text-[#00A8FF]" />` に変更。
+       - `PITCH ENV`: `<LineChart className="w-4 h-4 text-[#00A8FF]" />`。
+       - `SONG SETUP`: `<Music className="w-4 h-4 text-[#00A8FF]" />`。
+       - `SETTINGS`: `<Settings className="w-4 h-4 text-[#00A8FF]" />`（シアン色統一）。
+    3. **定義番号IDの左寄せ配置統一**:
+       - `@ID`（FM TONE）、`@vID`（VOL ENV）、`@PEID`（PITCH ENV）の `DefinitionIdInput` を、タイトル・バッジのすぐ右隣（左側エリア、縦仕切り線区切り）に統一配置。
+    4. **PRESET の配置・挙動統一**:
+       - 各エディタの 2 行目サブバー左端に `PRESET:` を左詰めで統一配置。
+       - `FmToneEditor` のアクティブ選択ハイライトを廃止し、他エディタと同様に「クリックするとテンプレート値がセットされるアクションボタン」に統一。
+    5. **テスト発音コントロール (`TestNoteButton`) の共通化 & 仮想キーボード連動**:
+       - `[▶ TEST NOTE] [C4 ▼]` 形式の統一コントロールを作成し、全エディタに配置。
+       - 再生中は `[⏹ STOP] [C4]`（赤色パルスアニメーション）に切り替わり、ワンクリックで停止可能。
+       - `[C4 ▼]` ドロップダウンから代表的な音高（C2〜C6, A3, E4, G4, A4等）をクイック選択可能。
+       - **双方向連動**:
+         - 仮想キーボードで鍵盤を弾くと、その音高がエディタ側のテストノートとして自動記憶され、次回のワンクリック試聴もその音で発音。
+         - 仮想キーボードのオクターブ切替（Z/Xキーやボタン）に連動してテストノートのオクターブも自動更新。
+         - エディタ側で音高を変更した場合も、全エディタおよびキーボード間で同期。
+  - **検証**:
+    - `npm test`: 全 298 件すべて合格。
+    - `npm run lint`: エラー 0 件。
+    - `npm run build`: 成功。
+    - 組み込みブラウザサブエージェント（`browser_subagent`）により実機検証完了:
+      1. `TRACK MONITOR`: Sliders アイコン付き Bento Card ヘッダーの描画を確認。
+      2. `YM2151 TONE`: AudioWaveform アイコン、@1 左寄せ、PRESET 左詰め（非選択）、TEST NOTE [C4 v] から [A4 v] への変更と発音トグルを確認。
+      3. `VOL ENV`: TrendingUp アイコン（青丸から変更）、@v1 左寄せ、TEST NOTE [A4 v]（音高引き継ぎ）、PRESET 左詰めを確認。
+      4. `PITCH ENV`: LineChart アイコン、@PE1 左寄せ、TEST NOTE [A4 v]、PRESET 左詰めを確認。
+      5. `SONG SETUP` / `SETTINGS`: Bento Card スタイルでの美しいヘッダー表示を確認。
+
 - **MML モード時の PC キーボード (A〜K) 演奏無効化 — エディタへの誤入力防止と各エディタ専用化 (`src/view/VirtualKeyboard.tsx`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-06):
   - **背景・ユーザー要望**:
     - 「キーボード A ～ K による演奏は MML モードの時はできないようにします。mmlエディタに入力されちゃうので・・・」

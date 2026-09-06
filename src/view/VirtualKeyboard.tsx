@@ -134,6 +134,8 @@ interface VirtualKeyboardProps {
   activePitchEnvLoop?: number;
   activeVolEnv?: number[];
   activeVolEnvLoop?: number;
+  testMidiNote?: number;
+  onChangeTestMidiNote?: (note: number) => void;
 }
 
 export function VirtualKeyboard({
@@ -144,6 +146,8 @@ export function VirtualKeyboard({
   activePitchEnvLoop,
   activeVolEnv,
   activeVolEnvLoop,
+  testMidiNote,
+  onChangeTestMidiNote,
 }: VirtualKeyboardProps) {
   // 手動オーバーライド設定
   const [manualEngine, setManualEngine] = useState<SoundEngineType | 'auto'>('auto');
@@ -265,11 +269,26 @@ export function VirtualKeyboard({
     }
   };
 
+  // オクターブ変更ハンドラ (テストノート音高とも同期)
+  const changeTypingOctave = useCallback((updater: (prev: number) => number) => {
+    setTypingOctave(prev => {
+      const next = updater(prev);
+      if (next !== prev && onChangeTestMidiNote) {
+        const currentMidi = testMidiNote ?? 60;
+        const semitone = ((currentMidi % 12) + 12) % 12;
+        const newMidi = Math.max(12, Math.min(108, (next + 1) * 12 + semitone));
+        onChangeTestMidiNote(newMidi);
+      }
+      return next;
+    });
+  }, [onChangeTestMidiNote, testMidiNote]);
+
   // ノート発音ハンドラ
   const handleNoteOn = useCallback((midiNote: number) => {
     if (isSpacePressedRef.current) return; // スペースドラッグ中は発音しない
 
     setPressedNotes(prev => new Set(prev).add(midiNote));
+    onChangeTestMidiNote?.(midiNote);
 
     // 合成オプション構築
     const options: SynthPlayOptions = {
@@ -302,7 +321,8 @@ export function VirtualKeyboard({
     mmlContext,
     activeFmTone,
     effectivePitchEnvData,
-    effectiveVolEnvData
+    effectiveVolEnvData,
+    onChangeTestMidiNote,
   ]);
 
   // ノート停止ハンドラ
@@ -395,11 +415,11 @@ export function VirtualKeyboard({
 
       // オクターブ切り替え (Z: -1 / X: +1)
       if (e.code === 'KeyZ') {
-        setTypingOctave(prev => Math.max(1, prev - 1));
+        changeTypingOctave(prev => Math.max(1, prev - 1));
         return;
       }
       if (e.code === 'KeyX') {
-        setTypingOctave(prev => Math.min(7, prev + 1));
+        changeTypingOctave(prev => Math.min(7, prev + 1));
         return;
       }
 
@@ -449,7 +469,7 @@ export function VirtualKeyboard({
       window.removeEventListener('keyup', handleKeyUp);
       window.removeEventListener('blur', handleBlur);
     };
-  }, [activeTabContext, typingOctave, handleNoteOn, handleNoteOff]);
+  }, [activeTabContext, typingOctave, handleNoteOn, handleNoteOff, changeTypingOctave]);
 
   return (
     <div
@@ -645,14 +665,14 @@ export function VirtualKeyboard({
               <span className="text-zinc-600">|</span>
               <span className="text-zinc-300 font-bold">OCT {typingOctave}</span>
               <button
-                onClick={() => setTypingOctave(o => Math.max(1, o - 1))}
+                onClick={() => changeTypingOctave(o => Math.max(1, o - 1))}
                 className="px-1 py-0.2 bg-[#222430] hover:bg-zinc-700 text-zinc-300 hover:text-white rounded border border-white/[0.06] cursor-pointer"
                 title="オクターブ下げる (Zキー)"
               >
                 Z-
               </button>
               <button
-                onClick={() => setTypingOctave(o => Math.min(7, o + 1))}
+                onClick={() => changeTypingOctave(o => Math.min(7, o + 1))}
                 className="px-1 py-0.2 bg-[#222430] hover:bg-zinc-700 text-zinc-300 hover:text-white rounded border border-white/[0.06] cursor-pointer"
                 title="オクターブ上げる (Xキー)"
               >

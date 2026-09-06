@@ -230,6 +230,36 @@ FlexboxおよびCSS Gridを活用し、解像度変化に追従するペイン�
       - **末尾自動追従**: ユーザーが末尾付近 (下部 24px 以内) を見ている場合のみ、ログ追記時に自動スクロールで追従。過去ログを読み上げ中 (末尾から離れている) は追従しない。
       - **ビルドエラー詳細出力**: PLAY / EXPORT 失敗時、診断 1 件毎に `[BUILD] ERROR 行:桁 - メッセージ` 形式 (警告は `WARNING`) でコンソールへ出力。出力上限は 20 件で、超過分は `[BUILD] ... and N more. See the PROBLEMS panel.` と要約。整形ロジックは `src/utils/diagnosticsLog.ts` に純粋関数として分離 (`formatDiagnosticLine` / `formatDiagnosticsAsLogLines`)。
     - 将来的な拡張タブ枠を確保。
+ 
+---
+
+### 3.2.1 右ペインヘッダー共通UI規約 (2026-09-06 新設・統一)
+右ペインの全タブ（`TRACK MONITOR`, `YM2151 TONE`, `VOL ENV`, `PITCH ENV`, `SONG SETUP`, `SETTINGS`）のヘッダー領域は、以下の統一デザイン規約に準拠する。
+
+1. **Bento Card スタイルの統一**:
+   - 全タブのヘッダーコンテナを `bg-[#12131a] p-3 rounded-lg border border-white/[0.08] shrink-0 shadow-xs` に統一。
+2. **アイコンの完全一致**:
+   - ヘッダー左端に、タブバーと同一のアイコンをシアン色（`text-[#00A8FF]`、サイズ `w-4 h-4`）で常時表示。
+     - `TRACK MONITOR`: `<Sliders className="w-4 h-4 text-[#00A8FF]" />`
+     - `YM2151 TONE`: `<AudioWaveform className="w-4 h-4 text-[#00A8FF]" />`
+     - `VOL ENV`: `<TrendingUp className="w-4 h-4 text-[#00A8FF]" />`（青丸を廃止しタブと同一化）
+     - `PITCH ENV`: `<LineChart className="w-4 h-4 text-[#00A8FF]" />`
+     - `SONG SETUP`: `<Music className="w-4 h-4 text-[#00A8FF]" />`
+     - `SETTINGS`: `<Settings className="w-4 h-4 text-[#00A8FF]" />`
+3. **ID入力の左寄せ統一**:
+   - 各エディタの定義番号入力欄（`DefinitionIdInput`）は、タイトルおよびサブバッジのすぐ右隣（左側エリア、縦セパレータ区切り）に統一配置。
+     - `YM2151 TONE`: `@ID`
+     - `VOL ENV`: `@vID`
+     - `PITCH ENV`: `@PEID`
+4. **PRESET の左詰め配置 & 非選択トグル化**:
+   - 2行目サブバーの左端に `PRESET:` を左詰めで配置。
+   - ボタンをクリックしてもトグル選択状態（アクティブ背景ハイライト）にはせず、テンプレート値をエディタに展開するアクションボタンとして統一。
+5. **テスト発音コントロール (`TestNoteButton`) の統一 & 仮想キーボード連動**:
+   - ボタン名称を `TEST NOTE`（再生中は `STOP` パルスアニメーション）に統一。
+   - ボタン右側に音名クイックセレクター `[C4 ▼]` を配置。ワンクリック試聴の手軽さを維持したまま、代表的な音高（C2〜C6, A3, E4, G4, A4等）を瞬時に変更可能。
+   - **仮想キーボードとの双方向連動**:
+     - 仮想キーボードで鍵盤を弾いた場合、その弾いた音高（MIDIノート番号）がエディタ側の `TEST NOTE` ターゲットとして自動記憶され、次回のテスト発音でもその音でワンクリック発音可能。
+     - 仮想キーボードでオクターブ（Z/Xキー または コントロールバーのボタン）を変更した際も、テストノートのオクターブが自動連動。
 
 ---
 

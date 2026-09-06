@@ -1,7 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
-  Play,
-  Square,
   X,
   TrendingUp,
   TrendingDown,
@@ -16,6 +14,8 @@ import {
 } from 'lucide-react';
 import { isIdDefined, loadVolEnvDefinition } from '../utils/mmlDefinitionLoader';
 import { DefinitionIdInput } from './DefinitionIdInput';
+import { TestNoteButton } from './components/TestNoteButton';
+import { midiNoteToFrequency } from '../utils/virtualSynth';
 
 const MAX_FRAMES = 128;
 
@@ -72,9 +72,20 @@ export interface VolEnvelopeEditorProps {
   mmlSource?: string;
   /** 「MMLに反映」ボタン押下時に呼ばれるコールバック。 */
   onApplyToMml?: (mmlSnippet: string, id: number) => void;
+  /** テスト発音・プレビュー用MIDIノート番号 (仮想キーボード連動) */
+  testMidiNote?: number;
+  /** テストノート変更コールバック */
+  onChangeTestMidiNote?: (note: number) => void;
 }
 
-export function VolEnvelopeEditor({ onChangeEnvData, loadEnvId, mmlSource, onApplyToMml }: VolEnvelopeEditorProps = {}) {
+export function VolEnvelopeEditor({
+  onChangeEnvData,
+  loadEnvId,
+  mmlSource,
+  onApplyToMml,
+  testMidiNote,
+  onChangeTestMidiNote,
+}: VolEnvelopeEditorProps = {}) {
   // エンベロープデータ (デフォルト32フレーム, 各フレーム 0〜15)
   const [envData, setEnvData] = useState<number[]>(createInitialEnvData());
   
@@ -568,7 +579,7 @@ export function VolEnvelopeEditor({ onChangeEnvData, loadEnvId, mmlSource, onApp
   }, []);
 
   // Web Audio 試聴再生 (KEY ON)
-  const handlePlayKeyOn = () => {
+  const handlePlayKeyOn = (previewNote?: number) => {
     stopAudio();
 
     const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
@@ -581,9 +592,12 @@ export function VolEnvelopeEditor({ onChangeEnvData, loadEnvId, mmlSource, onApp
       ctx.resume();
     }
 
+    const note = previewNote ?? testMidiNote ?? 60;
+    const freq = midiNoteToFrequency(note);
+
     const osc = ctx.createOscillator();
     osc.type = 'square'; // DCSGの矩形波
-    osc.frequency.setValueAtTime(440, ctx.currentTime); // 基準音 A4 (440Hz)
+    osc.frequency.setValueAtTime(freq, ctx.currentTime);
 
     const gain = ctx.createGain();
     gain.gain.setValueAtTime(0, ctx.currentTime);
@@ -663,79 +677,66 @@ export function VolEnvelopeEditor({ onChangeEnvData, loadEnvId, mmlSource, onApp
       {/* 1. Bento Card: エディタヘッダー & トランスポート & プリセット */}
       <div className="flex flex-col gap-2.5 bg-[#12131a] p-3 rounded-lg border border-white/[0.08] shrink-0 shadow-xs">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.5)]" />
+          <div className="flex items-center gap-2.5">
+            <TrendingUp className="w-4 h-4 text-[#00A8FF]" />
             <h2 className="text-xs font-semibold text-zinc-200 tracking-wide">
               VOLUME ENVELOPE EDITOR
             </h2>
             <span className="text-[10px] text-zinc-400 px-2 py-0.5 rounded bg-zinc-800/80 border border-white/10 font-medium">
               DCSG (SN76489)
             </span>
+            {/* エンベロープ番号 (@vID) (左寄せ配置) */}
+            <div className="flex items-center ml-2 border-l border-white/10 pl-2.5">
+              <DefinitionIdInput
+                prefix="@v"
+                value={envNumber}
+                isDefined={isVolEnvIdDefined}
+                onChange={handleIdChange}
+                maxId={255}
+                accentClassName="text-zinc-200"
+                badgeTitle={isVolEnvIdDefined
+                  ? `@v${envNumber} は MML に定義済み (反映時は定義を置き換え)`
+                  : `@v${envNumber} は MML に未定義 (反映時は最後の定義の後に新規挿入)`}
+              />
+            </div>
           </div>
 
-          {/* 試聴プレビュー操作 & エンベロープ番号 */}
-          <div className="flex items-center gap-3">
-            <DefinitionIdInput
-              prefix="@v"
-              value={envNumber}
-              isDefined={isVolEnvIdDefined}
-              onChange={handleIdChange}
-              maxId={255}
-              accentClassName="text-zinc-200"
-              badgeTitle={isVolEnvIdDefined
-                ? `@v${envNumber} は MML に定義済み (反映時は定義を置き換え)`
-                : `@v${envNumber} は MML に未定義 (反映時は最後の定義の後に新規挿入)`}
+          {/* プレビューボタン群 & MMLに反映ボタン */}
+          <div className="flex items-center gap-2">
+            <TestNoteButton
+              isPlaying={isPlaying}
+              onPlay={(note) => handlePlayKeyOn(note)}
+              onStop={stopAudio}
+              midiNote={testMidiNote}
+              onChangeNote={onChangeTestMidiNote}
+              title="Play Volume Envelope Preview"
             />
-
-            {/* プレビューボタン群 & MMLに反映ボタン */}
-            <div className="flex items-center gap-1.5">
-              {!isPlaying ? (
-                <button
-                  onClick={handlePlayKeyOn}
-                  className="h-6 px-3 rounded bg-[#00A8FF]/20 hover:bg-[#00A8FF]/30 text-[#00A8FF] border border-[#00A8FF]/60 font-medium transition-colors flex items-center gap-1.5 text-xs cursor-pointer shadow-xs"
-                  title="Play Key-On (Loops at loop point)"
-                >
-                  <Play className="w-3 h-3 fill-current" />
-                  <span>KEY ON</span>
-                </button>
-              ) : (
-                <>
-                  <button
-                    onClick={handleTriggerKeyOff}
-                    disabled={isKeyOff}
-                    className={`h-6 px-2.5 rounded text-xs font-medium border transition-colors flex items-center gap-1 cursor-pointer ${
-                      isKeyOff
-                        ? 'bg-zinc-900 text-zinc-600 border-white/[0.04]'
-                        : 'bg-amber-600 hover:bg-amber-500 text-white border-amber-500 shadow-xs'
-                    }`}
-                    title="Trigger Release Phase"
-                  >
-                    <Square className="w-3 h-3 fill-current" />
-                    <span>KEY OFF</span>
-                  </button>
-                  <button
-                    onClick={stopAudio}
-                    className="h-6 px-2.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-white/10 text-xs font-medium transition-colors flex items-center gap-1 cursor-pointer"
-                    title="Stop Audio Preview"
-                  >
-                    <Square className="w-2.5 h-2.5" />
-                    <span>STOP</span>
-                  </button>
-                </>
-              )}
-              {/* MMLに反映ボタン (onApplyToMml が設定されている場合のみ表示) */}
-              {onApplyToMml && (
-                <button
-                  onClick={handleApplyToMml}
-                  className="h-6 px-3 rounded bg-emerald-900/50 hover:bg-emerald-800/60 text-emerald-300 border border-emerald-600/60 hover:border-emerald-400 font-medium transition-colors flex items-center gap-1.5 text-xs cursor-pointer shadow-xs"
-                  title={isVolEnvIdDefined
-                    ? `@v${envNumber} の MML定義を置き換え`
-                    : `@v${envNumber} を新規定義として最後の定義の後に挿入`}
-                >
-                  <span>▶ MMLに反映</span>
-                </button>
-              )}
-            </div>
+            {isPlaying && releasePoint >= 0 && (
+              <button
+                onClick={handleTriggerKeyOff}
+                disabled={isKeyOff}
+                className={`h-6 px-2 rounded text-[10px] font-medium border transition-colors flex items-center gap-1 cursor-pointer ${
+                  isKeyOff
+                    ? 'bg-zinc-900 text-zinc-600 border-white/[0.04]'
+                    : 'bg-amber-600 hover:bg-amber-500 text-white border-amber-500 shadow-xs'
+                }`}
+                title="Trigger Release Phase"
+              >
+                <span>KEY OFF</span>
+              </button>
+            )}
+            {/* MMLに反映ボタン (onApplyToMml が設定されている場合のみ表示) */}
+            {onApplyToMml && (
+              <button
+                onClick={handleApplyToMml}
+                className="h-6 px-3 rounded bg-emerald-900/50 hover:bg-emerald-800/60 text-emerald-300 border border-emerald-600/60 hover:border-emerald-400 font-medium transition-colors flex items-center gap-1.5 text-xs cursor-pointer shadow-xs"
+                title={isVolEnvIdDefined
+                  ? `@v${envNumber} の MML定義を置き換え`
+                  : `@v${envNumber} を新規定義として最後の定義の後に挿入`}
+              >
+                <span>▶ MMLに反映</span>
+              </button>
+            )}
           </div>
         </div>
 

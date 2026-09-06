@@ -23,12 +23,14 @@ export function SongSetupPanel({ metadata, onChangeMetadata }: SongSetupPanelPro
   return (
     <div className="flex flex-col h-full bg-[#1E1E1E] p-5 overflow-y-auto font-mono text-xs select-none text-zinc-300">
       {/* 画面ヘッダー */}
-      <div className="flex justify-between items-center mb-5 pb-2.5 border-b border-[#3C3C3C]">
-        <h2 className="text-xs font-bold text-zinc-100 tracking-wider flex items-center gap-2">
-          <Music className="w-3.5 h-3.5 text-[#00A8FF]" />
-          SONG SETUP & HEADER DIRECTIVES
-        </h2>
-        <span className="px-2 py-0.5 rounded-full bg-[#3A3A3A] text-zinc-200 text-[10px] font-medium">
+      <div className="flex justify-between items-center bg-[#12131a] p-3 rounded-lg border border-white/[0.08] mb-5 shrink-0 shadow-xs">
+        <div className="flex items-center gap-2.5">
+          <Music className="w-4 h-4 text-[#00A8FF]" />
+          <h2 className="text-xs font-semibold text-zinc-200 tracking-wide">
+            SONG SETUP & HEADER DIRECTIVES
+          </h2>
+        </div>
+        <span className="text-[10px] text-zinc-400 px-2 py-0.5 rounded bg-zinc-800/80 border border-white/10 font-medium">
           SONG PROPS
         </span>
       </div>
