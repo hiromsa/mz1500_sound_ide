@@ -379,12 +379,17 @@ export function VirtualKeyboard({
         return;
       }
 
-      // スペースキー: パン操作
+      // スペースキー: パン操作 (MMLモードでもドラッグスクロールは可能)
       if (e.code === 'Space') {
         if (!isSpacePressedRef.current) {
           isSpacePressedRef.current = true;
           setIsSpacePressed(true);
         }
+        return;
+      }
+
+      // MMLモード時はテキスト入力と干渉するため、PCキーボード演奏・オクターブ切替を無効化
+      if (activeTabContext === 'mml') {
         return;
       }
 
@@ -398,7 +403,7 @@ export function VirtualKeyboard({
         return;
       }
 
-      // QWERTYキーによるノート発音
+      // QWERTYキーによるノート発音 (右ペイン各エディタ選択中のみ有効)
       const semitone = PC_KEY_TO_SEMITONE[e.code];
       if (semitone !== undefined) {
         if (e.repeat) return;
@@ -415,6 +420,10 @@ export function VirtualKeyboard({
         isSpacePressedRef.current = false;
         setIsSpacePressed(false);
         isPanningRef.current = false;
+        return;
+      }
+
+      if (activeTabContext === 'mml') {
         return;
       }
 
@@ -440,7 +449,7 @@ export function VirtualKeyboard({
       window.removeEventListener('keyup', handleKeyUp);
       window.removeEventListener('blur', handleBlur);
     };
-  }, [typingOctave, handleNoteOn, handleNoteOff]);
+  }, [activeTabContext, typingOctave, handleNoteOn, handleNoteOff]);
 
   return (
     <div
@@ -628,27 +637,36 @@ export function VirtualKeyboard({
 
         {/* 右側: PCキーボード演奏案内 & スペースドラッグ案内 & オクターブジャンプ & Panicボタン */}
         <div className="flex items-center gap-1 shrink-0 ml-auto">
-          {/* PCキーボード演奏インジケータ & オクターブ切替 */}
-          <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-zinc-900/90 border border-white/[0.08] text-[9px] text-zinc-400">
-            <span className="text-zinc-500 font-semibold hidden md:inline">⌨ PC:</span>
-            <span className="text-cyan-300 font-mono font-bold">A-K</span>
-            <span className="text-zinc-600">|</span>
-            <span className="text-zinc-300 font-bold">OCT {typingOctave}</span>
-            <button
-              onClick={() => setTypingOctave(o => Math.max(1, o - 1))}
-              className="px-1 py-0.2 bg-[#222430] hover:bg-zinc-700 text-zinc-300 hover:text-white rounded border border-white/[0.06] cursor-pointer"
-              title="オクターブ下げる (Zキー)"
+          {/* PCキーボード演奏インジケータ & オクターブ切替 (MMLモード時は無効) */}
+          {activeTabContext !== 'mml' ? (
+            <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-zinc-900/90 border border-white/[0.08] text-[9px] text-zinc-400">
+              <span className="text-zinc-500 font-semibold hidden md:inline">⌨ PC:</span>
+              <span className="text-cyan-300 font-mono font-bold">A-K</span>
+              <span className="text-zinc-600">|</span>
+              <span className="text-zinc-300 font-bold">OCT {typingOctave}</span>
+              <button
+                onClick={() => setTypingOctave(o => Math.max(1, o - 1))}
+                className="px-1 py-0.2 bg-[#222430] hover:bg-zinc-700 text-zinc-300 hover:text-white rounded border border-white/[0.06] cursor-pointer"
+                title="オクターブ下げる (Zキー)"
+              >
+                Z-
+              </button>
+              <button
+                onClick={() => setTypingOctave(o => Math.min(7, o + 1))}
+                className="px-1 py-0.2 bg-[#222430] hover:bg-zinc-700 text-zinc-300 hover:text-white rounded border border-white/[0.06] cursor-pointer"
+                title="オクターブ上げる (Xキー)"
+              >
+                X+
+              </button>
+            </div>
+          ) : (
+            <div
+              className="hidden xl:flex items-center gap-1 px-1.5 py-0.5 rounded bg-zinc-900/40 border border-white/[0.04] text-[9px] text-zinc-600 select-none"
+              title="MMLエディタ入力保護のため、PCキーボード(A-K)演奏は右ペイン各エディタ(TONE/ENV)選択時のみ有効です"
             >
-              Z-
-            </button>
-            <button
-              onClick={() => setTypingOctave(o => Math.min(7, o + 1))}
-              className="px-1 py-0.2 bg-[#222430] hover:bg-zinc-700 text-zinc-300 hover:text-white rounded border border-white/[0.06] cursor-pointer"
-              title="オクターブ上げる (Xキー)"
-            >
-              X+
-            </button>
-          </div>
+              <span>⌨ PC PLAY: OFF (MML)</span>
+            </div>
+          )}
 
           {/* スペースドラッグインジケータ */}
           <div className={`hidden lg:flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] border transition-colors ${
@@ -749,8 +767,8 @@ export function VirtualKeyboard({
                       : 'bg-zinc-200 hover:bg-zinc-100 border-zinc-400/60 active:translate-y-1'
                 }`}
               >
-                {/* PCキーボード対応キー文字ガイド */}
-                {(() => {
+                {/* PCキーボード対応キー文字ガイド (右ペイン各エディタ選択中のみ表示) */}
+                {activeTabContext !== 'mml' && (() => {
                   const diff = key.midiNote - ((typingOctave + 1) * 12);
                   const pcKey = SEMITONE_TO_KEY_LABEL[diff];
                   if (!pcKey) return null;
@@ -818,8 +836,8 @@ export function VirtualKeyboard({
                     : 'bg-[#181920] hover:bg-[#252834] border-black/80 active:translate-y-1'
                 }`}
               >
-                {/* PCキーボード対応キー文字ガイド */}
-                {(() => {
+                {/* PCキーボード対応キー文字ガイド (右ペイン各エディタ選択中のみ表示) */}
+                {activeTabContext !== 'mml' ? (() => {
                   const diff = key.midiNote - ((typingOctave + 1) * 12);
                   const pcKey = SEMITONE_TO_KEY_LABEL[diff];
                   if (!pcKey) return <span className="w-1 h-2 rounded-full bg-zinc-600/40 mb-0.5" />;
@@ -830,7 +848,9 @@ export function VirtualKeyboard({
                       {pcKey}
                     </span>
                   );
-                })()}
+                })() : (
+                  <span className="w-1 h-2 rounded-full bg-zinc-600/40 mb-0.5" />
+                )}
               </div>
             );
           })}
