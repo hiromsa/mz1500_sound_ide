@@ -25,10 +25,12 @@ import type { editor } from 'monaco-editor';
 import { FileExplorer } from './FileExplorer';
 import { CompileErrorPanel, type CompileErrorItem } from './CompileErrorPanel';
 import { ConsolePanel } from './ConsolePanel';
+import { MmlPlaybackHighlighter } from './MmlPlaybackHighlighter';
 import type { SongMetadata } from './SongSetupPanel';
 import { VirtualKeyboard, type ActiveTabContext } from './VirtualKeyboard';
 import { parseMmlCaretContext, type MmlCaretContext } from '../utils/mmlCaretParser';
 import { collectUsedIds, findDefinitionAt, findDefinitionBlocks, nextAvailableId } from '../utils/mmlContextParser';
+import { resolvePlaybackPositions, type PlaybackMapInfo } from '../utils/mmlPlaybackTracker';
 import { MmlContextMenu, type MmlContextMenuEntry } from './MmlContextMenu';
 import type { FmToneData } from '../core/fm/FmTone';
 import { setupMmlLanguage, MML_LANGUAGE_ID, MML_THEME_NAME } from '../utils/mmlLanguage';
@@ -168,6 +170,12 @@ interface MmlEditorProps {
   onFocusEditor?: () => void;
   /** キャレット位置解析結果 (コンテキスト) が更新された時の通知コールバック */
   onCaretContextChange?: (context?: MmlCaretContext) => void;
+  /** 演奏中かどうか (演奏位置ハイライト・トラッキングの有効化) */
+  isPlaying?: boolean;
+  /** トラックの現在データオフセット取得 (演奏位置ハイライト用、停止中は -1) */
+  getTrackOffset?: (trackIndex: number) => number;
+  /** 演奏位置 → MML 対応情報 (コンパイル成功時に App から渡される) */
+  playbackMap?: PlaybackMapInfo | null;
 }
 
 export function MmlEditor({ 
@@ -203,6 +211,9 @@ export function MmlEditor({
   onActiveSourceChange,
   onFocusEditor,
   onCaretContextChange,
+  isPlaying = false,
+  getTrackOffset,
+  playbackMap,
 }: MmlEditorProps) {
   const [files, setFiles] = useState<MmlFile[]>(DUMMY_FILES);
   const [activeFileId, setActiveFileId] = useState<string>(DUMMY_FILES[0].id);
@@ -250,6 +261,9 @@ export function MmlEditor({
   // Monaco Editor インスタンスの参照 (MMLスニペット挿入用)
   const monacoEditorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
 
+  // 演奏中 MML ハイライト・トラッキング (Monaco デコレーション管理)
+  const playbackHighlighterRef = useRef<MmlPlaybackHighlighter | null>(null);
+
   // 右クリックコンテキストメニュー コールバックの ref (stale closure 回避)
   const onRequestEditToneRef = useRef(onRequestEditTone);
   const onRequestEditVolEnvRef = useRef(onRequestEditVolEnv);
@@ -286,6 +300,7 @@ export function MmlEditor({
   const handleEditorMount = useCallback((editorInstance: editor.IStandaloneCodeEditor, _monaco: Monaco) => {
     setupMmlLanguage(_monaco);
     monacoEditorRef.current = editorInstance;
+    playbackHighlighterRef.current = new MmlPlaybackHighlighter(editorInstance);
     onEditorMount?.(editorInstance);
 
     // Ctrl + Enter で再生/停止トグル (ref経由で最新のハンドラを実行して確実に停止可能に)
@@ -573,6 +588,56 @@ export function MmlEditor({
   useEffect(() => {
     onActiveSourceChangeRef.current?.(activeFile.content, activeFile.name);
   }, [activeFile.content, activeFile.name]);
+
+  // ---- 演奏中 MML ハイライト・トラッキング (100ms ポーリング) ----
+
+  // ポーリング内で参照する最新の props / アクティブソース (stale closure 回避)
+  const playbackTrackingRef = useRef({
+    isPlaying,
+    getTrackOffset,
+    playbackMap,
+    activeSource: activeFile.content,
+  });
+
+  useEffect(() => {
+    playbackTrackingRef.current = {
+      isPlaying,
+      getTrackOffset,
+      playbackMap,
+      activeSource: activeFile.content,
+    };
+  });
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const highlighter = playbackHighlighterRef.current;
+      if (highlighter === null) {
+        return;
+      }
+
+      const tracking = playbackTrackingRef.current;
+      const map = tracking.playbackMap?.map ?? null;
+      // コンパイル時のソースと現在のエディタ内容が一致しない場合は位置ズレ防止のためハイライトを消す
+      const isSourceCurrent = tracking.playbackMap != null && tracking.playbackMap.source === tracking.activeSource;
+
+      if (!tracking.isPlaying || tracking.getTrackOffset === undefined || map === null || !isSourceCurrent) {
+        highlighter.clear();
+        return;
+      }
+
+      highlighter.update(resolvePlaybackPositions(map, tracking.getTrackOffset));
+    }, 100);
+
+    return () => clearInterval(timer);
+  }, []);
+
+  // アンマウント時にデコレーションを破棄
+  useEffect(() => {
+    return () => {
+      playbackHighlighterRef.current?.dispose();
+      playbackHighlighterRef.current = null;
+    };
+  }, []);
 
 
   // SongSetupPanel から songMetadata が変更された時に MML ファイル内容を同期

@@ -232,6 +232,22 @@ FlexboxおよびCSS Gridを活用し、解像度変化に追従するペイン�
       - **ビルドエラー詳細出力**: PLAY / EXPORT 失敗時、診断 1 件毎に `[BUILD] ERROR 行:桁 - メッセージ` 形式 (警告は `WARNING`) でコンソールへ出力。出力上限は 20 件で、超過分は `[BUILD] ... and N more. See the PROBLEMS panel.` と要約。整形ロジックは `src/utils/diagnosticsLog.ts` に純粋関数として分離 (`formatDiagnosticLine` / `formatDiagnosticsAsLogLines`)。
     - 将来的な拡張タブ枠を確保。
  
+- **演奏中 MML ハイライト・トラッキング (2026-09-07 新設)**:
+  - **概要**: PLAY 中、各トラックが「現在到達している」音符 / 休符を MML ソース上でリアルタイムにハイライトする。17 トラック全パートの演奏進行がエディタ上で同時に判る。
+  - **表示スタイル (emerald / Play Accent 統一)**:
+    - 現在演奏行: 行全体に薄い emerald 背景 (`rgba(16,185,129,0.11)`) とゆっくりしたパルス点滅 (`mml-playback-line`)。
+    - 現在演奏中の音符トークン: emerald 下線 + 薄緑背景 + 明るい文字色 (`mml-playback-token-note`)。
+    - 現在演奏中の休符トークン: 控えめな emerald 下線のみ (`mml-playback-token-rest`)。
+    - 概要ルーラー (minimap 側) にも emerald マーカーを表示。
+    - 連符内の音符 (ソース列位置不定) は行ハイライトのみでトークン下線は省略。
+  - **動作仕様**:
+    - コンパイル時に `MmlMap` (音符 / 休符イベント ↔ MML ソース位置対応表) を生成。演奏中は `Player.getTrackOffset` (SourceInterpreter / Z80Driver 両エンジン共通) の現在データオフセットと突き合わせて位置を解決する (`src/utils/mmlPlaybackTracker.ts`、Monaco 非依存のロジック層)。
+    - 発音区間の判定は NOTE / REST 命令を読み終えた位置 (イベント開始位置 + 命令サイズ) を基準とし、1 音早くハイライトが進むことを防止。
+    - Monaco デコレーションは `src/view/MmlPlaybackHighlighter.ts` が管理。MML エディタ内で 100ms ポーリングし、位置が変化したフレームのみ DOM 更新する。
+    - 停止 (STOP / 自然終了) でハイライト消去。
+    - **PLAY 開始時のソースと現在のエディタ内容が不一致になった場合は位置ズレ防止のためハイライトを非表示**にする (再 BUILD / PLAY で復帰)。ファイルタブ切替でも同様。
+    - 再生エンジン (Z80 DRIVER / SOURCE INTERPRETER) の切替に依存せず共通動作。
+
 ---
 
 ### 3.2.1 右ペインヘッダー共通UI規約 (2026-09-06 新設・統一)

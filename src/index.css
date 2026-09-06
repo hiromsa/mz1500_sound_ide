@@ -55,6 +55,31 @@
   .animate-shake {
     animation: shake 0.35s ease-in-out;
   }
+
+  /* ---- 演奏中 MML ハイライト・トラッキング ---- */
+  /* 現在演奏行の背景 (Monaco の isWholeLine decoration 用) */
+  .mml-playback-line {
+    background-color: rgba(16, 185, 129, 0.10);
+    animation: mml-playback-line-pulse 1s ease-in-out infinite;
+  }
+
+  /* 現在演奏中の音符トークン (emerald 下線 + 薄緑ハイライト) */
+  .mml-playback-token-note {
+    background-color: rgba(16, 185, 129, 0.22);
+    border-bottom: 1px solid #10b981;
+    color: #6ee7b7;
+    font-weight: 600;
+  }
+
+  /* 現在演奏中の休符トークン (控えめな emerald 下線のみ) */
+  .mml-playback-token-rest {
+    border-bottom: 1px solid rgba(16, 185, 129, 0.45);
+  }
+
+  @keyframes mml-playback-line-pulse {
+    0%, 100% { background-color: rgba(16, 185, 129, 0.11); }
+    50% { background-color: rgba(16, 185, 129, 0.06); }
+  }
 }
 
 

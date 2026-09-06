@@ -5,6 +5,24 @@
 ---
 
 ## 1. 直近の完了作業（最新）
+- **演奏中 MML ハイライト・トラッキングを実装 (`src/utils/mmlPlaybackTracker.ts` / `src/view/MmlPlaybackHighlighter.ts` 新設, `src/core/mml/parser/MmlParser.ts`, `src/view/MmlEditor.tsx`, `src/view/TrackMonitor.tsx`, `src/app/App.tsx`, `src/index.css`, `src/utils/__tests__/mmlPlaybackTracker.test.ts` 新設, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-07):
+  - **背景・ユーザー確定方針**:
+    - 「MMLハイライト・トラッキング追加したいです。演奏中のポイントがMMLで判る機能。」
+    - 表示方法は「**全パート同時ハイライト**」を確定: 17 トラック全ての「現在到達位置」の音符 / 休符を緑の下線 + 現在行に薄緑背景で同時表示。
+  - **対応内容**:
+    1. **MmlParser**: `emitNote` / `emitRest` に `sourceLength` (発音トークン長, 文字数) を追加し `MmlMapEvent.length` へ記録 (従来は 0 固定)。`read.next - pos` (0-based) で算出、連符内は列位置不定のため 0 のまま。既存テストへの影響なし。
+    2. **`mmlPlaybackTracker.ts` (新規・ロジック層)**: `PlaybackMapInfo` 型を TrackMonitor から移設。`resolvePlaybackPositions` が `MmlMap` + `getTrackOffset` (MZSD データ先頭基準絶対オフセット) から各トラックの現在位置 (line / column / length / kind) を二分探索で解決。**発音区間判定は NOTE (6 バイト) / REST (3 バイト) 命令を読み終えた位置を基準**とし 1 音早く進む問題を防止。`TrackSequencer.currentOffset` は絶対 / `MmlMapEvent.offset` はトラック相対のため `track.offset` 減算で変換。
+    3. **`MmlPlaybackHighlighter.ts` (新規・Monaco 層)**: `createDecorationsCollection` でトークン下線 (note/rest) + isWholeLine 行背景 + 概要ルーラーを管理。位置シグネチャ比較により変化時のみ DOM 更新 (行パルスアニメーション維持)。
+    4. **MmlEditor**: `isPlaying` / `getTrackOffset` / `playbackMap` props を追加し 100ms ポーリングでハイライト更新。**コンパイル時ソースとエディタ内容の不一致時 (編集 / ファイル切替) はハイライト非表示** (位置ズレ防止)。停止時も消去。アンマウントで dispose。
+    5. **App**: `playbackInfo` を MmlEditor へ接続 (TrackMonitor の未使用旧 props は削除、`PlaybackMapInfo` は utils から import に変更)。
+    6. **index.css**: `.mml-playback-line` (emerald 背景パルス) / `.mml-playback-token-note` / `.mml-playback-token-rest` を追加。
+    7. **テスト (+13)**: MmlMap の line/column/length 記録 (音長・休符・連符・複数行)、`findEventAtOffset` / `findActiveEvent` の二分探索境界、`resolvePlaybackPositions` の絶対→相対変換・複数トラック同時・停止中 (-1) 除外・未到達除外。
+  - **検証**:
+    - `npx tsc -b` エラーゼロ / **`npm test` 全 347 件合格** (+13) / `npm run lint` エラーゼロ (既存 UI 警告 2 のみ) / `npm run build` 成功。
+  - **判明事項**:
+    - `MmlMapTrack.offset` (トラック開始絶対オフセット) を使うことで Z80Driver モードの CB_PTRS とも同一ロジックで動作する。
+    - 演奏終了後は最後のイベント位置のままポインタが止まるため、自然終了時は isPlaying=false でハイライト全体を消去する設計。
+
 - **MML に FM 専用音量コマンド `@v` (0〜127) を新設 (`src/core/mml/parser/MmlParser.ts`, `src/core/player/MzsdSong.ts`, `src/core/player/TrackSequencer.ts`, `driver/mzsd_driver.asm`, `src/core/player/__tests__/SongBuilder.ts` / `MzsdSequencer.test.ts` / `Z80DriverEquivalence.test.ts`, `src/core/mml/__tests__/MmlCompilerAdvanced.test.ts`, `src/utils/mmlCaretParser.ts` / `mmlLanguage.ts` / `__tests__/mmlCaretParser.test.ts`, `scripts/verify-mml-parser.mjs`, [`docs/specification/mml_reference.md`](./specification/mml_reference.md), [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-07):
   - **背景・ユーザー確定方針**:
     - 「@v は FM音源用のボリュームにしたいです。新設。0〜127。YM2151の仕様にあると思います。」

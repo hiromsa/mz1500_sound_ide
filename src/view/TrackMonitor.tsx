@@ -1,14 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { Volume2, VolumeX, Sliders } from 'lucide-react';
 import { allTracks } from '../core/mml/TrackId';
-import type { MmlMap } from '../core/mml/MmlMap';
 
-/** 演奏位置 → MML 対応情報 (コンパイル成功時に App から渡される)。 */
-export interface PlaybackMapInfo {
-  map: MmlMap | null;
-
-  source: string;
-}
+// 演奏位置 → MML 対応情報は MML ハイライト・トラッキング共通ユーティリティへ移設 (既存 import 互換のため再エクスポート)
+export type { PlaybackMapInfo } from '../utils/mmlPlaybackTracker';
 
 interface ChannelState {
   id: string;
@@ -174,10 +169,6 @@ interface TrackMonitorProps {
   onTrackMuteChange?: (trackIndex: number, muted: boolean) => void;
   /** マスター音量 / ミュートを Player へ反映する (プレビュー専用・コンパイル非連動)。 */
   onMasterVolumeChange?: (volume: number, muted: boolean) => void;
-  /** 演奏位置ハイライト用の旧prop (後方互換用) */
-  getTrackOffset?: (trackIndex: number) => number;
-  /** 演奏位置 → MML 対応情報の旧prop (後方互換用) */
-  playbackMap?: PlaybackMapInfo | null;
 }
 
 export function TrackMonitor({

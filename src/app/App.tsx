@@ -13,7 +13,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { MmlEditor, type BottomTab } from '../view/MmlEditor';
-import { TrackMonitor, type PlaybackMapInfo } from '../view/TrackMonitor';
+import { TrackMonitor } from '../view/TrackMonitor';
 import { SettingsPanel } from '../view/SettingsPanel';
 import { SongSetupPanel, type SongMetadata } from '../view/SongSetupPanel';
 import { VolEnvelopeEditor } from '../view/VolEnvelopeEditor';
@@ -27,6 +27,7 @@ import { Player } from '../core/player/Player';
 import { Z80DriverImage } from '../core/player/Z80DriverImage';
 import { buildQuickDiskImage } from '../core/export/QdfImageBuilder';
 import type { FmToneData } from '../core/fm/FmTone';
+import type { PlaybackMapInfo } from '../utils/mmlPlaybackTracker';
 import { formatDiagnosticsAsLogLines } from '../utils/diagnosticsLog';
 import type { CompileErrorItem } from '../view/CompileErrorPanel';
 import type { ActiveTabContext } from '../view/VirtualKeyboard';
@@ -647,6 +648,9 @@ function App() {
             onEditorMount={(editorInstance) => { monacoEditorRef.current = editorInstance; }}
             onActiveSourceChange={handleActiveSourceChange}
             onCaretContextChange={handleCaretContextChange}
+            isPlaying={isPlaying}
+            getTrackOffset={(trackIndex) => playerRef.current?.getTrackOffset(trackIndex) ?? -1}
+            playbackMap={playbackInfo}
           />
         </div>
 
@@ -788,10 +792,8 @@ function App() {
                   isPlaying={isPlaying}
                   getTrackLevel={(trackIndex) => playerRef.current?.getTrackLevel(trackIndex) ?? 0}
                   getMasterLevel={() => playerRef.current?.getMasterLevel() ?? 0}
-                  getTrackOffset={(trackIndex) => playerRef.current?.getTrackOffset(trackIndex) ?? -1}
                   onTrackMuteChange={handleTrackMuteChange}
                   onMasterVolumeChange={handleMasterVolumeChange}
-                  playbackMap={playbackInfo}
                 />
               )}
 

@@ -216,7 +216,8 @@ export class MmlParser {
     }
 
     for (const t of tracks) {
-      this.emitNote(t, noteNumber(t.state.octave, letter, accidental), read.units, lineNo, col);
+      // トークン長 = 音符文字から音長 / 付点まで (0-based の pos 〜 next)
+      this.emitNote(t, noteNumber(t.state.octave, letter, accidental), read.units, lineNo, col, read.next - pos);
     }
 
     return read.next;
@@ -230,7 +231,7 @@ export class MmlParser {
     }
 
     for (const t of tracks) {
-      this.emitRest(t, read.units, lineNo, col);
+      this.emitRest(t, read.units, lineNo, col, read.next - pos);
     }
 
     return read.next;
@@ -323,9 +324,9 @@ export class MmlParser {
     for (const t of tracks) {
       for (const { letter, accidental } of letters) {
         if (letter === 'r') {
-          this.emitRest(t, each, lineNo, 0);
+          this.emitRest(t, each, lineNo, 0, 0);
         } else {
-          this.emitNote(t, noteNumber(t.state.octave, letter, accidental), each, lineNo, 0);
+          this.emitNote(t, noteNumber(t.state.octave, letter, accidental), each, lineNo, 0, 0);
         }
       }
     }
@@ -821,7 +822,11 @@ export class MmlParser {
 
   // ---- コード emit と読み取りヘルパ ----
 
-  private emitNote(t: TrackBuilder, rawNote: number, units: number, lineNo: number, col: number): void {
+  /**
+   * ノート命令を emit する。
+   * @param sourceLength MML ソース上の発音トークン長 (文字数)。連符由来 (列位置不定) は 0。
+   */
+  private emitNote(t: TrackBuilder, rawNote: number, units: number, lineNo: number, col: number, sourceLength: number): void {
     const len = this.advance(t, units);
     const gate = computeGate(len, t.state);
     const offset = t.code.length;
@@ -831,17 +836,18 @@ export class MmlParser {
     t.code.push(len >> 8);
     t.code.push(gate & 0xff);
     t.code.push(gate >> 8);
-    t.events.push({ offset, line: lineNo, column: col, length: 0, kind: 'note' });
+    t.events.push({ offset, line: lineNo, column: col, length: sourceLength, kind: 'note' });
     t.notePatch = { offset: offset + 2, isNote: true };
   }
 
-  private emitRest(t: TrackBuilder, units: number, lineNo: number, col: number): void {
+  /** レスト命令を emit する (sourceLength の意味は emitNote と同一)。 */
+  private emitRest(t: TrackBuilder, units: number, lineNo: number, col: number, sourceLength: number): void {
     const len = this.advance(t, units);
     const offset = t.code.length;
     t.code.push(OpRest);
     t.code.push(len & 0xff);
     t.code.push(len >> 8);
-    t.events.push({ offset, line: lineNo, column: col, length: 0, kind: 'rest' });
+    t.events.push({ offset, line: lineNo, column: col, length: sourceLength, kind: 'rest' });
     t.notePatch = { offset: offset + 1, isNote: false };
   }
 
