@@ -93,6 +93,18 @@ function App() {
   const loadRequestCounterRef = useRef(0);
   const buildLoadRequest = useCallback((id: number) => ({ id, requestNo: ++loadRequestCounterRef.current }), []);
 
+  // 現在フォーカスされているエディタ領域 ('mml' | 'rightPane')
+  // ※ バーチャルキーボード等の下部エリア操作はこの状態を変更しない (上部エディタ領域のクリック/フォーカスのみで変更)。
+  //    そのため右ペインで TONE / ENV エディタを選択中に鍵盤を弾いても、そのエディタのプレビュー音が鳴る。
+  const [focusedPane, setFocusedPane] = useState<'mml' | 'rightPane'>('mml');
+
+  // バーチャルキーボードの発音コンテキスト判定:
+  // - 左ペイン (MMLエディタ等) 選択中 / 右ペイン非表示 / 右ペインがエディタ以外のタブ → MMLキャレットコンテキスト
+  // - 右ペインで FM TONE / VOL ENV / PITCH ENV を選択中 → そのエディタのプレビューコンテキスト
+  const activeTabContext: ActiveTabContext = (focusedPane === 'mml' || !showRightPane || activeRightTab === 'track' || activeRightTab === 'song_setup' || activeRightTab === 'settings')
+    ? 'mml'
+    : (activeRightTab as ActiveTabContext);
+
   // アクティブ MML 全文 (各エディタの定義済み判定・定義内容ロードに使用)
   const [activeMmlSource, setActiveMmlSource] = useState<string>('');
 
@@ -103,6 +115,7 @@ function App() {
   const handleRequestEditTone = useCallback((id: number) => {
     setLoadToneId(buildLoadRequest(id));
     setActiveRightTab('tone');
+    setFocusedPane('rightPane');
     setShowRightPane(true);
   }, [buildLoadRequest]);
 
@@ -110,6 +123,7 @@ function App() {
   const handleRequestEditVolEnv = useCallback((id: number) => {
     setLoadVolEnvId(buildLoadRequest(id));
     setActiveRightTab('vol_envelope');
+    setFocusedPane('rightPane');
     setShowRightPane(true);
   }, [buildLoadRequest]);
 
@@ -117,6 +131,7 @@ function App() {
   const handleRequestEditPitchEnv = useCallback((id: number) => {
     setLoadPitchEnvId(buildLoadRequest(id));
     setActiveRightTab('pitch_envelope');
+    setFocusedPane('rightPane');
     setShowRightPane(true);
   }, [buildLoadRequest]);
 
@@ -124,18 +139,21 @@ function App() {
   const handleRequestNewTone = useCallback((newId: number) => {
     setLoadToneId(buildLoadRequest(newId));
     setActiveRightTab('tone');
+    setFocusedPane('rightPane');
     setShowRightPane(true);
   }, [buildLoadRequest]);
 
   const handleRequestNewVolEnv = useCallback((newId: number) => {
     setLoadVolEnvId(buildLoadRequest(newId));
     setActiveRightTab('vol_envelope');
+    setFocusedPane('rightPane');
     setShowRightPane(true);
   }, [buildLoadRequest]);
 
   const handleRequestNewPitchEnv = useCallback((newId: number) => {
     setLoadPitchEnvId(buildLoadRequest(newId));
     setActiveRightTab('pitch_envelope');
+    setFocusedPane('rightPane');
     setShowRightPane(true);
   }, [buildLoadRequest]);
 
@@ -204,17 +222,6 @@ function App() {
   );
 
 
-  // 現在フォーカスされている領域 ('mml' | 'rightPane')
-  // ※ バーチャルキーボード上のクリックはこの状態を変更しない (VirtualKeyboard 側で伝播を停止)。
-  //    そのため右ペインで TONE / ENV エディタを選択中に鍵盤を弾いても、そのエディタのプレビュー音が鳴る。
-  const [focusedPane, setFocusedPane] = useState<'mml' | 'rightPane'>('mml');
-
-  // バーチャルキーボードの発音コンテキスト判定:
-  // - 左ペイン (MMLエディタ等) 選択中 / 右ペイン非表示 / 右ペインがエディタ以外のタブ → MMLキャレットコンテキスト
-  // - 右ペインで FM TONE / VOL ENV / PITCH ENV を選択中 → そのエディタのプレビューコンテキスト
-  const activeTabContext: ActiveTabContext = (focusedPane === 'mml' || !showRightPane || activeRightTab === 'track' || activeRightTab === 'song_setup' || activeRightTab === 'settings')
-    ? 'mml'
-    : (activeRightTab as ActiveTabContext);
 
   // 再生ステート (PLAY / STOP 連動)
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
@@ -567,9 +574,9 @@ function App() {
         <div 
           style={{ width: showRightPane ? `${leftWidthPercent}%` : '100%' }}
           className="h-full flex flex-col z-0 shrink-0 overflow-hidden bg-[#1E1E1E]"
-          onMouseDownCapture={() => setFocusedPane('mml')}
         >
           <MmlEditor 
+            onFocusEditor={() => setFocusedPane('mml')}
             songMetadata={songMetadata}
             onChangeSongMetadata={setSongMetadata}
             showRightPane={showRightPane}

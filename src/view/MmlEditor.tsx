@@ -162,6 +162,8 @@ interface MmlEditorProps {
   onEditorMount?: (editorInstance: editor.IStandaloneCodeEditor) => void;
   /** アクティブファイルの MML ソースが変化したときに通知する (BUILD / EXPORT 用) */
   onActiveSourceChange?: (source: string, fileName: string) => void;
+  /** MMLエディタ領域 (上部エディタ/エクスプローラー) にフォーカスが当たった時の通知コールバック */
+  onFocusEditor?: () => void;
 }
 
 export function MmlEditor({ 
@@ -193,6 +195,7 @@ export function MmlEditor({
   onChangeBottomCollapsed,
   onEditorMount,
   onActiveSourceChange,
+  onFocusEditor,
 }: MmlEditorProps) {
   const [files, setFiles] = useState<MmlFile[]>(DUMMY_FILES);
   const [activeFileId, setActiveFileId] = useState<string>(DUMMY_FILES[0].id);
@@ -248,6 +251,7 @@ export function MmlEditor({
   const onRequestNewVolEnvRef = useRef(onRequestNewVolEnv);
   const onRequestNewPitchEnvRef = useRef(onRequestNewPitchEnv);
   const onTogglePlayRef = useRef(onTogglePlay);
+  const onFocusEditorRef = useRef(onFocusEditor);
 
   // コールバック更新時にrefを同期
   useEffect(() => { onRequestEditToneRef.current = onRequestEditTone; }, [onRequestEditTone]);
@@ -257,6 +261,7 @@ export function MmlEditor({
   useEffect(() => { onRequestNewVolEnvRef.current = onRequestNewVolEnv; }, [onRequestNewVolEnv]);
   useEffect(() => { onRequestNewPitchEnvRef.current = onRequestNewPitchEnv; }, [onRequestNewPitchEnv]);
   useEffect(() => { onTogglePlayRef.current = onTogglePlay; }, [onTogglePlay]);
+  useEffect(() => { onFocusEditorRef.current = onFocusEditor; }, [onFocusEditor]);
 
   /** Monaco editor beforeMount: MML 言語定義・Monarch トークナイザー・テーマを登録 */
   const handleBeforeMount = useCallback((monaco: Monaco) => {
@@ -272,6 +277,11 @@ export function MmlEditor({
     // Ctrl + Enter で再生/停止トグル (ref経由で最新のハンドラを実行して確実に停止可能に)
     editorInstance.addCommand(_monaco.KeyMod.CtrlCmd | _monaco.KeyCode.Enter, () => {
       onTogglePlayRef.current?.();
+    });
+
+    // エディタにフォーカスが当たった時にペインフォーカスを MML に切り替える
+    editorInstance.onDidFocusEditorWidget(() => {
+      onFocusEditorRef.current?.();
     });
 
     // カーソル位置変更時にMMLキャレットコンテキストを更新
@@ -779,7 +789,10 @@ export function MmlEditor({
 
       {/* 上部エリア (横並び): エクスプローラー + エディタ主ペイン。
            下部タブエリア (PROBLEMS / CONSOLE / KEYBOARD) はこの外側に配置し、エクスプローラーを含む左ペイン全幅で表示する */}
-      <div className="flex flex-row flex-1 min-h-0 overflow-hidden">
+      <div 
+        className="flex flex-row flex-1 min-h-0 overflow-hidden"
+        onMouseDownCapture={() => onFocusEditorRef.current?.()}
+      >
 
       {/* 左ペイン内 エクスプローラー (開閉可能 & 幅リサイズ可能) */}
       {isExplorerOpen && (
@@ -942,6 +955,7 @@ export function MmlEditor({
         <div 
           style={{ height: `${isBottomCollapsed ? BOTTOM_COLLAPSED_HEIGHT_PX : bottomHeight}px` }} 
           className="bg-[#1E1E1E] border-t border-[#3C3C3C] flex flex-col font-mono text-xs select-none shrink-0 overflow-hidden"
+          onMouseDownCapture={(e) => e.stopPropagation()}
         >
           {/* 下部タブバー */}
           <div className="h-7 px-2 bg-[#242424] border-b border-[#3C3C3C] flex items-center justify-between shrink-0">

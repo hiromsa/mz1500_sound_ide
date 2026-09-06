@@ -5,6 +5,30 @@
 ---
 
 ## 1. 直近の完了作業（最新）
+- **バーチャルキーボード演奏時の発音モード意図せぬMML切替の修正 (`src/view/MmlEditor.tsx`, `src/app/App.tsx`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-06):
+  - **背景・ユーザー報告**:
+    - TONE エディタ、PITCH ENV、VOLUME ENV 等を選択してから仮想キーボードで演奏すると、MML のモード（MML CARET）に変化してしまう。
+  - **原因**:
+    - `App.tsx` の Left Pane 全体コンテナに `onMouseDownCapture={() => setFocusedPane('mml')}` が付与されていた。
+    - React のイベント処理において親の Capture リスナーは子の Capture リスナーより先に実行されるため、`VirtualKeyboard.tsx` 側で `e.stopPropagation()` を行っても親の `setFocusedPane('mml')` が先に発火してしまい、`focusedPane` が強制的に `'mml'` へ切り替わっていた。
+    - さらに、下部ツールエリア（KEYBOARD / PROBLEMS / CONSOLE）が MML エディタ領域と同一視されていたため、キーボードやタブのクリックでもエディタフォーカスが奪われていた。
+  - **変更内容**:
+    - `App.tsx`: Left Pane 全体ラッパーの `onMouseDownCapture={() => setFocusedPane('mml')}` を削除し、MmlEditor に `onFocusEditor={() => setFocusedPane('mml')}` を渡す構造へ改善。
+    - `App.tsx`: 右クリックメニュー（「@1 を TONE エディタで編集」等）や新規作成ハンドラからの遷移時にも `setFocusedPane('rightPane')` を設定するよう強化。
+    - `App.tsx`: `focusedPane` および `activeTabContext` の宣言順をコールバックの上へ移動し、未初期化アクセス警告を解消。
+    - `MmlEditor.tsx`: 上部エリア（エクスプローラー + エディタ主ペイン）のクリックおよび Monaco Editor のフォーカス（`onDidFocusEditorWidget`）時のみ `onFocusEditor` を通知するよう分離。
+    - `MmlEditor.tsx`: 下部エリア（KEYBOARD / PROBLEMS / CONSOLE / スプリッター）のコンテナに `onMouseDownCapture={(e) => e.stopPropagation()}` を設定し、下部ツールの操作がエディタフォーカスに影響を与えないよう完全隔離。
+  - **検証**:
+    - `npm test`: 全 298 件すべて合格。
+    - `npm run lint`: エラーゼロ。
+    - `npm run build`: 成功。
+    - 組み込みブラウザサブエージェント（`browser_subagent`）により実機検証:
+      1. 右ペインで `YM2151 TONE` 選択 ➔ キーボードバッジ `FM TONE EDITOR`。鍵盤をクリックして演奏 ➔ `FM TONE EDITOR` を確実に維持。
+      2. 右ペインで `PITCH ENV` 選択 ➔ キーボードバッジ `PITCH ENV EDITOR`。鍵盤をクリックして演奏 ➔ `PITCH ENV EDITOR` を確実に維持。
+      3. 右ペインで `VOL ENV` 選択 ➔ キーボードバッジ `VOL ENV EDITOR`。鍵盤をクリックして演奏 ➔ `VOL ENV EDITOR` を確実に維持。
+      4. MML エディタ内をクリック ➔ キーボードバッジが `MML CARET: P1` に正しく復帰することを確認。
+
+
 - **下部タブパネル (PROBLEMS / CONSOLE / KEYBOARD) の全幅化 — エクスプローラー領域の下まで横幅を拡大 (`src/view/MmlEditor.tsx`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-06):
   - **背景・ユーザー意図**:
     - 従来、下部タブエリア (PROBLEMS / CONSOLE / VIRTUAL KEYBOARD) はエクスプローラーの右側 (エディタ主ペイン内) にのみ表示されており横幅が狭かった。エクスプローラーの左端まで使える全幅表示にしたい。
