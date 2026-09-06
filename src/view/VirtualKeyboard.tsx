@@ -436,13 +436,18 @@ export function VirtualKeyboard({
   // PCキーボード (QWERTY) 演奏 & スペースキーパン操作の統合フック
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
       const activeEl = document.activeElement as HTMLElement | null;
-      const tag = activeEl?.tagName;
-      // テキスト入力・エディタ操作中はキー演奏をバイパス
+      // テキスト入力・エディタ操作中はキー演奏およびパン操作をバイパス
       if (
-        tag === 'INPUT' ||
-        tag === 'TEXTAREA' ||
-        tag === 'SELECT' ||
+        target?.tagName === 'INPUT' ||
+        target?.tagName === 'TEXTAREA' ||
+        target?.tagName === 'SELECT' ||
+        target?.isContentEditable ||
+        target?.closest('.monaco-editor') ||
+        activeEl?.tagName === 'INPUT' ||
+        activeEl?.tagName === 'TEXTAREA' ||
+        activeEl?.tagName === 'SELECT' ||
         activeEl?.isContentEditable ||
         activeEl?.closest('.monaco-editor')
       ) {

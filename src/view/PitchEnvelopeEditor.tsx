@@ -228,12 +228,26 @@ export function PitchEnvelopeEditor({
   const activeStepRef = useRef<number>(-1);
   const [previewActiveStep, setPreviewActiveStep] = useState<number>(-1);
 
-  // スペースキー押下検知 (フォーカスが入力欄にない場合のみパンモード有効化)
+  // スペースキー押下検知 (フォーカスが入力欄・Monacoエディタにない場合のみパンモード有効化)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.code === 'Space') {
-        const tag = (e.target as HTMLElement)?.tagName;
-        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+        const target = e.target as HTMLElement | null;
+        const activeEl = document.activeElement as HTMLElement | null;
+        if (
+          target?.tagName === 'INPUT' ||
+          target?.tagName === 'TEXTAREA' ||
+          target?.tagName === 'SELECT' ||
+          target?.isContentEditable ||
+          target?.closest('.monaco-editor') ||
+          activeEl?.tagName === 'INPUT' ||
+          activeEl?.tagName === 'TEXTAREA' ||
+          activeEl?.tagName === 'SELECT' ||
+          activeEl?.isContentEditable ||
+          activeEl?.closest('.monaco-editor')
+        ) {
+          return;
+        }
         e.preventDefault();
         if (!isSpacePressedRef.current) {
           isSpacePressedRef.current = true;

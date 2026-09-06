@@ -5,6 +5,20 @@
 ---
 
 ## 1. 直近の完了作業（最新）
+- **MMLエディタ等でのスペースキー入力不能バグの解消 — パン操作用グローバルキーリスナーの入力領域ガード強化 (`src/view/VolEnvelopeEditor.tsx`, `src/view/PitchEnvelopeEditor.tsx`, `src/view/VirtualKeyboard.tsx`)** (2026-09-06):
+  - **背景・ユーザー報告**:
+    - 「MMLエディタでスペースキーを押してもスペース入らなくなりました。」
+  - **原因**:
+    - `VolEnvelopeEditor.tsx` および `PitchEnvelopeEditor.tsx` のスペースキードラッグ（パン操作）用グローバル `keydown` リスナーにおいて、`e.target` が `INPUT` / `TEXTAREA` / `SELECT` 以外の場合に無条件で `e.preventDefault()` が実行されていた。
+    - Monaco Editor 内でスペースキーを押した際、Monaco Editor 内部の DOM 要素（`.monaco-editor` 内部）に対しても `e.preventDefault()` が発火してしまい、スペース文字の入力が完全に遮断されていた。
+  - **修正内容**:
+    - `VolEnvelopeEditor.tsx`, `PitchEnvelopeEditor.tsx`, `VirtualKeyboard.tsx` の全キーリスナーにおいて、`e.target` および `document.activeElement` が `.monaco-editor` やテキスト入力要素内にある場合はスペースキーの処理を完全にバイパス（`return` し、一切 `preventDefault` しない）するガードを実装。
+  - **検証**:
+    - `npm test`: 全 298 件合格。
+    - `npm run lint`: エラー 0 件。
+    - `npm run build`: 成功。
+    - `browser_subagent` によるブラウザ実機検証にて、Monaco Editor 内でスペースキーを押下しスペースが正常に入力されることを確認完了 (`mml_space_inserted_1788703558679.png`)。
+
 - **MMLキャレット位置と仮想キーボード・各エディタの自動連動 & テスト発音ボタンの「PREVIEW」改称 (`src/view/components/TestNoteButton.tsx`, `src/view/MmlEditor.tsx`, `src/app/App.tsx`, `src/view/VirtualKeyboard.tsx`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-06):
   - **背景・ユーザー要望**:
     - 「MML で 選択したキャレットの位置により、仮想キーボードの各種パラメータはその位置の設定の内容に変化するようにしてください。
