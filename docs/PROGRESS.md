@@ -5,6 +5,31 @@
 ---
 
 ## 1. 直近の完了作業（最新）
+- **FM音源音色エディタの用語統一（`FM TONE` / `FM TONE EDITOR`） & PITCH ENV への `SPACE: PAN` 表示追加 & 仮想キーボードからの SPACE PAN 撤廃 (`src/app/App.tsx`, `src/view/FmToneEditor.tsx`, `src/view/PitchEnvelopeEditor.tsx`, `src/view/VirtualKeyboard.tsx`, `docs/specification/ui.md`)** (2026-09-06):
+  - **背景・ユーザー要望**:
+    - 「FM 音源の 音色エディタは FM TONE / FM TONE EDITOR という用語にしたいです。 YM2151 とか OPM というのは 補足説明的なかんじで。たとえば タブ名は FM TONE、タブの中の表示は FM TONE EDITOR   YM2151(OPM) 4-OPERATOR FM とか・・・　他の箇所も違和感ないようにしたいです。　仮想キーボードのCHIP:FM (YM2151) とかは違和感ないように思えます。
+      PITCH ENVにも VOL ENV同様に SPAGE の PAN 表示があると統一感あります。
+      仮想キーボードのSPACE PAN動作は不要です。MMLのスペースキー入力とかぶり上手く動作しないので。」
+  - **対応内容**:
+    1. **FM音源音色エディタの用語統一**:
+       - 右ペインタブ名を `YM2151 TONE` から **`FM TONE`** に変更 (`App.tsx`)。
+       - エディタヘッダータイトルを `YM2151 (OPM) TONE EDITOR` から **`FM TONE EDITOR`**、サブバッジを **`YM2151(OPM) 4-OPERATOR FM`** に変更 (`FmToneEditor.tsx`)。
+       - 仕様書ドキュメント (`docs/specification/ui.md`) の見出しおよびタブ表記を `FM TONE` / `FM TONE EDITOR` へ更新。
+    2. **PITCH ENV への `SPACE: PAN` 表示追加**:
+       - `VolEnvelopeEditor.tsx` と完全同等の `SPACE: PAN` インジケータ兼先頭スクロール復帰ボタンを `PitchEnvelopeEditor.tsx` のズームコントロール右隣に追加。
+       - スペースキー押下時に `✋ PANNING` 表示へ切り替わり、マウスドラッグでの水平スクロール（パン）操作に対応。
+    3. **仮想キーボードからの SPACE PAN 動作の完全撤廃**:
+       - 仮想キーボード上のスペースキーによるパン機能、状態（`isSpacePressed`, `isPanning` 等）、イベントリスナー、およびコントロールバー上の `SPACE+DRAG: PAN` インジケータを完全撤廃 (`VirtualKeyboard.tsx`)。
+       - MMLエディタ入力時におけるスペースキー入力との潜在的干渉リスクを根本遮断。
+  - **検証**:
+    - `npm test`: 全 298 件すべて合格。
+    - `npm run lint`: エラー 0 件。
+    - `npm run build`: 成功。
+    - `browser_subagent` によるブラウザ実機検証:
+      - 右ペインタブが `FM TONE`、エディタヘッダーが `FM TONE EDITOR` ＋ `YM2151(OPM) 4-OPERATOR FM` と表示されることを確認 (`fm_tone_editor_1788704511669.png`)。
+      - 仮想キーボード上に `SPACE+DRAG: PAN` バッジが存在しないことを確認。
+      - `PITCH ENV` タブに `VOL ENV` と同一デザインの `SPACE: PAN` ボタンが表示されていることを確認 (`pitch_env_editor_1788704637902.png`, `vol_env_editor_1788704662361.png`)。
+
 - **MMLエディタ等でのスペースキー入力不能バグの解消 — パン操作用グローバルキーリスナーの入力領域ガード強化 (`src/view/VolEnvelopeEditor.tsx`, `src/view/PitchEnvelopeEditor.tsx`, `src/view/VirtualKeyboard.tsx`)** (2026-09-06):
   - **背景・ユーザー報告**:
     - 「MMLエディタでスペースキーを押してもスペース入らなくなりました。」

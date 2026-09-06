@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Volume2, VolumeX, Hand } from 'lucide-react';
+import { Volume2, VolumeX } from 'lucide-react';
 import { virtualSynth, type SoundEngineType, type SynthPlayOptions } from '../utils/virtualSynth';
 import type { MmlCaretContext } from '../utils/mmlCaretParser';
 import type { FmToneData } from '../core/fm/FmTone';
@@ -161,14 +161,6 @@ export function VirtualKeyboard({
   const [pressedNotes, setPressedNotes] = useState<Set<number>>(new Set());
   const isMouseDownRef = useRef<boolean>(false);
   const keyboardScrollRef = useRef<HTMLDivElement>(null);
-
-  // スペースキードラッグスクロール（パン操作）用
-  const [isSpacePressed, setIsSpacePressed] = useState<boolean>(false);
-  const [isPanning, setIsPanning] = useState<boolean>(false);
-  const isSpacePressedRef = useRef<boolean>(false);
-  const isPanningRef = useRef<boolean>(false);
-  const panStartXRef = useRef<number>(0);
-  const panStartScrollLeftRef = useRef<number>(0);
 
   // PCキーボードタイピング演奏用の基準オクターブ (初期値 4 = C4基準)
   const [typingOctave, setTypingOctave] = useState<number>(() => mmlContext?.octave ?? 4);
@@ -332,8 +324,6 @@ export function VirtualKeyboard({
 
   // ノート発音ハンドラ
   const handleNoteOn = useCallback((midiNote: number) => {
-    if (isSpacePressedRef.current) return; // スペースドラッグ中は発音しない
-
     setPressedNotes(prev => new Set(prev).add(midiNote));
     onChangeTestMidiNote?.(midiNote);
 
@@ -388,32 +378,12 @@ export function VirtualKeyboard({
     virtualSynth.allNotesOff();
   };
 
-  // マウスイベント (ドラッグ演奏対応 & スペースキーパン操作)
-  const handleContainerMouseDown = (e: React.MouseEvent) => {
-    if (isSpacePressedRef.current && keyboardScrollRef.current) {
-      e.preventDefault();
-      isPanningRef.current = true;
-      setIsPanning(true);
-      panStartXRef.current = e.clientX;
-      panStartScrollLeftRef.current = keyboardScrollRef.current.scrollLeft;
-      return;
-    }
+  // マウスイベント (ドラッグ演奏対応)
+  const handleContainerMouseDown = () => {
     isMouseDownRef.current = true;
   };
 
-  const handleContainerMouseMove = (e: React.MouseEvent) => {
-    if (isPanningRef.current && keyboardScrollRef.current) {
-      e.preventDefault();
-      const dx = e.clientX - panStartXRef.current;
-      keyboardScrollRef.current.scrollLeft = panStartScrollLeftRef.current - dx;
-    }
-  };
-
   const handleContainerMouseUp = () => {
-    if (isPanningRef.current) {
-      isPanningRef.current = false;
-      setIsPanning(false);
-    }
     if (isMouseDownRef.current) {
       isMouseDownRef.current = false;
       handleAllNotesOff();
@@ -422,8 +392,6 @@ export function VirtualKeyboard({
 
   useEffect(() => {
     const onMouseUp = () => {
-      isPanningRef.current = false;
-      setIsPanning(false);
       if (isMouseDownRef.current) {
         isMouseDownRef.current = false;
         handleAllNotesOff();
@@ -433,12 +401,12 @@ export function VirtualKeyboard({
     return () => window.removeEventListener('mouseup', onMouseUp);
   }, []);
 
-  // PCキーボード (QWERTY) 演奏 & スペースキーパン操作の統合フック
+  // PCキーボード (QWERTY) 演奏の統合フック
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
       const activeEl = document.activeElement as HTMLElement | null;
-      // テキスト入力・エディタ操作中はキー演奏およびパン操作をバイパス
+      // テキスト入力・エディタ操作中はキー演奏をバイパス
       if (
         target?.tagName === 'INPUT' ||
         target?.tagName === 'TEXTAREA' ||
@@ -451,15 +419,6 @@ export function VirtualKeyboard({
         activeEl?.isContentEditable ||
         activeEl?.closest('.monaco-editor')
       ) {
-        return;
-      }
-
-      // スペースキー: パン操作 (MMLモードでもドラッグスクロールは可能)
-      if (e.code === 'Space') {
-        if (!isSpacePressedRef.current) {
-          isSpacePressedRef.current = true;
-          setIsSpacePressed(true);
-        }
         return;
       }
 
@@ -491,14 +450,6 @@ export function VirtualKeyboard({
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.code === 'Space') {
-        isSpacePressedRef.current = false;
-        setIsSpacePressed(false);
-        isPanningRef.current = false;
-        setIsPanning(false);
-        return;
-      }
-
       if (activeTabContext === 'mml') {
         return;
       }
@@ -511,10 +462,6 @@ export function VirtualKeyboard({
     };
 
     const handleBlur = () => {
-      isSpacePressedRef.current = false;
-      setIsSpacePressed(false);
-      isPanningRef.current = false;
-      setIsPanning(false);
       handleAllNotesOff();
     };
 
@@ -745,16 +692,6 @@ export function VirtualKeyboard({
             </div>
           )}
 
-          {/* スペースドラッグインジケータ */}
-          <div className={`hidden lg:flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] border transition-colors ${
-            isSpacePressed 
-              ? 'bg-cyan-950 text-cyan-300 border-cyan-500 shadow-[0_0_6px_rgba(6,182,212,0.5)]' 
-              : 'bg-zinc-900/60 text-zinc-500 border-white/[0.05]'
-          }`}>
-            <Hand className="w-3 h-3" />
-            <span>SPACE+DRAG: PAN</span>
-          </div>
-
           <span className="text-[10px] text-zinc-500 mr-1 hidden sm:inline">OCT:</span>
           {[1, 2, 3, 4, 5, 6, 7].map(oct => {
             const isCurrentOct = mmlContext?.octave === oct;
@@ -784,15 +721,12 @@ export function VirtualKeyboard({
         </div>
       </div>
 
-      {/* 2. 下部キーボード描画エリア (横スクロール & スペースキードラッグ対応) */}
+      {/* 2. 下部キーボード描画エリア (横スクロール対応) */}
       <div 
         ref={keyboardScrollRef}
         onMouseDown={handleContainerMouseDown}
-        onMouseMove={handleContainerMouseMove}
         onMouseUp={handleContainerMouseUp}
-        className={`flex-1 overflow-x-auto overflow-y-hidden relative bg-[#090a0f] p-1.5 scrollbar-thin scrollbar-thumb-zinc-700 select-none ${
-          isSpacePressed ? (isPanning ? 'cursor-grabbing' : 'cursor-grab') : ''
-        }`}
+        className="flex-1 overflow-x-auto overflow-y-hidden relative bg-[#090a0f] p-1.5 scrollbar-thin scrollbar-thumb-zinc-700 select-none"
         style={{ minHeight: '80px' }}
       >
         <div 
@@ -814,29 +748,24 @@ export function VirtualKeyboard({
                   width: `${WHITE_KEY_WIDTH - 1}px`,
                 }}
                 onMouseDown={(e) => {
-                  if (isSpacePressedRef.current) return;
                   e.preventDefault();
                   isMouseDownRef.current = true;
                   handleNoteOn(key.midiNote);
                 }}
                 onMouseEnter={() => {
-                  if (isMouseDownRef.current && !isSpacePressedRef.current) {
+                  if (isMouseDownRef.current) {
                     handleNoteOn(key.midiNote);
                   }
                 }}
                 onMouseLeave={() => {
-                  if (isMouseDownRef.current && !isSpacePressedRef.current) {
+                  if (isMouseDownRef.current) {
                     handleNoteOff(key.midiNote);
                   }
                 }}
                 onMouseUp={() => {
-                  if (!isSpacePressedRef.current) {
-                    handleNoteOff(key.midiNote);
-                  }
+                  handleNoteOff(key.midiNote);
                 }}
-                className={`absolute top-0 bottom-0 rounded-b border select-none z-0 flex flex-col justify-end pb-1 items-center transition-colors duration-75 ${
-                  isSpacePressed ? 'pointer-events-none' : 'cursor-pointer'
-                } ${
+                className={`absolute top-0 bottom-0 rounded-b border select-none z-0 flex flex-col justify-end pb-1 items-center transition-colors duration-75 cursor-pointer ${
                   isPressed
                     ? 'bg-gradient-to-t from-cyan-400 to-cyan-200 border-cyan-300 shadow-[inset_0_3px_6px_rgba(0,0,0,0.35),0_0_14px_rgba(34,211,238,0.9)] z-10 translate-y-1'
                     : isC
@@ -885,29 +814,24 @@ export function VirtualKeyboard({
                   height: '62%',
                 }}
                 onMouseDown={(e) => {
-                  if (isSpacePressedRef.current) return;
                   e.preventDefault();
                   isMouseDownRef.current = true;
                   handleNoteOn(key.midiNote);
                 }}
                 onMouseEnter={() => {
-                  if (isMouseDownRef.current && !isSpacePressedRef.current) {
+                  if (isMouseDownRef.current) {
                     handleNoteOn(key.midiNote);
                   }
                 }}
                 onMouseLeave={() => {
-                  if (isMouseDownRef.current && !isSpacePressedRef.current) {
+                  if (isMouseDownRef.current) {
                     handleNoteOff(key.midiNote);
                   }
                 }}
                 onMouseUp={() => {
-                  if (!isSpacePressedRef.current) {
-                    handleNoteOff(key.midiNote);
-                  }
+                  handleNoteOff(key.midiNote);
                 }}
-                className={`absolute top-0 rounded-b border select-none z-20 flex flex-col justify-end pb-1 items-center shadow-md transition-colors duration-75 ${
-                  isSpacePressed ? 'pointer-events-none' : 'cursor-pointer'
-                } ${
+                className={`absolute top-0 rounded-b border select-none z-20 flex flex-col justify-end pb-1 items-center shadow-md transition-colors duration-75 cursor-pointer ${
                   isPressed
                     ? 'bg-gradient-to-t from-cyan-500 to-cyan-300 border-cyan-200 shadow-[inset_0_3px_6px_rgba(0,0,0,0.6),0_0_14px_rgba(6,182,212,0.9)] translate-y-1'
                     : 'bg-[#181920] hover:bg-[#252834] border-black/80 active:translate-y-1'

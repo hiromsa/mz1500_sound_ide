@@ -990,6 +990,24 @@ export function PitchEnvelopeEditor({
             +
           </button>
 
+          {/* スペースキー・パン状態インジケータ */}
+          <button
+            type="button"
+            onClick={() => {
+              if (scrollContainerRef.current) {
+                scrollContainerRef.current.scrollTo({ left: 0, behavior: 'smooth' });
+              }
+            }}
+            className={`ml-1 px-1.5 py-0.5 rounded text-[9px] font-medium border transition-colors flex items-center gap-1 cursor-pointer ${
+              isSpacePressed
+                ? 'bg-cyan-950/80 text-cyan-300 border-cyan-500'
+                : 'bg-zinc-900 text-zinc-500 border-white/10 hover:text-zinc-300'
+            }`}
+            title="Hold Space key + drag to scroll horizontally. Click to scroll to beginning."
+          >
+            <span>{isSpacePressed ? '✋ PANNING' : 'SPACE: PAN'}</span>
+          </button>
+
           {/* カーソル位置 */}
           <div className="min-w-[100px] text-right font-mono text-[10px] ml-2 text-zinc-400">
             {hoveredPos ? (

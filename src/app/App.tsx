@@ -704,7 +704,7 @@ function App() {
                 }`}
               >
                 <AudioWaveform className={`w-3.5 h-3.5 ${activeRightTab === 'tone' ? 'text-[#00A8FF]' : 'text-zinc-400'}`} />
-                <span>YM2151 TONE</span>
+                <span>FM TONE</span>
                 {!enableYM2151 && (
                   <span className="text-[9px] px-1 py-0.2 rounded bg-[#383838] text-zinc-400 border border-[#484848] font-bold">
                     OFF

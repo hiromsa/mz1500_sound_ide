@@ -1505,10 +1505,10 @@ export function FmToneEditor({
           <div className="flex items-center gap-2.5">
             <AudioWaveform className="w-4 h-4 text-[#00A8FF]" />
             <h2 className="text-xs font-semibold text-zinc-200 tracking-wide">
-              YM2151 (OPM) TONE EDITOR
+              FM TONE EDITOR
             </h2>
             <span className="text-[10px] text-zinc-400 px-2 py-0.5 rounded bg-zinc-800 border border-white/10 font-medium">
-              4-OPERATOR FM
+              YM2151(OPM) 4-OPERATOR FM
             </span>
             {/* 音色番号 (@ID) 指定 & MML定義状態 (左寄せ配置) */}
             <div className="flex items-center ml-2 border-l border-white/10 pl-2.5">
