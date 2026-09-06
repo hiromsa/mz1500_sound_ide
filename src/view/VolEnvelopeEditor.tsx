@@ -1,19 +1,21 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { 
-  Play, 
-  Square, 
-  X, 
-  TrendingUp, 
-  TrendingDown, 
-  FlipHorizontal, 
-  ArrowUpDown, 
-  Trash2, 
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import {
+  Play,
+  Square,
+  X,
+  TrendingUp,
+  TrendingDown,
+  FlipHorizontal,
+  ArrowUpDown,
+  Trash2,
   Copy,
   ArrowLeft,
   ArrowRight,
   ArrowUp,
   ArrowDown
 } from 'lucide-react';
+import { isIdDefined, loadVolEnvDefinition } from '../utils/mmlDefinitionLoader';
+import { DefinitionIdInput } from './DefinitionIdInput';
 
 const MAX_FRAMES = 128;
 
@@ -64,13 +66,15 @@ const createInitialEnvData = (): number[] => {
 
 export interface VolEnvelopeEditorProps {
   onChangeEnvData?: (data: number[], loopPoint: number) => void;
-  /** MML右クリックメニューから指定されたID。変化したらenvNumberを更新する。 */
-  loadEnvId?: number | null;
+  /** MML右クリックメニューから指定されたロードリクエスト。変化したら該当 ID の定義をロードする。 */
+  loadEnvId?: { id: number; requestNo: number } | null;
+  /** アクティブ MML 全文。定義済み判定と定義内容のロードに使用する。 */
+  mmlSource?: string;
   /** 「MMLに反映」ボタン押下時に呼ばれるコールバック。 */
   onApplyToMml?: (mmlSnippet: string, id: number) => void;
 }
 
-export function VolEnvelopeEditor({ onChangeEnvData, loadEnvId, onApplyToMml }: VolEnvelopeEditorProps = {}) {
+export function VolEnvelopeEditor({ onChangeEnvData, loadEnvId, mmlSource, onApplyToMml }: VolEnvelopeEditorProps = {}) {
   // エンベロープデータ (デフォルト32フレーム, 各フレーム 0〜15)
   const [envData, setEnvData] = useState<number[]>(createInitialEnvData());
   
@@ -88,11 +92,49 @@ export function VolEnvelopeEditor({ onChangeEnvData, loadEnvId, onApplyToMml }: 
   // エンベロープ定義番号 (例: @v1)
   const [envNumber, setEnvNumber] = useState<number>(1);
 
-  // loadEnvId の変化を監視: 右クリックメニューからIDが指定されたらenvNumberを更新
+  // アクティブ MML 全文の最新値 (ロードリクエスト処理内で参照するため ref でも保持)
+  const mmlSourceRef = useRef(mmlSource);
   useEffect(() => {
-    if (loadEnvId == null) return;
-    setEnvNumber(loadEnvId);
+    mmlSourceRef.current = mmlSource;
+  });
+
+  // loadEnvId の変化を監視: 定義済み ID なら MML の定義内容を、未定義 ID なら初期値をロードする
+  useEffect(() => {
+    if (!loadEnvId) return;
+    const { id } = loadEnvId;
+    const loaded = mmlSourceRef.current ? loadVolEnvDefinition(mmlSourceRef.current, id) : null;
+    if (loaded) {
+      setEnvData(loaded.data);
+      setLoopPoint(loaded.loopPoint);
+      setReleasePoint(loaded.releasePoint);
+    } else {
+      setEnvData(createInitialEnvData());
+      setLoopPoint(8);
+      setReleasePoint(20);
+    }
+    setEnvNumber(id);
   }, [loadEnvId]);
+
+  // MML 上での定義済み判定 (ID 変更・MML 編集時に更新)
+  const isVolEnvIdDefined = useMemo(
+    () => (mmlSource ? isIdDefined(mmlSource, 'volEnv', envNumber) : false),
+    [mmlSource, envNumber],
+  );
+
+  // ID 入力欄からの変更: 定義済みなら MML の定義内容を、未定義なら初期値をロードする
+  const handleIdChange = (id: number) => {
+    setEnvNumber(id);
+    const loaded = mmlSource ? loadVolEnvDefinition(mmlSource, id) : null;
+    if (loaded) {
+      setEnvData(loaded.data);
+      setLoopPoint(loaded.loopPoint);
+      setReleasePoint(loaded.releasePoint);
+    } else {
+      setEnvData(createInitialEnvData());
+      setLoopPoint(8);
+      setReleasePoint(20);
+    }
+  };
 
   // ズーム倍率 (0.6x 〜 3.5x, デフォルト 1.0x - 縦横同時ズーム)
   const [zoomLevel, setZoomLevel] = useState<number>(1.0);
@@ -633,18 +675,17 @@ export function VolEnvelopeEditor({ onChangeEnvData, loadEnvId, onApplyToMml }: 
 
           {/* 試聴プレビュー操作 & エンベロープ番号 */}
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1.5 text-xs text-zinc-400">
-              <span className="text-zinc-500 font-medium text-[10px]">ID:</span>
-              <select
-                value={envNumber}
-                onChange={e => setEnvNumber(Number(e.target.value))}
-                className="h-6 bg-[#0c0d12] text-zinc-200 border border-white/10 hover:border-white/20 focus:border-cyan-500 rounded px-2 text-xs font-mono cursor-pointer"
-              >
-                {[...Array(16)].map((_, i) => (
-                  <option key={i} value={i}>@v{i}</option>
-                ))}
-              </select>
-            </div>
+            <DefinitionIdInput
+              prefix="@v"
+              value={envNumber}
+              isDefined={isVolEnvIdDefined}
+              onChange={handleIdChange}
+              maxId={255}
+              accentClassName="text-zinc-200"
+              badgeTitle={isVolEnvIdDefined
+                ? `@v${envNumber} は MML に定義済み (反映時は定義を置き換え)`
+                : `@v${envNumber} は MML に未定義 (反映時は最後の定義の後に新規挿入)`}
+            />
 
             {/* プレビューボタン群 & MMLに反映ボタン */}
             <div className="flex items-center gap-1.5">
@@ -687,7 +728,9 @@ export function VolEnvelopeEditor({ onChangeEnvData, loadEnvId, onApplyToMml }: 
                 <button
                   onClick={handleApplyToMml}
                   className="h-6 px-3 rounded bg-emerald-900/50 hover:bg-emerald-800/60 text-emerald-300 border border-emerald-600/60 hover:border-emerald-400 font-medium transition-colors flex items-center gap-1.5 text-xs cursor-pointer shadow-xs"
-                  title={`@v${envNumber} の MML定義をカーソル位置に挿入`}
+                  title={isVolEnvIdDefined
+                    ? `@v${envNumber} の MML定義を置き換え`
+                    : `@v${envNumber} を新規定義として最後の定義の後に挿入`}
                 >
                   <span>▶ MMLに反映</span>
                 </button>

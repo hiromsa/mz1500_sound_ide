@@ -30,6 +30,7 @@ import type { FmToneData } from '../core/fm/FmTone';
 import { formatDiagnosticsAsLogLines } from '../utils/diagnosticsLog';
 import type { CompileErrorItem } from '../view/CompileErrorPanel';
 import type { ActiveTabContext } from '../view/VirtualKeyboard';
+import { findDefinitionBlocks, type MmlDefinitionKind } from '../utils/mmlContextParser';
 import type { editor } from 'monaco-editor';
 import mz1500Logo from '../assets/mz1500logo.svg';
 
@@ -84,67 +85,123 @@ function App() {
   const [activeVolEnv, setActiveVolEnv] = useState<number[] | undefined>(undefined);
   const [activeVolEnvLoop, setActiveVolEnvLoop] = useState<number | undefined>(undefined);
 
-  // MML右クリックメニューから各エディタに渡す「ロードID」 (null = リセット)
-  const [loadToneId, setLoadToneId] = useState<number | null>(null);
-  const [loadVolEnvId, setLoadVolEnvId] = useState<number | null>(null);
-  const [loadPitchEnvId, setLoadPitchEnvId] = useState<number | null>(null);
+  // MML右クリックメニューから各エディタに渡す「ロードリクエスト」
+  // (null = リセット / requestNo は同一 ID の再ロード要求を判定するための連番)
+  const [loadToneId, setLoadToneId] = useState<{ id: number; requestNo: number } | null>(null);
+  const [loadVolEnvId, setLoadVolEnvId] = useState<{ id: number; requestNo: number } | null>(null);
+  const [loadPitchEnvId, setLoadPitchEnvId] = useState<{ id: number; requestNo: number } | null>(null);
+  const loadRequestCounterRef = useRef(0);
+  const buildLoadRequest = useCallback((id: number) => ({ id, requestNo: ++loadRequestCounterRef.current }), []);
+
+  // アクティブ MML 全文 (各エディタの定義済み判定・定義内容ロードに使用)
+  const [activeMmlSource, setActiveMmlSource] = useState<string>('');
 
   // Monaco Editor インスタンス参照 (MMLスニペット挿入用)
   const monacoEditorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
 
   // 右クリックメニュー: FM TONE 編集リクエスト
   const handleRequestEditTone = useCallback((id: number) => {
-    setLoadToneId(id);
+    setLoadToneId(buildLoadRequest(id));
     setActiveRightTab('tone');
     setShowRightPane(true);
-  }, []);
+  }, [buildLoadRequest]);
 
   // 右クリックメニュー: VOL ENV 編集リクエスト
   const handleRequestEditVolEnv = useCallback((id: number) => {
-    setLoadVolEnvId(id);
+    setLoadVolEnvId(buildLoadRequest(id));
     setActiveRightTab('vol_envelope');
     setShowRightPane(true);
-  }, []);
+  }, [buildLoadRequest]);
 
   // 右クリックメニュー: PITCH ENV 編集リクエスト
   const handleRequestEditPitchEnv = useCallback((id: number) => {
-    setLoadPitchEnvId(id);
+    setLoadPitchEnvId(buildLoadRequest(id));
     setActiveRightTab('pitch_envelope');
     setShowRightPane(true);
-  }, []);
+  }, [buildLoadRequest]);
 
-  // 右クリックメニュー: 新規作成 (新IDをそのままロードする)
+  // 右クリックメニュー: 新規作成 (未使用の新IDをロードする。未定義のため初期値で初期化される)
   const handleRequestNewTone = useCallback((newId: number) => {
-    setLoadToneId(newId);
+    setLoadToneId(buildLoadRequest(newId));
     setActiveRightTab('tone');
     setShowRightPane(true);
-  }, []);
+  }, [buildLoadRequest]);
 
   const handleRequestNewVolEnv = useCallback((newId: number) => {
-    setLoadVolEnvId(newId);
+    setLoadVolEnvId(buildLoadRequest(newId));
     setActiveRightTab('vol_envelope');
     setShowRightPane(true);
-  }, []);
+  }, [buildLoadRequest]);
 
   const handleRequestNewPitchEnv = useCallback((newId: number) => {
-    setLoadPitchEnvId(newId);
+    setLoadPitchEnvId(buildLoadRequest(newId));
     setActiveRightTab('pitch_envelope');
     setShowRightPane(true);
-  }, []);
+  }, [buildLoadRequest]);
 
-  // 「MMLに反映」ボタン: カーソル位置にスニペットを挿入
-  const handleApplyToMml = useCallback((mmlSnippet: string, _id: number) => {
+  /**
+   * 「MMLに反映」ボタン: ID の定義有無で動作が変わる。
+   * - 定義済み ID  : MML 内の該当定義ブロックを現在の編集内容で置き換える
+   * - 未定義 ID    : MML 内の最後の定義ブロックの直後に新規定義として挿入する
+   *                  (定義ブロックが 1 つも無い場合のみカーソル位置へ挿入)
+   */
+  const handleApplyToMml = useCallback((mmlSnippet: string, kind: MmlDefinitionKind, id: number) => {
     const ed = monacoEditorRef.current;
-    if (!ed) return;
-    const selection = ed.getSelection();
-    const pos = ed.getPosition();
-    if (!pos) return;
-    const range = selection && !selection.isEmpty()
-      ? selection
-      : { startLineNumber: pos.lineNumber, startColumn: pos.column, endLineNumber: pos.lineNumber, endColumn: pos.column };
-    ed.executeEdits('apply-mml', [{ range, text: '\n' + mmlSnippet + '\n' }]);
+    const model = ed?.getModel();
+    if (!ed || !model) return;
+
+    const blocks = findDefinitionBlocks(model.getValue());
+    const target = blocks.find((b) => b.kind === kind && b.id === id);
+
+    if (target) {
+      // 定義済み → 該当定義ブロック (開始行〜終了行) を丸ごと置き換え
+      const endLine = Math.min(target.endLine, model.getLineCount());
+      const range = {
+        startLineNumber: target.startLine,
+        startColumn: 1,
+        endLineNumber: endLine,
+        endColumn: model.getLineMaxColumn(endLine),
+      };
+      ed.executeEdits('apply-mml', [{ range, text: mmlSnippet }]);
+      ed.revealLineInCenter(target.startLine);
+    } else if (blocks.length > 0) {
+      // 未定義 → 最後の定義ブロックの直後 (次の行頭) へ挿入
+      const lastBlock = blocks[blocks.length - 1];
+      const insertLine = Math.min(lastBlock.endLine + 1, model.getLineCount());
+      const range = {
+        startLineNumber: insertLine,
+        startColumn: 1,
+        endLineNumber: insertLine,
+        endColumn: 1,
+      };
+      ed.executeEdits('apply-mml', [{ range, text: `${mmlSnippet}\n` }]);
+      ed.revealLineInCenter(insertLine);
+    } else {
+      // 定義が 1 つも無い → カーソル位置へ挿入 (選択範囲があれば置換)
+      const selection = ed.getSelection();
+      const pos = ed.getPosition();
+      if (!pos) return;
+      const range = selection && !selection.isEmpty()
+        ? selection
+        : { startLineNumber: pos.lineNumber, startColumn: pos.column, endLineNumber: pos.lineNumber, endColumn: pos.column };
+      ed.executeEdits('apply-mml', [{ range, text: '\n' + mmlSnippet + '\n' }]);
+    }
     ed.focus();
   }, []);
+
+  // 各エディタの「MMLに反映」コールバック (種別を束縛して handleApplyToMml へ渡す)
+  const handleApplyToneToMml = useCallback(
+    (mmlSnippet: string, id: number) => handleApplyToMml(mmlSnippet, 'tone', id),
+    [handleApplyToMml],
+  );
+  const handleApplyVolEnvToMml = useCallback(
+    (mmlSnippet: string, id: number) => handleApplyToMml(mmlSnippet, 'volEnv', id),
+    [handleApplyToMml],
+  );
+  const handleApplyPitchEnvToMml = useCallback(
+    (mmlSnippet: string, id: number) => handleApplyToMml(mmlSnippet, 'pitchEnv', id),
+    [handleApplyToMml],
+  );
 
 
   // 現在フォーカスされている領域 ('mml' | 'rightPane')
@@ -230,6 +287,7 @@ function App() {
   // MmlEditor から通知されるアクティブソースを保持する
   const handleActiveSourceChange = useCallback((source: string, fileName: string) => {
     mmlSourceRef.current = { source, fileName };
+    setActiveMmlSource(source);
   }, []);
 
   // 演奏ファサードを遅延生成する (AudioContext はユーザ操作内の play 時に生成される)
@@ -692,7 +750,8 @@ function App() {
                   <FmToneEditor
                     onChangeToneData={setActiveFmTone}
                     loadToneId={loadToneId}
-                    onApplyToMml={handleApplyToMml}
+                    mmlSource={activeMmlSource}
+                    onApplyToMml={handleApplyToneToMml}
                   />
                 ) : (
                   <div className="flex-grow p-6 flex flex-col items-center justify-center text-slate-400 font-mono text-xs">
@@ -719,7 +778,8 @@ function App() {
                     setActiveVolEnvLoop(loop);
                   }}
                   loadEnvId={loadVolEnvId}
-                  onApplyToMml={handleApplyToMml}
+                  mmlSource={activeMmlSource}
+                  onApplyToMml={handleApplyVolEnvToMml}
                 />
               )}
 
@@ -730,7 +790,8 @@ function App() {
                     setActivePitchEnvLoop(loop);
                   }}
                   loadEnvId={loadPitchEnvId}
-                  onApplyToMml={handleApplyToMml}
+                  mmlSource={activeMmlSource}
+                  onApplyToMml={handleApplyPitchEnvToMml}
                 />
               )}
 

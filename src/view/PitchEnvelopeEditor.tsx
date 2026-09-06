@@ -1,13 +1,13 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { 
-  Play, 
-  Square, 
-  X, 
-  Activity, 
-  FlipHorizontal, 
-  ArrowUpDown, 
-  Trash2, 
-  Copy, 
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import {
+  Play,
+  Square,
+  X,
+  Activity,
+  FlipHorizontal,
+  ArrowUpDown,
+  Trash2,
+  Copy,
   LineChart,
   Sparkles,
   RefreshCw,
@@ -16,6 +16,8 @@ import {
   ArrowUp,
   ArrowDown
 } from 'lucide-react';
+import { isIdDefined, loadPitchEnvDefinition } from '../utils/mmlDefinitionLoader';
+import { DefinitionIdInput } from './DefinitionIdInput';
 
 const MAX_FRAMES = 128;
 
@@ -114,13 +116,15 @@ const createInitialPitchData = (): number[] => {
 
 export interface PitchEnvelopeEditorProps {
   onChangeEnvData?: (data: number[], loopPoint: number) => void;
-  /** MML右クリックメニューから指定されたID。変化したらenvNumberを更新する。 */
-  loadEnvId?: number | null;
+  /** MML右クリックメニューから指定されたロードリクエスト。変化したら該当 ID の定義をロードする。 */
+  loadEnvId?: { id: number; requestNo: number } | null;
+  /** アクティブ MML 全文。定義済み判定と定義内容のロードに使用する。 */
+  mmlSource?: string;
   /** 「MMLに反映」ボタン押下時に呼び出されるコールバック。 */
   onApplyToMml?: (mmlSnippet: string, id: number) => void;
 }
 
-export function PitchEnvelopeEditor({ onChangeEnvData, loadEnvId, onApplyToMml }: PitchEnvelopeEditorProps = {}) {
+export function PitchEnvelopeEditor({ onChangeEnvData, loadEnvId, mmlSource, onApplyToMml }: PitchEnvelopeEditorProps = {}) {
   // ピッチエンベロープデータ (各フレームの周波数/ピッチオフセット値)
   const [envData, setEnvData] = useState<number[]>(createInitialPitchData());
 
@@ -138,11 +142,46 @@ export function PitchEnvelopeEditor({ onChangeEnvData, loadEnvId, onApplyToMml }
   // エンベロープ定義番号 (例: @p1)
   const [envNumber, setEnvNumber] = useState<number>(1);
 
-  // loadEnvId の変化を監視: 右クリックメニューからIDが指定されたらenvNumberを更新
+  // アクティブ MML 全文の最新値 (ロードリクエスト処理内で参照するため ref でも保持)
+  const mmlSourceRef = useRef(mmlSource);
   useEffect(() => {
-    if (loadEnvId == null) return;
-    setEnvNumber(loadEnvId);
+    mmlSourceRef.current = mmlSource;
+  });
+
+  // loadEnvId の変化を監視: 定義済み ID なら MML の定義内容を、未定義 ID なら初期値をロードする
+  // (ピッチレンジ ±N は MML 定義に含まれないため現在値を保持する)
+  useEffect(() => {
+    if (!loadEnvId) return;
+    const { id } = loadEnvId;
+    const loaded = mmlSourceRef.current ? loadPitchEnvDefinition(mmlSourceRef.current, id) : null;
+    if (loaded) {
+      setEnvData(loaded.data);
+      setLoopPoint(loaded.loopPoint);
+    } else {
+      setEnvData(createInitialPitchData());
+      setLoopPoint(0);
+    }
+    setEnvNumber(id);
   }, [loadEnvId]);
+
+  // MML 上での定義済み判定 (ID 変更・MML 編集時に更新)
+  const isPitchEnvIdDefined = useMemo(
+    () => (mmlSource ? isIdDefined(mmlSource, 'pitchEnv', envNumber) : false),
+    [mmlSource, envNumber],
+  );
+
+  // ID 入力欄からの変更: 定義済みなら MML の定義内容を、未定義なら初期値をロードする
+  const handleIdChange = (id: number) => {
+    setEnvNumber(id);
+    const loaded = mmlSource ? loadPitchEnvDefinition(mmlSource, id) : null;
+    if (loaded) {
+      setEnvData(loaded.data);
+      setLoopPoint(loaded.loopPoint);
+    } else {
+      setEnvData(createInitialPitchData());
+      setLoopPoint(0);
+    }
+  };
 
   // ズーム倍率 (0.6x 〜 3.5x, デフォルト 1.0x)
   const [zoomLevel, setZoomLevel] = useState<number>(1.0);
@@ -668,19 +707,18 @@ export function PitchEnvelopeEditor({ onChangeEnvData, loadEnvId, onApplyToMml }
           <span className="text-[10px] text-cyan-300 px-2 py-0.5 rounded bg-cyan-950/60 border border-cyan-500/30 font-medium">
             VIBRATO & BEND
           </span>
-          <div className="flex items-center gap-1.5 ml-2 border-l border-white/10 pl-2.5">
-            <span className="text-zinc-500 text-[10px] font-medium">ID:</span>
-            <select
+          <div className="flex items-center ml-2 border-l border-white/10 pl-2.5">
+            <DefinitionIdInput
+              prefix="@PE"
               value={envNumber}
-              onChange={e => setEnvNumber(Number(e.target.value))}
-              className="bg-[#0c0d12] text-cyan-300 border border-white/10 rounded h-6 px-1.5 text-xs font-mono font-semibold cursor-pointer focus:border-cyan-400 focus:outline-none"
-            >
-              {Array.from({ length: 16 }, (_, i) => (
-                <option key={i} value={i} className="bg-[#12131a] text-zinc-200">
-                  @PE{i}
-                </option>
-              ))}
-            </select>
+              isDefined={isPitchEnvIdDefined}
+              onChange={handleIdChange}
+              maxId={255}
+              accentClassName="text-cyan-300"
+              badgeTitle={isPitchEnvIdDefined
+                ? `@PE${envNumber} は MML に定義済み (反映時は定義を置き換え)`
+                : `@PE${envNumber} は MML に未定義 (反映時は最後の定義の後に新規挿入)`}
+            />
           </div>
         </div>
 
@@ -710,7 +748,9 @@ export function PitchEnvelopeEditor({ onChangeEnvData, loadEnvId, onApplyToMml }
             <button
               onClick={handleApplyToMml}
               className="h-6 px-3 rounded bg-emerald-900/50 hover:bg-emerald-800/60 text-emerald-300 border border-emerald-600/60 hover:border-emerald-400 font-medium transition-colors flex items-center gap-1.5 text-xs cursor-pointer shadow-xs"
-              title={`@PE${envNumber} の MML定義をカーソル位置に挿入`}
+              title={isPitchEnvIdDefined
+                ? `@PE${envNumber} の MML定義を置き換え`
+                : `@PE${envNumber} を新規定義として最後の定義の後に挿入`}
             >
               <span>▶ MMLに反映</span>
             </button>

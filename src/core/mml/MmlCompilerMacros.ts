@@ -18,7 +18,12 @@ export function splitMacroTokens(body: string): string[] {
   return cleaned
     .split(',')
     .map((token) => token.trim())
-    .filter((token) => token.length > 0);
+    .filter((token) => token.length > 0)
+    .flatMap((token) => {
+      // `| 12` / `> 8` のような「マーカー+数値」(エディタ generateMmlSnippet 出力書式) を分離する
+      const match = /^([|>])\s*(.+)$/.exec(token);
+      return match ? [match[1], match[2]] : [token];
+    });
 }
 
 export function parseVolumeEnvelope(

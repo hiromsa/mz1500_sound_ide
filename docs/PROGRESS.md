@@ -5,6 +5,30 @@
 ---
 
 ## 1. 直近の完了作業（最新）
+- **各エディタの ID 数値入力化・MML定義済み/未定義バッジ・反映ボタンの置換/挿入動作 (`src/utils/mmlDefinitionLoader.ts` 新設, `src/view/DefinitionIdInput.tsx` 新設, `src/view/FmToneEditor.tsx`, `src/view/VolEnvelopeEditor.tsx`, `src/view/PitchEnvelopeEditor.tsx`, `src/app/App.tsx`, `src/core/mml/MmlCompilerMacros.ts`, `src/utils/__tests__/mmlDefinitionLoader.test.ts` 新設, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-06):
+  - **背景・ユーザー意図**:
+    - FM TONE / VOL ENV / PITCH ENV の ID 指定を数値入力にしたい (100 程度まで使用する利用者を想定)。
+    - ID を変更したら、MML 定義済みなら定義内容をタブにロード、未定義なら初期値にする。
+    - 定義済み/未定義の区別を ID 付近に表示したい。
+    - 「MMLに反映」は定義済み ID なら定義箇所を置き換え、未定義 ID なら挿入する動きにしたい。
+    - 右クリック「編集」では該当 ID をタブに表示、「新規」では未使用 ID (最大ID+1) をデフォルトにする。
+  - **決定事項 (矛盾の相談結果)**:
+    - 未定義 ID の挿入位置は「MML 内の最後の定義ブロックの直後」(定義エリアに集約)。定義ブロックが 1 つも無い場合のみカーソル位置へ挿入。
+    - 「新規」右クリック時は未定義のため初期値で初期化される (現行の「編集内容引き継ぎ」から変更)。
+    - 定義済み判定は「定義ブロックの有無」ベース (`collectUsedIds` の「定義+利用」ではなく) — 利用のみの ID は未定義扱い。
+    - ID 範囲は 0-255 に統一。
+  - **変更内容**:
+    - `src/utils/mmlDefinitionLoader.ts` 新設: 定義本文 → エディタデータの逆変換純粋関数 (`loadFmToneDefinition` / `loadVolEnvDefinition` / `loadPitchEnvDefinition` / `isIdDefined`)。FM 音色名は `/* 音色名 */` コメントから復元、パラメータは有効範囲にクランプ。
+    - `src/view/DefinitionIdInput.tsx` 新設: 3 エディタ共通の ID 数値入力 (0-255) + `DEFINED` / `UNDEFINED` バッジ部品。
+    - 3 エディタ: ID 入力を DefinitionIdInput 化 (VOL ENV / PITCH ENV はプルダウン 0-15 から数値入力 0-255 へ)、ID 変更時に定義ロード (定義済み → 定義内容 / 未定義 → 初期値)、MML 定義状態バッジ表示。PITCH ENV の RANGE は MML 定義に含まれないためロード時に現在値を保持。
+    - `App.tsx`: ロードリクエストを `{ id, requestNo }` 形式に変更 (同一 ID の再ロード対応)。`handleApplyToMml` を種別 (tone/volEnv/pitchEnv) + ID 受け取りに拡張し、定義済み → 定義ブロック置換 (+自動スクロール) / 未定義 → 最後の定義ブロック直後に挿入 / 定義ゼロ → カーソル位置挿入。アクティブ MML 全文を state 化し各エディタへ `mmlSource` として供給。
+    - **既存不整合の修正**: VOL ENV エディタの `generateMmlSnippet` 出力 (`| 12` / `> 8` のカンマなしマーカー) がコンパイラで「無効なエンベロープ要素」エラーになる問題を、`splitMacroTokens` (MmlCompilerMacros.ts) と `splitDefinitionTokens` (mmlDefinitionLoader.ts) の両方に「マーカー+数値」分離処理を追加して解消 (カンマ付き `|,` 形式も継続対応)。
+  - **テスト**:
+    - `src/utils/__tests__/mmlDefinitionLoader.test.ts` 新設 (15 ケース): ループ/リリースマーカー変換、複数行定義、未定義 null、利用のみ null、エイリアス (@VE) 対応、音量クランプ、FM 音色の音色名/ALG/FB/OP 復元、パラメータ不足 null、定義済み判定。
+    - `MmlCompilerAdvanced.test.ts` に「エディタ出力形式 (`| 12` / `> 8`) のパース」テストを追加。
+  - **検証**: `npm test` 全 **298 合格** (新規 16 ケース含む) / `npm run lint` エラーゼロ / `npm run build` 成功。
+
+
 - **コンパイル診断の列位置 (Col) の正確化 & PROBLEMS パネル表示改善 (`src/core/mml/parser/MmlParser.ts`, `src/core/mml/MmlCompilerMacros.ts`, `src/core/mml/MmlCompiler.ts`, `src/view/CompileErrorPanel.tsx`, `src/app/App.tsx`, `src/core/mml/__tests__/MmlDiagnosticLocation.test.ts` 新設, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-06):
   - **背景・ユーザー意図**:
     - PROBLEMS パネルの `Ln xx, Col xx` 表示のうち `Col` は `mmlError` / `mmlWarn` 内でハードコードされた `column: 1` 固定であり、列位置として実質機能していなかった (実質 行単位の精度)。

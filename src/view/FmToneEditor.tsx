@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { 
   ChevronUp, 
   ChevronDown, 
@@ -21,6 +21,8 @@ import {
   getOpSources,
   OP_MODULATION_TARGETS,
 } from '../core/fm/FmTone';
+import { isIdDefined, loadFmToneDefinition } from '../utils/mmlDefinitionLoader';
+import { DefinitionIdInput } from './DefinitionIdInput';
 
 // プリセット音色定義
 const PRESET_TONES: FmToneData[] = [
@@ -1129,18 +1131,25 @@ function OperatorPanel({
   );
 }
 
+/** 未定義 ID 用の初期音色 (既定プリセットの複製に ID を設定したもの) を生成する。 */
+function createDefaultToneData(id: number): FmToneData {
+  return { ...JSON.parse(JSON.stringify(PRESET_TONES[0])), id };
+}
+
 // ==========================================
 // メインコンポーネント: FmToneEditor
 // ==========================================
 export interface FmToneEditorProps {
   onChangeToneData?: (data: FmToneData) => void;
-  /** MML右クリックメニューから「編集」または「新規」で指定されたID。変化したらエディタのIDを更新する。 */
-  loadToneId?: number | null;
+  /** MML右クリックメニューから「編集」または「新規」で指定されたロードリクエスト。変化したら該当 ID の定義をロードする。 */
+  loadToneId?: { id: number; requestNo: number } | null;
+  /** アクティブ MML 全文。定義済み判定と定義内容のロードに使用する。 */
+  mmlSource?: string;
   /** 「MMLに反映」ボタン押下時に呼ばれるコールバック。生成されたMMLスニペットとIDを渡す。 */
   onApplyToMml?: (mmlSnippet: string, id: number) => void;
 }
 
-export function FmToneEditor({ onChangeToneData, loadToneId, onApplyToMml }: FmToneEditorProps = {}) {
+export function FmToneEditor({ onChangeToneData, loadToneId, mmlSource, onApplyToMml }: FmToneEditorProps = {}) {
   // 現在編集中の音色データ
   const [toneData, setToneData] = useState<FmToneData>(PRESET_TONES[0]);
 
@@ -1149,11 +1158,31 @@ export function FmToneEditor({ onChangeToneData, loadToneId, onApplyToMml }: FmT
     onChangeToneData?.(toneData);
   }, [toneData, onChangeToneData]);
 
-  // loadToneId の変化を監視: 右クリックメニューからIDが指定されたらエディタのIDを更新
+  // アクティブ MML 全文の最新値 (ロードリクエスト処理内で参照するため ref でも保持)
+  const mmlSourceRef = useRef(mmlSource);
   useEffect(() => {
-    if (loadToneId == null) return;
-    setToneData(prev => ({ ...prev, id: loadToneId }));
+    mmlSourceRef.current = mmlSource;
+  });
+
+  // loadToneId の変化を監視: 定義済み ID なら MML の定義内容を、未定義 ID なら初期音色をロードする
+  useEffect(() => {
+    if (!loadToneId) return;
+    const { id } = loadToneId;
+    const loaded = mmlSourceRef.current ? loadFmToneDefinition(mmlSourceRef.current, id) : null;
+    setToneData(loaded ?? createDefaultToneData(id));
   }, [loadToneId]);
+
+  // MML 上での定義済み判定 (ID 変更・MML 編集時に更新)
+  const isToneIdDefined = useMemo(
+    () => (mmlSource ? isIdDefined(mmlSource, 'tone', toneData.id) : false),
+    [mmlSource, toneData.id],
+  );
+
+  // ID 入力欄からの変更: 定義済みなら MML の定義内容を、未定義なら初期音色をロードする
+  const handleIdChange = (id: number) => {
+    const loaded = mmlSource ? loadFmToneDefinition(mmlSource, id) : null;
+    setToneData(loaded ?? createDefaultToneData(id));
+  };
 
   // 各OPのミュート・ソロ状態 (試聴プレビュー用)
   const [opMute, setOpMute] = useState<[boolean, boolean, boolean, boolean]>([false, false, false, false]);
@@ -1471,25 +1500,17 @@ export function FmToneEditor({ onChangeToneData, loadToneId, onApplyToMml }: FmT
 
         {/* プリセット選択 & 試聴ボタン */}
         <div className="flex items-center gap-3">
-          {/* 音色番号 (@ID) 指定 */}
-          <div className="flex items-center gap-1.5 text-xs">
-            <span className="text-zinc-500 text-[10px] font-medium">ID:</span>
-            <div className="flex items-center">
-              <span className="text-cyan-400 font-bold text-xs mr-0.5">@</span>
-              <input
-                type="number"
-                min={0}
-                max={255}
-                value={toneData.id}
-                onChange={(e) => {
-                  const val = parseInt(e.target.value, 10);
-                  setToneData(prev => ({ ...prev, id: isNaN(val) ? 0 : Math.max(0, Math.min(255, val)) }));
-                }}
-                className="w-11 h-6 px-1 rounded bg-[#0c0d12] border border-white/10 text-cyan-300 text-xs font-bold focus:outline-none focus:border-cyan-400"
-                title="FM音色番号 (@0〜@255)"
-              />
-            </div>
-          </div>
+          {/* 音色番号 (@ID) 指定 & MML定義状態 */}
+          <DefinitionIdInput
+            prefix="@"
+            value={toneData.id}
+            isDefined={isToneIdDefined}
+            onChange={handleIdChange}
+            maxId={255}
+            badgeTitle={isToneIdDefined
+              ? `@${toneData.id} は MML に定義済み (反映時は定義を置き換え)`
+              : `@${toneData.id} は MML に未定義 (反映時は最後の定義の後に新規挿入)`}
+          />
 
           <div className="flex items-center gap-1.5 text-xs">
             <span className="text-zinc-500 text-[10px] font-medium">PRESET:</span>
@@ -1536,7 +1557,9 @@ export function FmToneEditor({ onChangeToneData, loadToneId, onApplyToMml }: FmT
               <button
                 onClick={handleApplyToMml}
                 className="h-6 px-3 rounded bg-emerald-900/50 hover:bg-emerald-800/60 text-emerald-300 border border-emerald-600/60 hover:border-emerald-400 font-medium transition-colors flex items-center gap-1.5 text-xs cursor-pointer shadow-xs"
-                title={`@${toneData.id} の MML定義をカーソル位置に挿入`}
+                title={isToneIdDefined
+                  ? `@${toneData.id} の MML定義を置き換え`
+                  : `@${toneData.id} を新規定義として最後の定義の後に挿入`}
               >
                 <span>▶ MMLに反映</span>
               </button>

@@ -213,6 +213,16 @@ describe('MML reference compliance (mml_reference.md 4章)', () => {
     expect(diagnostics).toHaveLength(0);
   });
 
+  it('volume envelope editor-style comma-less `| 12` / `> 8` markers are parsed', () => {
+    // VOL ENV エディタの generateMmlSnippet 出力 (`| 12` 形式) もコンパイル可能であること
+    const diagnostics: MmlDiagnostic[] = [];
+    const env = parseVolumeEnvelope(2, '15, 14, | 12, 11, > 8, 5, 2, 0', 1, 1, diagnostics);
+    expect(env).not.toBeNull();
+    expect(env?.loopIndex).toBe(2);
+    expect(env?.releaseIndex).toBe(4);
+    expect(diagnostics).toHaveLength(0);
+  });
+
   it('pitch envelope loop | marker is parsed', () => {
     const diagnostics: MmlDiagnostic[] = [];
     const env = parsePitchEnvelope(1, '|, 0, 3, 6', 1, 1, diagnostics);
