@@ -1475,7 +1475,7 @@ export function FmToneEditor({
     });
     return [
       `@${id} = {`,
-      `  /* ${toneData.name} */`,
+      `  /* NAME: ${toneData.name || 'UNNAMED'} */`,
       `  /* ALG=${alg}, FB=${fb} */`,
       `  ${alg}, ${fb},`,
       `  /* OP1: AR, D1R, D2R, RR, D1L, TL, KS, MUL, DT1, DT2, AME */`,
@@ -1500,7 +1500,7 @@ export function FmToneEditor({
     <div className="flex flex-col h-full bg-[#090a0f] p-3.5 overflow-y-auto font-mono text-zinc-300 gap-3">
       {/* 1. Bento Card: ヘッダー・プリセット・試聴 (Linear Transport Style) */}
       <div className="flex flex-col gap-2.5 bg-[#12131a] p-3 rounded-lg border border-white/[0.08] shrink-0 shadow-xs">
-        {/* 1行目: [左] アイコン + タイトル + バッジ + [縦区切り] + @ID入力  ---- [右] テスト発音 + MML反映 */}
+        {/* 1行目: [左] アイコン + タイトル + バッジ + [縦区切り] + @ID入力 + NAME入力  ---- [右] テスト発音 + MML反映 */}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
             <AudioWaveform className="w-4 h-4 text-[#00A8FF]" />
@@ -1521,6 +1521,18 @@ export function FmToneEditor({
                 badgeTitle={isToneIdDefined
                   ? `@${toneData.id} は MML に定義済み (反映時は定義を置き換え)`
                   : `@${toneData.id} は MML に未定義 (反映時は最後の定義の後に新規挿入)`}
+              />
+            </div>
+            {/* 音色名 (NAME) 入力欄 */}
+            <div className="flex items-center gap-1.5 ml-2 border-l border-white/10 pl-2.5">
+              <span className="text-[10px] text-zinc-500 font-medium shrink-0">NAME:</span>
+              <input
+                type="text"
+                value={toneData.name}
+                onChange={(e) => setToneData(prev => ({ ...prev, name: e.target.value }))}
+                className="h-6 w-32 px-2 text-xs bg-zinc-900 border border-white/10 rounded text-zinc-100 focus:border-[#00A8FF] focus:outline-none font-mono placeholder:text-zinc-600"
+                placeholder="Tone Name"
+                title="音色名 (MMLに /* NAME: ... */ として記録)"
               />
             </div>
           </div>

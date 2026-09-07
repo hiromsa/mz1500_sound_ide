@@ -13,6 +13,8 @@ import type { FmToneData, OperatorParams } from '../core/fm/FmTone';
 
 /** VOL ENV 定義をエディタのデータ形状へロードした結果 */
 export interface VolEnvDefinition {
+  /** エンベロープ名 (MMLコメント /* NAME: xxx *\/ から抽出、未指定時は undefined) */
+  name?: string;
   /** 各フレームの音量 (0〜15) */
   data: number[];
   /** ループ開始ステップ (-1 = ループなし) */
@@ -23,6 +25,8 @@ export interface VolEnvDefinition {
 
 /** PITCH ENV 定義をエディタのデータ形状へロードした結果 */
 export interface PitchEnvDefinition {
+  /** エンベロープ名 (MMLコメント /* NAME: xxx *\/ から抽出、未指定時は undefined) */
+  name?: string;
   /** 各フレームのピッチ変調値 */
   data: number[];
   /** ループ開始ステップ (-1 = ループなし) */
@@ -30,6 +34,37 @@ export interface PitchEnvDefinition {
 }
 
 const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value));
+
+/**
+ * 定義本文のコメントから名称 (NAME: xxx / name: xxx) を抽出する。
+ * 後方互換性として、NAME: プレフィックスが無い場合でも
+ * パラメータメタ情報 (ALG= や OP 等) でない最初のコメントをフォールバック抽出する。
+ */
+export function extractDefinitionName(body: string): string | undefined {
+  const comments = [...body.matchAll(/\/\*([\s\S]*?)\*\//g)].map((m) => m[1].trim());
+
+  // 1. 最優先: `NAME: xxx` または `name: xxx` (大文字小文字不問)
+  for (const comment of comments) {
+    const match = /^name\s*:\s*(.+)$/i.exec(comment);
+    if (match) {
+      const trimmed = match[1].trim();
+      if (trimmed.length > 0) return trimmed;
+    }
+  }
+
+  // 2. 後方互換フォールバック: 予約キーワード (ALG=, OP, FB= 等) を含まない最初のコメント
+  for (const comment of comments) {
+    if (
+      comment.length > 0 &&
+      !/^(ALG|FB|OP\d|AR|D1R|D2R|RR|TL|MUL)\b/i.test(comment) &&
+      !comment.includes('=')
+    ) {
+      return comment;
+    }
+  }
+
+  return undefined;
+}
 
 /**
  * 指定種別・ID の定義ブロック本文 (`{` と `}` の間) を抽出する。
@@ -124,9 +159,8 @@ export function loadFmToneDefinition(content: string, id: number): FmToneData | 
   const body = extractDefinitionBody(content, 'tone', id);
   if (body === null) return null;
 
-  // 音色名は `/* 音色名 */` コメントから復元する (ALG= を含むコメントはメタ情報なので除外)
-  const comments = [...body.matchAll(/\/\*([\s\S]*?)\*\//g)].map((m) => m[1].trim());
-  const name = comments.find((c) => c.length > 0 && !/^ALG\s*=/i.test(c)) ?? 'UNNAMED';
+  // 音色名: /* NAME: xxx */ を最優先、フォールバックで既存コメントを復元
+  const name = extractDefinitionName(body) ?? 'UNNAMED';
 
   const numbers = extractNumberTokens(body);
   // ALG, FB + OP1〜OP4 各 11 値 = 46
@@ -157,6 +191,7 @@ export function loadVolEnvDefinition(content: string, id: number): VolEnvDefinit
   const body = extractDefinitionBody(content, 'volEnv', id);
   if (body === null) return null;
 
+  const name = extractDefinitionName(body);
   const data: number[] = [];
   let loopPoint = -1;
   let releasePoint = -1;
@@ -178,7 +213,7 @@ export function loadVolEnvDefinition(content: string, id: number): VolEnvDefinit
   }
 
   if (data.length === 0) return null;
-  return { data, loopPoint, releasePoint };
+  return { name, data, loopPoint, releasePoint };
 }
 
 // ──────────────────────────────────────────────
@@ -194,6 +229,7 @@ export function loadPitchEnvDefinition(content: string, id: number): PitchEnvDef
   const body = extractDefinitionBody(content, 'pitchEnv', id);
   if (body === null) return null;
 
+  const name = extractDefinitionName(body);
   const data: number[] = [];
   let loopPoint = -1;
 
@@ -209,7 +245,7 @@ export function loadPitchEnvDefinition(content: string, id: number): PitchEnvDef
   }
 
   if (data.length === 0) return null;
-  return { data, loopPoint };
+  return { name, data, loopPoint };
 }
 
 // ──────────────────────────────────────────────

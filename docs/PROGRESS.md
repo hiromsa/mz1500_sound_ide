@@ -6,8 +6,8 @@
 ---
 
 ## 1. 現在のステータス概要
-- **バージョン**: `v0.0.1-beta.70`（コミット通番＋短縮ハッシュ ハイブリッド方式）
-- **テスト通過状況**: 全 31 テストファイル / 425 件パス（`npm test` / Vitest）
+- **バージョン**: `v0.0.1-beta.71`（コミット通番＋短縮ハッシュ ハイブリッド方式）
+- **テスト通過状況**: 全 31 テストファイル / 429 件パス（`npm test` / Vitest）
 - **型検査状況**: エラー 0 件（`npx tsc -b`）
 - **主要機能の稼働状況**:
   - Web ネイティブ MML コンパイラ（9ch / 17ch / ワークトラック W1〜W99 対応）
@@ -44,6 +44,26 @@
 ---
 
 ## 3. 直近の完了作業（最新）
+
+- **FM TONE / V-ENV / P-ENV の音色・エンベロープ名称（NAMEコメント）仕様策定 & 各タブへの名称入力欄新設 (`src/utils/mmlDefinitionLoader.ts`, `src/utils/__tests__/mmlDefinitionLoader.test.ts`, `src/view/FmToneEditor.tsx`, `src/view/VolEnvelopeEditor.tsx`, `src/view/PitchEnvelopeEditor.tsx`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-07):
+  - **背景・ユーザー要望**:
+    - 「FM TONE、V-ENV、P-ENVで名前をつけておける仕様を考えたいです。名前はコメントで記憶しておきます。/*  */ の中に何か名前だとわかるような特殊文字メタ文字？みたいなのを入れておくと、名前として解釈されるようにしたいです。」
+    - 「パターン1 いいですね。 NAME: name: どっちでも という感じで。FM TONE エディタには既に音色名入力欄がありますか？？ 名称欄、それぞれのタブに追加したいです。」
+  - **対応内容**:
+    - **コメント構文ルール (`/* NAME: 音色名 */` パターン1採用)**:
+      - `/* NAME: xxx */` および `/* name: xxx */` を最優先で名前として抽出する `extractDefinitionName` パーサーを新設。
+      - 後方互換性として、`NAME:` タグがない場合でも予約パラメータ（`ALG=`, `OP1` 等）を含まない最初のコメントを自動的に名前としてフォールバック復元。
+    - **各エディタヘッダーへの名称入力欄（テキストボックス）新設**:
+      - **FM TONE**: `@ID` の右隣に `NAME:` 入力欄を新設（自由編集可能）。
+      - **V-ENV**: `@VE` の右隣に `NAME:` 入力欄を新設。
+      - **P-ENV**: `@PE` の右隣に `NAME:` 入力欄を新設。
+      - プリセット選択時に各プリセット名が自動セットされ、ユーザーが任意の名称へ編集可能。
+    - **MMLへの出力 & MMLからのロード自動連動**:
+      - 各エディタの「▶ MMLに反映」ボタン押下時、`/* NAME: ${name} */` を先頭に付与した MML スニペットを生成。
+      - MML 上の定義を選択・ロードした際も、コメントから名称を自動復元して入力欄に反映。
+  - **検証**:
+    - `npx tsc -b` エラーゼロ / `npm test` 全 31 ファイル・429 件合格（新規テスト +4）。
+    - ブラウザ実機にて FM, V-ENV, P-ENV の全タブヘッダーに `NAME:` 入力欄が整然と配置されていることを確認完了。
 
 - **ローカルフォルダの初期空化 & 永続化（次回アクセス時自動復元）・フォルダクローズ機能の実装 (`src/view/FileExplorer.tsx`, `src/utils/workspaceStorage.ts`, `src/utils/__tests__/workspaceStorage.test.ts`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-07):
   - **背景・ユーザー指示**:

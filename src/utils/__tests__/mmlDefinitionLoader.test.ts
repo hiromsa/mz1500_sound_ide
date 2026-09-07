@@ -118,6 +118,57 @@ describe('loadFmToneDefinition', () => {
   });
 });
 
+describe('extractDefinitionName via load functions', () => {
+  it('FM TONE: /* NAME: xxx */ から音色名を読み取れる', () => {
+    const mml = [
+      '@1 = {',
+      '  /* NAME: Electric Piano Custom */',
+      '  /* ALG=4, FB=3 */',
+      '  4, 3,',
+      '  31, 10, 5, 7, 3, 20, 1, 2, 3, 0, 1,',
+      '  20, 8, 4, 6, 2, 30, 0, 1, 1, 1, 0,',
+      '  15, 6, 3, 5, 1, 40, 1, 0, 0, 2, 0,',
+      '  25, 9, 2, 8, 4, 50, 2, 3, 4, 3, 1',
+      '}',
+    ].join('\n');
+    const loaded = loadFmToneDefinition(mml, 1);
+    expect(loaded?.name).toBe('Electric Piano Custom');
+  });
+
+  it('VOL ENV: /* name: Pluck Fast */ (小文字) からエンベロープ名を読み取れる', () => {
+    const mml = [
+      '@VE2 = {',
+      '  /* name: Pluck Fast */',
+      '  15, 12, 9, 6, 3, 0',
+      '}',
+    ].join('\n');
+    const loaded = loadVolEnvDefinition(mml, 2);
+    expect(loaded?.name).toBe('Pluck Fast');
+  });
+
+  it('PITCH ENV: /* NAME: Slow Vibrato */ からエンベロープ名を読み取れる', () => {
+    const mml = [
+      '@PE1 = {',
+      '  /* NAME: Slow Vibrato */',
+      '  | 0, 1, 2, 1, 0, -1, -2, -1',
+      '}',
+    ].join('\n');
+    const loaded = loadPitchEnvDefinition(mml, 1);
+    expect(loaded?.name).toBe('Slow Vibrato');
+  });
+
+  it('後方互換: NAME: が無い単なるコメント /* Retro Synth */ もフォールバックで名前として認識する', () => {
+    const mml = [
+      '@VE5 = {',
+      '  /* Retro Synth */',
+      '  15, 10, 5',
+      '}',
+    ].join('\n');
+    const loaded = loadVolEnvDefinition(mml, 5);
+    expect(loaded?.name).toBe('Retro Synth');
+  });
+});
+
 describe('isIdDefined', () => {
   const content = [
     '@VE2 = { 15, 14 }',

@@ -103,6 +103,9 @@ export function VolEnvelopeEditor({
   // エンベロープ定義番号 (例: @VE1)
   const [envNumber, setEnvNumber] = useState<number>(1);
 
+  // エンベロープ名 (例: Pluck Fast)
+  const [envName, setEnvName] = useState<string>('DEFAULT');
+
   // アクティブ MML 全文の最新値 (ロードリクエスト処理内で参照するため ref でも保持)
   const mmlSourceRef = useRef(mmlSource);
   useEffect(() => {
@@ -118,10 +121,12 @@ export function VolEnvelopeEditor({
       setEnvData(loaded.data);
       setLoopPoint(loaded.loopPoint);
       setReleasePoint(loaded.releasePoint);
+      setEnvName(loaded.name || 'DEFAULT');
     } else {
       setEnvData(createInitialEnvData());
       setLoopPoint(8);
       setReleasePoint(20);
+      setEnvName('DEFAULT');
     }
     setEnvNumber(id);
   }, [loadEnvId]);
@@ -140,10 +145,12 @@ export function VolEnvelopeEditor({
       setEnvData(loaded.data);
       setLoopPoint(loaded.loopPoint);
       setReleasePoint(loaded.releasePoint);
+      setEnvName(loaded.name || 'DEFAULT');
     } else {
       setEnvData(createInitialEnvData());
       setLoopPoint(8);
       setReleasePoint(20);
+      setEnvName('DEFAULT');
     }
   };
 
@@ -317,6 +324,7 @@ export function VolEnvelopeEditor({
     setEnvData([...p.data]);
     setLoopPoint(p.loopPoint);
     setReleasePoint(Math.min(p.releasePoint, p.data.length - 1));
+    setEnvName(p.name);
   };
 
   // 波形クイック編集ユーティリティ (プロDAWツール)
@@ -691,7 +699,12 @@ export function VolEnvelopeEditor({
       if (idx === releasePoint) prefix += '> ';
       parts.push(`${prefix}${vol}`);
     });
-    return `@VE${envNumber} = { ${parts.join(', ')} }`;
+    return [
+      `@VE${envNumber} = {`,
+      `  /* NAME: ${envName || 'DEFAULT'} */`,
+      `  ${parts.join(', ')}`,
+      `}`,
+    ].join('\n');
   };
 
   // 「MMLに反映」ボタン処理
@@ -725,6 +738,18 @@ export function VolEnvelopeEditor({
                 badgeTitle={isVolEnvIdDefined
                   ? `@VE${envNumber} は MML に定義済み (反映時は定義を置き換え)`
                   : `@VE${envNumber} は MML に未定義 (反映時は最後の定義の後に新規挿入)`}
+              />
+            </div>
+            {/* エンベロープ名 (NAME) 入力欄 */}
+            <div className="flex items-center gap-1.5 ml-2 border-l border-white/10 pl-2.5">
+              <span className="text-[10px] text-zinc-500 font-medium shrink-0">NAME:</span>
+              <input
+                type="text"
+                value={envName}
+                onChange={(e) => setEnvName(e.target.value)}
+                className="h-6 w-32 px-2 text-xs bg-zinc-900 border border-white/10 rounded text-zinc-100 focus:border-[#00A8FF] focus:outline-none font-mono placeholder:text-zinc-600"
+                placeholder="Env Name"
+                title="音量エンベロープ名 (MMLに /* NAME: ... */ として記録)"
               />
             </div>
           </div>
