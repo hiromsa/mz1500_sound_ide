@@ -6,7 +6,8 @@ import {
   Check, 
   RotateCcw,
   Layers,
-  Shuffle
+  Shuffle,
+  Music2
 } from 'lucide-react';
 import type { MmlTransformOperation } from '../core/transform/mmlTransformEngine';
 
@@ -70,6 +71,7 @@ const WORK_TRACK_IDS = ['W1', 'W2', 'W3', 'W4'];
 export const MmlTransformPanel: React.FC<MmlTransformPanelProps> = ({
   enableYM2151 = false,
   onToggleEnableYM2151,
+  onOpenMidiRouter,
   onRequestTransform,
 }) => {
   const availableTracks = enableYM2151
@@ -241,9 +243,14 @@ export const MmlTransformPanel: React.FC<MmlTransformPanelProps> = ({
     setTimeout(() => setAppliedToast(null), 3000);
   };
 
+  // ピッチおよび音量の変更有無
+  const hasPitchChange = octaveShift !== 0 || semitoneShift !== 0;
+  const hasVolumeChange = volumeAdd !== 0 || volumePercent !== 100;
+  const hasPitchOrVolumeChange = hasPitchChange || hasVolumeChange;
+
   // ピッチのみ反映 (オクターブシフト + 半音移調を順次適用)
   const handleApplyPitch = () => {
-    if (selectedTracks.length === 0) return;
+    if (selectedTracks.length === 0 || !hasPitchChange) return;
 
     const operations: MmlTransformOperation[] = [];
     if (octaveShift !== 0) {
@@ -259,13 +266,36 @@ export const MmlTransformPanel: React.FC<MmlTransformPanelProps> = ({
 
   // 音量スケーリングのみ反映 (加減算 + 割合を scaleVolume として適用)
   const handleApplyVolume = () => {
-    if (selectedTracks.length === 0) return;
-    if (volumeAdd === 0 && volumePercent === 100) return;
+    if (selectedTracks.length === 0 || !hasVolumeChange) return;
 
     requestTransform(
       `Volume Scale (${volumeAdd > 0 ? `+${volumeAdd}` : volumeAdd} / ${volumePercent}%)`,
       [{ kind: 'scaleVolume', targetTracks: selectedTracks, add: volumeAdd, percent: volumePercent }],
     );
+  };
+
+  // ピッチ + 音量をまとめて一括反映 (ヘッダーボタン用)
+  const handleApplyAll = () => {
+    if (selectedTracks.length === 0 || !hasPitchOrVolumeChange) return;
+
+    const operations: MmlTransformOperation[] = [];
+    const descParts: string[] = [];
+
+    if (octaveShift !== 0) {
+      operations.push({ kind: 'shiftOctave', targetTracks: selectedTracks, shift: octaveShift });
+      descParts.push(`Oct ${octaveShift > 0 ? `+${octaveShift}` : octaveShift}`);
+    }
+    if (semitoneShift !== 0) {
+      operations.push({ kind: 'transpose', targetTracks: selectedTracks, semitones: semitoneShift });
+      descParts.push(`Semi ${semitoneShift > 0 ? `+${semitoneShift}` : semitoneShift}`);
+    }
+    if (hasVolumeChange) {
+      operations.push({ kind: 'scaleVolume', targetTracks: selectedTracks, add: volumeAdd, percent: volumePercent });
+      descParts.push(`Vol ${volumePercent}% ${volumeAdd >= 0 ? `+${volumeAdd}` : volumeAdd}`);
+    }
+
+    if (operations.length === 0) return;
+    requestTransform(`Transform (${descParts.join(', ')})`, operations);
   };
 
   const handleApplyBatchRemap = () => {
@@ -325,9 +355,21 @@ export const MmlTransformPanel: React.FC<MmlTransformPanelProps> = ({
           </span>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
+          {/* IMPORT MIDI ボタン (MIDI ROUTING STUDIO モーダルを開く) */}
+          {onOpenMidiRouter && (
+            <button
+              onClick={onOpenMidiRouter}
+              className="h-6.5 px-2.5 rounded text-xs font-bold bg-[#00A8FF]/15 hover:bg-[#00A8FF]/25 active:bg-[#00A8FF]/35 text-[#00A8FF] border border-[#00A8FF]/50 shadow-[0_0_8px_rgba(0,168,255,0.2)] transition-all flex items-center gap-1.5 cursor-pointer shrink-0"
+              title="MIDIファイル (.mid) をインポートしてMZ-1500音源へマッピング"
+            >
+              <Music2 className="w-3.5 h-3.5 text-[#00A8FF]" />
+              <span>IMPORT MIDI</span>
+            </button>
+          )}
+
           {/* Scope 選択 */}
-          <div className="flex items-center gap-1.5 bg-[#222222] border border-[#3C3C3C] px-2.5 py-1 rounded">
+          <div className="flex items-center gap-1.5 bg-[#222222] border border-[#3C3C3C] px-2.5 py-1 rounded shrink-0">
             <span className="text-[10px] font-medium text-zinc-400 tracking-wide">
               SCOPE:
             </span>
@@ -343,7 +385,7 @@ export const MmlTransformPanel: React.FC<MmlTransformPanelProps> = ({
 
           {/* 適用通知トースト */}
           {appliedToast && (
-            <span className="text-[10px] text-emerald-400 bg-emerald-950/80 px-2 py-1 rounded border border-emerald-700/60 flex items-center gap-1 animate-fade-in">
+            <span className="text-[10px] text-emerald-400 bg-emerald-950/80 px-2 py-1 rounded border border-emerald-700/60 flex items-center gap-1 animate-fade-in shrink-0">
               <Check className="w-3 h-3 stroke-[3]" />
               <span>{appliedToast}</span>
             </span>
@@ -351,12 +393,19 @@ export const MmlTransformPanel: React.FC<MmlTransformPanelProps> = ({
 
           {/* 一括反映ボタン */}
           <button
-            disabled={selectedTracks.length === 0}
-            onClick={handleApplyPitch}
-            className={`h-6.5 px-3 rounded text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
+            disabled={selectedTracks.length === 0 || !hasPitchOrVolumeChange}
+            onClick={handleApplyAll}
+            title={
               selectedTracks.length === 0
+                ? '対象トラックを選択してください'
+                : !hasPitchOrVolumeChange
+                ? 'ピッチまたは音量の数値を変更してください'
+                : 'ピッチと音量の変更をまとめてMMLへ反映'
+            }
+            className={`h-6.5 px-3 rounded text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 ${
+              selectedTracks.length === 0 || !hasPitchOrVolumeChange
                 ? 'bg-[#2E2E2E] text-zinc-500 border border-[#3C3C3C] cursor-not-allowed'
-                : 'bg-[#00A8FF] hover:bg-[#33BFFF] text-black font-bold'
+                : 'bg-[#00A8FF] hover:bg-[#33BFFF] text-black font-bold shadow-[0_0_10px_rgba(0,168,255,0.4)]'
             }`}
           >
             <Check className="w-3.5 h-3.5 stroke-[3]" />
@@ -649,17 +698,23 @@ export const MmlTransformPanel: React.FC<MmlTransformPanelProps> = ({
                 </button>
               ))}
             </div>
-            <div className="text-[9px] text-zinc-500">
-              ※ v (0-15) / @v (0-127, FMのみ) を `半分にして +1` の順で適用
+            <div className="text-[9px] text-zinc-400 font-mono">
+              {volumePercent === 100 && volumeAdd === 0 ? (
+                <span className="text-zinc-500">※ 音量変更なし (100% / ±0)</span>
+              ) : (
+                <span>
+                  ※ 計算式: v = clamp(round(v × {volumePercent}%) {volumeAdd >= 0 ? `+ ${volumeAdd}` : `- ${Math.abs(volumeAdd)}`}) [DCSG: 0-15 / FM: 0-127]
+                </span>
+              )}
             </div>
           </div>
 
           <div className="pt-1 mt-auto flex flex-col gap-1">
             <button
-              disabled={selectedTracks.length === 0}
+              disabled={selectedTracks.length === 0 || !hasPitchChange}
               onClick={handleApplyPitch}
               className={`w-full h-6 rounded text-[10px] font-medium transition-colors cursor-pointer border ${
-                selectedTracks.length === 0
+                selectedTracks.length === 0 || !hasPitchChange
                   ? 'bg-[#2E2E2E] text-zinc-500 border-[#3C3C3C] cursor-not-allowed'
                   : 'bg-[#383838] hover:bg-[#444444] text-zinc-200 border-[#484848]'
               }`}
@@ -667,10 +722,10 @@ export const MmlTransformPanel: React.FC<MmlTransformPanelProps> = ({
               ピッチのみ反映 ({targetSummaryText})
             </button>
             <button
-              disabled={selectedTracks.length === 0 || (volumeAdd === 0 && volumePercent === 100)}
+              disabled={selectedTracks.length === 0 || !hasVolumeChange}
               onClick={handleApplyVolume}
               className={`w-full h-6 rounded text-[10px] font-medium transition-colors cursor-pointer border ${
-                selectedTracks.length === 0 || (volumeAdd === 0 && volumePercent === 100)
+                selectedTracks.length === 0 || !hasVolumeChange
                   ? 'bg-[#2E2E2E] text-zinc-500 border-[#3C3C3C] cursor-not-allowed'
                   : 'bg-[#383838] hover:bg-[#444444] text-zinc-200 border-[#484848]'
               }`}
@@ -948,8 +1003,25 @@ export const MmlTransformPanel: React.FC<MmlTransformPanelProps> = ({
             </div>
           )}
 
-          <div className="text-[9px] text-zinc-500 text-center pt-1 border-t border-[#3C3C3C]/60 mt-auto">
-            ※MML内のトラック名（例: {channelOpTab === 'batch' ? '複数トラック' : `${swapTrackA} ⇔ ${swapTrackB}`}）を一括で安全に相互置換します
+          <div className="text-[9px] text-zinc-400 text-center pt-1 border-t border-[#3C3C3C]/60 mt-auto font-mono">
+            {channelOpTab === 'batch' ? (
+              <span>
+                ※ MML内のトラック定義ヘッダーを一括置換 (例:{' '}
+                {(() => {
+                  const activePairs = Object.entries(batchMappings)
+                    .filter(([src, tgt]) => src !== tgt)
+                    .map(([src, tgt]) => `${src}➔${tgt}`);
+                  return activePairs.length > 0
+                    ? activePairs.slice(0, 3).join(', ') + (activePairs.length > 3 ? '...' : '')
+                    : 'P1➔P4, P2➔P5 など';
+                })()}
+                )
+              </span>
+            ) : (
+              <span>
+                ※ MML内のトラック定義ヘッダーを安全に相互入替 (例: {swapTrackA} ⇔ {swapTrackB})
+              </span>
+            )}
           </div>
         </div>
 

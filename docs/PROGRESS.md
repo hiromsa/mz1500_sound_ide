@@ -5,6 +5,143 @@
 ---
 
 ## 1. 直近の完了作業（最新）
+- **ローカルフォルダの初期空化 & 永続化（次回アクセス時自動復元）・フォルダクローズ機能の実装 (`src/view/FileExplorer.tsx`, `src/utils/workspaceStorage.ts`, `src/utils/__tests__/workspaceStorage.test.ts`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-07):
+  - **背景・ユーザー指示**:
+    - 「OPEN FOLDER ボタンを OPEN LOCAL FOLDER にして 内部実装できますか。」
+    - 「デフォルトのローカルフォルダ表示は無し/空でOKです。一度読み込んだローカルフォルダは次回表示時にも表示するようにしたいです。」
+  - **対応内容**:
+    - **デフォルト表示のモック撤廃 & 初期空状態 (Empty State)**:
+      - 従来のモックデータ（`my_game_bgm`）を完全撤廃。
+      - 未ロード時は `Local Files` 見出し横に `EMPTY` バッジを掲示し、中央に点線カードで「No Folder Opened / Click OPEN LOCAL FOLDER... above to load your project.」を案内。
+    - **IndexedDB / localStorage による永続化 & 次回アクセス時の自動復元 (`workspaceStorage.ts`)**:
+      - 読み込んだローカルフォルダのツリー構造および各MMLファイルの内容（`content`）をブラウザの IndexedDB（フォールバック時は localStorage）へ自動保存。
+      - 次回起動時・リロード時に `useEffect` で自動ロードし、前回のフォルダ状態を即座に完全復元。
+      - ツリー内の新規ファイル・フォルダ追加、リネーム、削除、ファイル読み取り時も自動的にストレージと同期。
+    - **フォルダを閉じる（Close / Unload Folder）機能**:
+      - フォルダが開いている際、`WORKSPACE` バッジ横にフォルダを閉じるアイコンボタン（`<FolderX />`）を配置。クリックでストレージをクリアし初期空状態へ復帰可能。
+    - **ブラウザネイティブのフォルダ読み込み**:
+      - `window.showDirectoryPicker()`（Chromium系）および `<input type="file" webkitdirectory />`（フォールバック）を完備。
+  - **検証**:
+    - `npx tsc -b` エラーゼロ / `npm test` 全 31 ファイル・425 件合格。
+    - ブラウザ実機にて初期空状態（`No Folder Opened`）の綺麗な表示を確認。
+
+- **`MIDI ROUTING STUDIO` モーダルのモック要素・試作表記撤廃 (`src/view/MidiRouterModal.tsx`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-07):
+  - **背景・ユーザー指示**: 「IMPORT MIDI の画面で、PROTOTYPEとか記載が残ってたり、Load Demo Fileボタンが残ってたり、モック要素が残ってます。モック要素は削除してください。」
+  - **対応内容**:
+    - **`PROTOTYPE` バッジ削除**: モーダルヘッダー右上の `PROTOTYPE` バッジを撤廃。
+    - **`Load Demo File` ボタン・関連ロジック削除**: 初期ドロップゾーンの `Load Demo File` ボタン、`loadDemoFile` 関数、および `createDemoMidiBytes` インポートを完全削除。
+    - **ドロップゾーンのクリーン化**: 中央に「`Browse .mid File`」ボタンのみを配置し、実用ツールとしてのクリーンで洗練されたファイル選択UIへ移行。
+    - **アイコン整理**: 未使用となった `Sparkles` インポートを削除し、和音一括割り当てプリセットボタンのアイコンを `Split` に適正化。
+  - **検証**:
+    - `npx tsc -b` エラーゼロ / `npm test` 全 422 件合格。
+    - ブラウザ実機にて `PROTOTYPE` バッジおよび `Load Demo File` ボタンが消去され、`Browse .mid File` のみが美しく表示されることを確認完了。
+
+- **バージョン番号運用ルールの策定 & ハイブリッド方式（コミット通番＋短縮ハッシュ）の導入 (`.clinerules`, `src/config/version.ts`, `package.json`, `src/view/AboutModal.tsx`, `src/app/App.tsx`, `src/view/SettingsPanel.tsx`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-07):
+  - **背景・ユーザー要望**: 「バージョン番号のルールを記載しておき、必要に応じてアップしたいです。末尾の 番号は、コミットするたびに変更したいです。数字じゃなくてもいいですけど、良いルールあれば提案してください。」「パターン1と2のハイブリッドがいいです」
+  - **対応内容 (パターン1+2 ハイブリッド方式の導入)**:
+    - **体系**: `v<Major>.<Minor>.<Patch>-beta.<CommitCount>+<ShortHash>`
+      - 例: `v0.0.1-beta.69+18a7f84`
+      - 通常表示（ヘッダー、ステータスバー、設定パネル）: `v0.0.1-beta.69`
+      - 詳細表示（About モーダル）: `v0.0.1-beta.69 (18a7f84)`
+      - `package.json`: `"version": "0.0.1-beta.69"`
+    - **ルール化 (`.clinerules`)**:
+      - コミット直前に `git rev-list --count HEAD`（+1）と `git rev-parse --short HEAD` を取得し、`package.json` と `src/config/version.ts` を同期更新してからコミットするルールを規定。
+  - **検証**:
+    - `npx tsc -b` エラーゼロ / `npm test` 全 422 件合格。
+    - ブラウザ実機にてヘッダー、ステータスバー、About モーダルの各バージョン表示（`v0.0.1-beta.69 (18a7f84)`）を確認完了。
+
+- **右ペインタブバーのコンパクト化 & 1行収容改修 (横スクロール完全防止) (`src/app/App.tsx`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-07):
+  - **背景・ユーザー要望**: 「TRACK MONITOR などの タブが増えてきました。現在は横スクロールで表示できますが、他にスクロールしなくても見せるようなアイディアありますか。」
+  - **対応内容 (アイディア1の採用・実装)**:
+    - 各タブのラベルを短縮化しつつ直感性を維持：
+      - `TRACK MONITOR` ➔ `MONITOR`
+      - `FM TONE` ➔ `FM`
+      - `VOL ENV` ➔ `V-ENV`
+      - `PITCH ENV` ➔ `P-ENV`
+      - `SONG SETUP` ➔ `SETUP`
+      - `MML TRANSFORM` ➔ `TRANSFORM`
+      - `SETTINGS` ➔ 右端固定アイコンボタン（ギアマーク `Settings`）
+    - パディングを `px-3.5` から `px-2.5` へ引き締め、アイコンとテキストの間隔を最適化。
+    - 各タブに詳細ツールチップ（`title`）を付与し、ホバー時に正式機能名を即座に提示。
+    - 左右 50:50 の標準分割幅でも全 7 タブが横スクロールなしで1行にすっきりと収まるレイアウトを実現。
+  - **検証**:
+    - `npx tsc -b` エラーゼロ / `npm test` 全 422 件合格。
+    - ブラウザ実機にて全7タブが1行に収まっていること、および `FM`, `TRANSFORM`, `SETTINGS`, `MONITOR` の各タブ切り替えがスムーズに動作することを確認完了。
+
+- **ヘッダーの EXPORT ボタン表記を `EXPORT PLAYER (.qdf)` へ変更 (`src/app/App.tsx`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-07):
+  - **背景・ユーザー要望**: 「EXPORT ボタンは EXPORT PLAYER にしたいです。」「あ、(.qdf)は必要です。」
+  - **対応内容**:
+    - メインヘッダーのボタンラベルを `EXPORT (.qdf)` から `EXPORT PLAYER (.qdf)` へ変更。
+    - ツールチップ（title）を「実機演奏プレイヤー入り QuickDiskイメージ (.qdf) としてエクスポート」に更新し、単なるデータ出力ではなく独立して実機起動可能なプレイヤー込み QD イメージが生成される機能であることを明確化。
+
+- **バージョン表記 (`v0.0.1-beta`)・Copyright (`© 2026 ほたて`)・リスペクト先 (`AboutModal`) の実装完了 (`src/config/version.ts`, `src/view/AboutModal.tsx`, `src/app/App.tsx`, `src/view/SettingsPanel.tsx`, `package.json`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-07):
+  - **背景・ユーザー要望**:
+    - 「どこかに、バージョン表記もいれたいです。今はbeta です。0.0.1 くらい。 メジャー.マイナー.リリース番号 くらいかな。」
+    - 「また、copyright 表示もどこかに入れたいです。詳細クリックしたら、リスペクト先を記載したいです。」
+    - 「・z80net は konamimanさんのソースをtypescript にフォーク？ / ・AKD'Sさん、紅茶羊羹さんのサイトを参照 / ・FM音源ボードは ぽよこまだんな よりご提供いただいた / ・その他何かあれば」
+    - 具体的なURL等の提供（Konamiman氏GitHub, ぽよこまだんな氏X, AKD氏サイト, 紅茶羊羹氏サイト）。
+  - **対応内容**:
+    1. **`src/config/version.ts` の新設**:
+       - `APP_VERSION = '0.0.1-beta'`, `APP_COPYRIGHT = '© 2026 ほたて'` を一元管理。
+       - リスペクト先データ（Konamiman氏, ぽよこまだんな氏, AKD氏, 紅茶羊羹氏）の定義（名前、ロール、URL、解説文、ハイライトバッジ）を定義。
+    2. **`AboutModal.tsx` の新設**:
+       - MZ-1500 公式風ロゴ、バージョンバッジ、アプリ概要、MIT License 表示。
+       - **SPECIAL THANKS & RESPECTS セクション**:
+         - **Konamiman 氏**: Z80 CPU エミュレーションコア (Z80.Net を C# から TypeScript へ移植・改変 / https://github.com/Konamiman/Z80dotNet)
+         - **ぽよこまだんな 氏**: ハードウェア協賛 / FM音源ボード (ACZ-8BS1MZ / https://x.com/poyokoma_danna)
+         - **AKD 氏**: 技術資料 / MZ-1500 関連情報・MLD仕様 (https://mzakd.cool.coocan.jp/)
+         - **紅茶羊羹 氏**: 技術資料 / MZシリーズ・音源技術解説 (http://www.maroon.dti.ne.jp/youkan/mz700/index.html)
+         - SHARP MZ-1500、SN76489 (DCSG)、YM2151 (OPM) 等のレトロPC文化コミュニティへの謝辞。
+       - ESCキー、外側クリック、Xボタン、CLOSEボタンでスムーズに開閉。
+    3. **メインヘッダーへのバージョンバッジ配置 (`App.tsx`)**:
+       - ロゴ横「Sound IDE」の隣に `v0.0.1-beta` バッジを配置（クリックで `AboutModal` 起動）。
+    4. **最下部ステータスバーの新設 (`App.tsx`)**:
+       - IDE最下部に高さ 24px の常駐ステータスバーを新設。
+       - 左側: `MZ-1500 Sound IDE v0.0.1-beta` + 現在有効な音源チップ（DCSG / OPM）状態表示。
+       - 右側: `© 2026 ほたて (Credits & Respects)`（クリックで `AboutModal` 起動）。
+    5. **環境設定パネル (`SettingsPanel.tsx`) への統合**:
+       - SETTINGS タブ内最下部に ABOUT & CREDITS カードを配置し、「SPECIAL THANKS & RESPECTS (クレジット詳細) を開く」ボタンからワンクリックで開閉可能に改修。
+    6. **`package.json` バージョン更新**:
+       - `"version": "0.0.1-beta"` に更新。
+  - **検証**:
+    - `npx tsc -b` エラーゼロ / `npm test` 全 422 件合格。
+    - 実機ブラウザでヘッダー・フッター・設定パネルからの About モーダル起動・表示・クローズを確認完了。
+
+- **MIDI ROUTER & MML TRANSFORM の UI 見直し・改善完了 & 動的スロット・競合警告・再生インジケータ実装 (`src/view/MidiRouterModal.tsx`, `src/view/MmlTransformPanel.tsx`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-07):
+  - **背景・ユーザー指示**:
+    - 「MIDI Import や MML TRANSFORMについて、別のAIに実装してもらいました。実装側のテストは完了していますが、UI関連で見直す部分があれば対応をお願いします。」
+    - 「実装が足りない部分は残タスクとして残してください。別のAIにて実装依頼します。UI部分や軽微な実装の修正はお願いします。」
+  - **対応内容 (UI改善 & 軽微な修正)**:
+    1. **`MidiRouterModal` Column 3 (Target: MZ-1500 Hardware Slots) の完全動的化**:
+       - ハードコードされていた静的モック配列を廃止し、`tracks` と `splitTargets` の設定から全スロット（P1〜P6, N1〜N2, B1, F1〜F8, W1〜W4）への割り当て状況をリアルタイムに集計・動的描画するよう改修。
+       - **重複アサイン競合警告 (`⚠️ CONFLICT`)**: 1つのスロットに複数のトラック（または和音ボイス）が割り当てられた場合、カードを赤枠・赤背景で警告し、`⚠️ CONFLICT (N)` バッジと重複トラック名を表示。
+       - **動的チャンネルカウンター**: ヘッダーの `X/9 Standard Used` / `X/17 Channels Used` や各グループの `N Free (X/Y Used)` カウンターを動的算出。
+    2. **`MidiRouterModal` 試聴再生（PREVIEW）の視覚的フィードバック**:
+       - 単体試聴再生（▶）および `PREVIEW ALL` 再生中、実際に音を出しているトラックカードにシアンのパルス枠線＋グロー（`ring-2 ring-[#00A8FF]/60`）と `▶ PLAYING` バッジを表示。ミュート中やソロ対象外のトラックは光らず、発音状態が直感的に判別可能。
+    3. **`MmlTransformPanel` ヘッダー `APPLY TO MML` ボタンの統合適用化**:
+       - `handleApplyAll` を新設し、ピッチ（オクターブシフト・半音移調）と音量スケーリング（`scaleVolume`）を 1 回のトランザクションとして統合適用可能に改修。
+       - 変更が一切ない状態、またはトラック未選択時はボタンを disabled 化して無駄な書き換えを防止。
+    4. **`MmlTransformPanel` 注釈の動的表示**:
+       - `VOLUME SCALE` に設定中の加減値・割合に応じた計算式（例: `※ 計算式: v = clamp(round(v × 75%) + 1)`）をリアルタイム表示。
+       - `CHANNEL OPERATIONS` 下部に置換予定ペア（例: `P1➔P4, P2➔P5 など`）を動的表示。
+    5. **`IMPORT MIDI` ボタンのアクセス性・可視性大幅向上 & クリック時フック順序エラー (クラッシュ) の解消 (2026-09-07 追加対応)**:
+       - **ユーザー報告**: 「IMPORT MIDI 表示されません」「まだ IMPORT MIDI ボタンを押しても、何も表示されません」
+       - **原因特定**:
+         - ① `MmlTransformPanel` 内で `onOpenMidiRouter` が未使用だったため、TRANSFORM パネル内から起動できなかった。またヘッダーが見切れる環境への配慮不足。
+         - ② **決定打（React クラッシュ）**: `MidiRouterModal.tsx` の 252 行目に `if (!isOpen) return null;` という早期リターンがあり、その後に新設した `React.useMemo`（Line 472: `slotAssignments` 集計）が実行されていた。そのため `isOpen` が `false` から `true` に変わった瞬間、React のフック呼び出し数・順序が変動し、`Error: Rendered more hooks than during the previous render` が発生して画面全体がクラッシュ（白紙化）していた。
+       - **対応**:
+         - `MidiRouterModal.tsx` の `if (!isOpen) return null;` をすべての Hooks 定義完了後の JSX `return` 直前に移動（React Rules of Hooks 完全準拠）。
+         - `App.tsx` 側でも `{isMidiRouterOpen && <MidiRouterModal ... />}` で条件付きレンダリングに変更。
+         - `FileExplorer.tsx` に `IMPORT MIDI (.mid)...` ボタン新設、`MmlTransformPanel.tsx` ヘッダーと TARGET CHANNELS 上部に `IMPORT MIDI` ボタン新設、ヘッダーに `overflow-x-auto` & `shrink-0` を追加。
+       - **実機検証**:
+         - ヘッダーおよび EXPLORER からのクリックでモーダルがエラーなく中央にポップアップ表示されることを確認。デモファイルのロード、動的スロット描画、閉じる操作まで完全に動作確認完了。
+  - **別AI（Cline等）への残タスク（内部アーキテクチャ・ロジック拡張）**:
+    - **和音（Poly）トラックの複数独立スプリット管理**:
+      - 現在の `MidiRouterModal` は、単一の `splitTargets: { [voice: number]: string }` ステートを共有しているため、MIDIファイル内に複数の和音トラック（例: Chords と Strings）が存在する場合、片方のスプリットターゲットを変更すると他方のスプリット先も同一になってしまう。
+      - 今後、複数の和音トラックを個別のスロットへ独立して分割アサインできるようにするには、`WorkTrack` 内部に `splitTargets`（または個別ボイスアサインマップ）を内包化し、`buildRoutedMml` / `generateMml` でトラックごとの設定を参照する内部データ構造のリファクタリングが必要。本改修は内部アーキテクチャの変更を伴うため、別AIへの依頼タスクとして整理・引き継ぐ。
+  - **検証**:
+    - `npx tsc -b` エラーゼロ / **`npm test` 全 422 件合格** / ブラウザ実機での動作確認（ヘッダー、EXPLORER、TRANSFORM パネルの 3 箇所で `IMPORT MIDI` の表示およびモーダル起動を確認完了）。
+
 - **GM 試聴の停止不具合を修正 & 全パート試聴 (`PREVIEW ALL`) を追加 (`src/core/midi/midiPreview.ts`, `src/core/midi/__tests__/midiPreview.test.ts` +3, `src/view/MidiRouterModal.tsx`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-07):
   - **背景・ユーザー報告**:
     - 「停止ボタンおしても停止しないみたい」「全パートのプレビューもあるといいですね」

@@ -15,6 +15,8 @@ import {
   Wand2
 } from 'lucide-react';
 import { MidiRouterModal } from '../view/MidiRouterModal';
+import { AboutModal } from '../view/AboutModal';
+import { APP_DISPLAY_VERSION, APP_COMMIT_HASH, APP_COPYRIGHT } from '../config/version';
 import { MmlEditor, type BottomTab } from '../view/MmlEditor';
 import { TrackMonitor } from '../view/TrackMonitor';
 import { SettingsPanel } from '../view/SettingsPanel';
@@ -124,6 +126,9 @@ function App() {
 
   // MIDI Router モーダル開閉ステート
   const [isMidiRouterOpen, setIsMidiRouterOpen] = useState<boolean>(false);
+
+  // About & Credits モーダル開閉ステート
+  const [isAboutOpen, setIsAboutOpen] = useState<boolean>(false);
 
   // MIDI Router からの MML 反映処理
   const handleApplyMidiRouter = useCallback((generatedMml: string) => {
@@ -580,28 +585,41 @@ function App() {
       )}
 
       {/* Header Area (Professional Studio Transport Header) */}
-      <header className="h-12 bg-[#2D2D2D] border-b border-[#3C3C3C] flex items-center justify-between px-3.5 shrink-0 z-10 relative">
+      <header className="h-12 bg-[#2D2D2D] border-b border-[#3C3C3C] flex items-center justify-between px-3.5 shrink-0 z-10 relative overflow-x-auto">
         {/* Logo / App Name */}
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2 shrink-0">
           <img 
             src={mz1500Logo} 
             alt="MZ-1500" 
-            className="h-5 w-auto object-contain select-none filter drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]" 
+            onClick={() => setIsAboutOpen(true)}
+            className="h-5 w-auto object-contain select-none filter drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)] cursor-pointer hover:opacity-85 transition-opacity" 
+            title="MZ-1500 Sound IDE について / Credits"
           />
-          <span className="text-xs px-2 py-0.5 rounded bg-[#383838] text-zinc-300 border border-[#484848] font-bold font-mono">
+          <button
+            onClick={() => setIsAboutOpen(true)}
+            className="text-xs px-2 py-0.5 rounded bg-[#383838] hover:bg-[#444444] text-zinc-300 hover:text-white border border-[#484848] font-bold font-mono transition-colors cursor-pointer"
+            title="About & Credits"
+          >
             Sound IDE
-          </span>
-          <div className="text-[11px] text-zinc-400 font-mono hidden md:block border-l border-[#444444] pl-2.5">
+          </button>
+          <button
+            onClick={() => setIsAboutOpen(true)}
+            className="text-[10px] px-1.5 py-0.5 rounded bg-[#00A8FF]/15 hover:bg-[#00A8FF]/25 text-[#00A8FF] hover:text-[#55c8ff] border border-[#00A8FF]/40 font-bold font-mono transition-colors cursor-pointer tracking-tight"
+            title={`バージョン情報 & クレジット (Commit: ${APP_COMMIT_HASH})`}
+          >
+            {APP_DISPLAY_VERSION}
+          </button>
+          <div className="text-[11px] text-zinc-400 font-mono hidden xl:block border-l border-[#444444] pl-2.5">
             SOUND DRIVER & MML COMPILER
           </div>
         </div>
 
         {/* Header Actions (Transport Controls) */}
-        <div className="flex items-center gap-2 font-mono">
+        <div className="flex items-center gap-2 font-mono shrink-0 ml-4">
           {/* Transport: LOOP TOGGLE (無限ループ有効/無効、デフォルトON) */}
           <button
             onClick={() => setIsLoopEnabled(prev => !prev)}
-            className={`h-7 px-2.5 rounded text-xs font-semibold border transition-all flex items-center gap-1.5 cursor-pointer shadow-xs ${
+            className={`h-7 px-2.5 rounded text-xs font-semibold border transition-all flex items-center gap-1.5 cursor-pointer shadow-xs shrink-0 ${
               isLoopEnabled
                 ? 'bg-[#00A8FF]/15 text-[#00A8FF] border-[#00A8FF]/60 hover:bg-[#00A8FF]/25 shadow-[0_0_8px_rgba(0,168,255,0.25)]'
                 : 'bg-[#2E2E2E] hover:bg-[#383838] text-zinc-500 hover:text-zinc-300 border-[#404040]'
@@ -616,7 +634,7 @@ function App() {
           {/* Transport: PLAY (ビルド＆再生、再生中に押すと停止、Ctrl+Enter連動) */}
           <button 
             onClick={handleTogglePlay}
-            className={`h-7 px-3.5 rounded text-xs font-semibold border transition-all flex items-center gap-1.5 cursor-pointer shadow-xs ${
+            className={`h-7 px-3.5 rounded text-xs font-semibold border transition-all flex items-center gap-1.5 cursor-pointer shadow-xs shrink-0 ${
               isPlayFailed
                 ? 'bg-red-950/70 text-red-300 border-red-500 shadow-[0_0_12px_rgba(239,68,68,0.5)] animate-shake'
                 : isPlaying 
@@ -636,7 +654,7 @@ function App() {
           {/* Transport: STOP */}
           <button 
             onClick={handleStop}
-            className={`h-7 px-3 rounded text-xs font-semibold border transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs ${
+            className={`h-7 px-3 rounded text-xs font-semibold border transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs shrink-0 ${
               isPlaying 
                 ? 'bg-[#383838] text-amber-300 hover:text-white border-amber-500/50 hover:bg-[#444444]' 
                 : 'bg-[#383838] hover:bg-[#444444] active:bg-[#505050] text-zinc-400 hover:text-zinc-200 border-[#484848]'
@@ -647,20 +665,20 @@ function App() {
             <span>STOP</span>
           </button>
 
-          {/* Special Action: EXPORT (.qdf) */}
+          {/* Special Action: EXPORT PLAYER (.qdf) */}
           <button 
             onClick={handleExport}
-            className="h-7 px-3 rounded text-xs font-semibold bg-[#383838] hover:bg-[#444444] active:bg-[#505050] text-zinc-300 hover:text-white border border-[#484848] transition-colors ml-2 flex items-center gap-1.5 cursor-pointer shadow-xs"
-            title="QuickDiskイメージ (.qdf) としてエクスポート"
+            className="h-7 px-3 rounded text-xs font-semibold bg-[#383838] hover:bg-[#444444] active:bg-[#505050] text-zinc-300 hover:text-white border border-[#484848] transition-colors ml-1 flex items-center gap-1.5 cursor-pointer shadow-xs shrink-0"
+            title="実機演奏プレイヤー入り QuickDiskイメージ (.qdf) としてエクスポート"
           >
             <Download className="w-3.5 h-3.5 text-zinc-400" />
-            <span>EXPORT (.qdf)</span>
+            <span>EXPORT PLAYER (.qdf)</span>
           </button>
 
-          {/* IMPORT MIDI (Experimental Prototype) */}
+          {/* IMPORT MIDI */}
           <button 
             onClick={() => setIsMidiRouterOpen(true)}
-            className="h-7 px-3 rounded text-xs font-bold bg-[#00A8FF]/15 hover:bg-[#00A8FF]/25 active:bg-[#00A8FF]/35 text-[#00A8FF] border border-[#00A8FF]/50 shadow-[0_0_8px_rgba(0,168,255,0.2)] transition-all flex items-center gap-1.5 cursor-pointer"
+            className="h-7 px-3 rounded text-xs font-bold bg-[#00A8FF]/20 hover:bg-[#00A8FF]/30 active:bg-[#00A8FF]/40 text-[#00A8FF] border border-[#00A8FF] shadow-[0_0_10px_rgba(0,168,255,0.3)] transition-all flex items-center gap-1.5 cursor-pointer shrink-0"
             title="MIDIファイル (.mid) をインポートしてチャンネル割り当てを行う"
           >
             <Music2 className="w-3.5 h-3.5 text-[#00A8FF]" />
@@ -716,6 +734,7 @@ function App() {
             isPlaying={isPlaying}
             getTrackOffset={(trackIndex) => playerRef.current?.getTrackOffset(trackIndex) ?? -1}
             playbackMap={playbackInfo}
+            onOpenMidiRouter={() => setIsMidiRouterOpen(true)}
           />
         </div>
 
@@ -742,127 +761,130 @@ function App() {
             className="h-full flex flex-col bg-[#1E1E1E] z-0 flex-1 overflow-hidden border-l border-[#3C3C3C]"
             onMouseDownCapture={() => setFocusedPane('rightPane')}
           >
-            {/* Right Pane Tabs */}
+            {/* Right Pane Tabs (Compact & Responsive: No horizontal scroll needed) */}
             <div className="h-9 flex flex-row bg-[#282828] border-b border-[#3C3C3C] shrink-0 overflow-x-auto items-stretch">
-              {/* タブ 1: TRACK MONITOR */}
+              {/* タブ 1: MONITOR */}
               <button
                 onClick={() => {
                   setActiveRightTab('track');
                   setFocusedPane('rightPane');
                 }}
-                className={`px-3.5 text-xs font-mono font-medium focus:outline-none transition-colors border-b-2 flex items-center gap-1.5 select-none shrink-0 cursor-pointer ${
+                className={`px-2.5 text-xs font-mono font-medium focus:outline-none transition-colors border-b-2 flex items-center gap-1.5 select-none shrink-0 cursor-pointer ${
                   activeRightTab === 'track'
                     ? 'bg-[#1E1E1E] text-zinc-100 border-[#00A8FF] font-semibold'
                     : 'text-zinc-400 border-transparent hover:text-zinc-200 hover:bg-[#333333]'
                 }`}
+                title="Track Monitor (VUメーター & 演奏追従 / ミュート・ソロ)"
               >
-                <Sliders className={`w-3.5 h-3.5 ${activeRightTab === 'track' ? 'text-[#00A8FF]' : 'text-zinc-400'}`} />
-                <span>TRACK MONITOR</span>
+                <Sliders className={`w-3.5 h-3.5 shrink-0 ${activeRightTab === 'track' ? 'text-[#00A8FF]' : 'text-zinc-400'}`} />
+                <span className="tracking-tight">MONITOR</span>
               </button>
 
-              {/* タブ 2: YM2151 TONE */}
+              {/* タブ 2: FM */}
               <button
                 onClick={() => {
                   setActiveRightTab('tone');
                   setFocusedPane('rightPane');
                 }}
-                className={`px-3.5 text-xs font-mono font-medium focus:outline-none transition-colors border-b-2 flex items-center gap-1.5 select-none shrink-0 cursor-pointer ${
+                className={`px-2.5 text-xs font-mono font-medium focus:outline-none transition-colors border-b-2 flex items-center gap-1.5 select-none shrink-0 cursor-pointer ${
                   activeRightTab === 'tone'
                     ? 'bg-[#1E1E1E] text-zinc-100 border-[#00A8FF] font-semibold'
                     : 'text-zinc-400 border-transparent hover:text-zinc-200 hover:bg-[#333333]'
                 }`}
+                title="FM Tone Editor (YM2151 4オペレータ音色エディタ)"
               >
-                <AudioWaveform className={`w-3.5 h-3.5 ${activeRightTab === 'tone' ? 'text-[#00A8FF]' : 'text-zinc-400'}`} />
-                <span>FM TONE</span>
+                <AudioWaveform className={`w-3.5 h-3.5 shrink-0 ${activeRightTab === 'tone' ? 'text-[#00A8FF]' : 'text-zinc-400'}`} />
+                <span className="tracking-tight">FM</span>
                 {!enableYM2151 && (
-                  <span className="text-[9px] px-1 py-0.2 rounded bg-[#383838] text-zinc-400 border border-[#484848] font-bold">
+                  <span className="text-[8px] px-1 rounded bg-[#383838] text-zinc-400 border border-[#484848] font-bold">
                     OFF
                   </span>
                 )}
               </button>
 
-              {/* タブ 3: VOL ENV */}
+              {/* タブ 3: V-ENV */}
               <button
                 onClick={() => {
                   setActiveRightTab('vol_envelope');
                   setFocusedPane('rightPane');
                 }}
-                className={`px-3.5 text-xs font-mono font-medium focus:outline-none transition-colors border-b-2 flex items-center gap-1.5 select-none shrink-0 cursor-pointer ${
+                className={`px-2.5 text-xs font-mono font-medium focus:outline-none transition-colors border-b-2 flex items-center gap-1.5 select-none shrink-0 cursor-pointer ${
                   activeRightTab === 'vol_envelope'
                     ? 'bg-[#1E1E1E] text-zinc-100 border-[#00A8FF] font-semibold'
                     : 'text-zinc-400 border-transparent hover:text-zinc-200 hover:bg-[#333333]'
                 }`}
-                title="Volume Envelope Editor"
+                title="Volume Envelope Editor (音量エンベロープ包絡線)"
               >
-                <TrendingUp className={`w-3.5 h-3.5 ${activeRightTab === 'vol_envelope' ? 'text-[#00A8FF]' : 'text-zinc-400'}`} />
-                <span>VOL ENV</span>
+                <TrendingUp className={`w-3.5 h-3.5 shrink-0 ${activeRightTab === 'vol_envelope' ? 'text-[#00A8FF]' : 'text-zinc-400'}`} />
+                <span className="tracking-tight">V-ENV</span>
               </button>
 
-              {/* タブ 4: PITCH ENV */}
+              {/* タブ 4: P-ENV */}
               <button
                 onClick={() => {
                   setActiveRightTab('pitch_envelope');
                   setFocusedPane('rightPane');
                 }}
-                className={`px-3.5 text-xs font-mono font-medium focus:outline-none transition-colors border-b-2 flex items-center gap-1.5 select-none shrink-0 cursor-pointer ${
+                className={`px-2.5 text-xs font-mono font-medium focus:outline-none transition-colors border-b-2 flex items-center gap-1.5 select-none shrink-0 cursor-pointer ${
                   activeRightTab === 'pitch_envelope'
                     ? 'bg-[#1E1E1E] text-zinc-100 border-[#00A8FF] font-semibold'
                     : 'text-zinc-400 border-transparent hover:text-zinc-200 hover:bg-[#333333]'
                 }`}
-                title="Pitch Envelope Editor"
+                title="Pitch Envelope Editor (ピッチエンベロープ包絡線)"
               >
-                <LineChart className={`w-3.5 h-3.5 ${activeRightTab === 'pitch_envelope' ? 'text-[#00A8FF]' : 'text-zinc-400'}`} />
-                <span>PITCH ENV</span>
+                <LineChart className={`w-3.5 h-3.5 shrink-0 ${activeRightTab === 'pitch_envelope' ? 'text-[#00A8FF]' : 'text-zinc-400'}`} />
+                <span className="tracking-tight">P-ENV</span>
               </button>
 
-              {/* タブ 5: SONG SETUP */}
+              {/* タブ 5: SETUP */}
               <button
                 onClick={() => {
                   setActiveRightTab('song_setup');
                   setFocusedPane('rightPane');
                 }}
-                className={`px-3.5 text-xs font-mono font-medium focus:outline-none transition-colors border-b-2 flex items-center gap-1.5 select-none shrink-0 cursor-pointer ${
+                className={`px-2.5 text-xs font-mono font-medium focus:outline-none transition-colors border-b-2 flex items-center gap-1.5 select-none shrink-0 cursor-pointer ${
                   activeRightTab === 'song_setup'
                     ? 'bg-[#1E1E1E] text-zinc-100 border-[#00A8FF] font-semibold'
                     : 'text-zinc-400 border-transparent hover:text-zinc-200 hover:bg-[#333333]'
                 }`}
-                title="Song Setup & Header Directives"
+                title="Song Setup & Header Directives (#TITLE, #OPM 等の楽曲設定)"
               >
-                <Music className={`w-3.5 h-3.5 ${activeRightTab === 'song_setup' ? 'text-[#00A8FF]' : 'text-zinc-400'}`} />
-                <span>SONG SETUP</span>
+                <Music className={`w-3.5 h-3.5 shrink-0 ${activeRightTab === 'song_setup' ? 'text-[#00A8FF]' : 'text-zinc-400'}`} />
+                <span className="tracking-tight">SETUP</span>
               </button>
 
-              {/* タブ 6: MML TRANSFORM */}
+              {/* タブ 6: TRANSFORM */}
               <button
                 onClick={() => {
                   setActiveRightTab('mml_tools');
                   setFocusedPane('rightPane');
                 }}
-                className={`px-3.5 text-xs font-mono font-medium focus:outline-none transition-colors border-b-2 flex items-center gap-1.5 select-none shrink-0 cursor-pointer ${
+                className={`px-2.5 text-xs font-mono font-medium focus:outline-none transition-colors border-b-2 flex items-center gap-1.5 select-none shrink-0 cursor-pointer ${
                   activeRightTab === 'mml_tools'
                     ? 'bg-[#1E1E1E] text-zinc-100 border-[#00A8FF] font-semibold'
                     : 'text-zinc-400 border-transparent hover:text-zinc-200 hover:bg-[#333333]'
                 }`}
-                title="MML Transformation & Batch Editing Tools"
+                title="MML Transform (オクターブ・移調・音量スケーリング・チャンネル一括置換)"
               >
-                <Wand2 className={`w-3.5 h-3.5 ${activeRightTab === 'mml_tools' ? 'text-[#00A8FF]' : 'text-zinc-400'}`} />
-                <span>MML TRANSFORM</span>
+                <Wand2 className={`w-3.5 h-3.5 shrink-0 ${activeRightTab === 'mml_tools' ? 'text-[#00A8FF]' : 'text-zinc-400'}`} />
+                <span className="tracking-tight">TRANSFORM</span>
               </button>
 
-              {/* タブ 7: SETTINGS */}
+              {/* タブ 7: SETTINGS (右端固定アイコンボタン) */}
               <button
                 onClick={() => {
                   setActiveRightTab('settings');
                   setFocusedPane('rightPane');
                 }}
-                className={`px-3.5 text-xs font-mono font-medium focus:outline-none transition-colors border-b-2 flex items-center gap-1.5 select-none shrink-0 ml-auto cursor-pointer ${
+                className={`px-3 text-xs font-mono font-medium focus:outline-none transition-colors border-b-2 flex items-center gap-1.5 select-none shrink-0 ml-auto cursor-pointer ${
                   activeRightTab === 'settings'
                     ? 'bg-[#1E1E1E] text-zinc-100 border-[#00A8FF] font-semibold'
                     : 'text-zinc-400 border-transparent hover:text-zinc-200 hover:bg-[#333333]'
                 }`}
+                title="Application Preferences & Credits (環境設定・演奏エンジン・リスペクト先)"
               >
-                <Settings className={`w-3.5 h-3.5 ${activeRightTab === 'settings' ? 'text-[#00A8FF]' : 'text-zinc-400'}`} />
-                <span>SETTINGS</span>
+                <Settings className={`w-3.5 h-3.5 shrink-0 ${activeRightTab === 'settings' ? 'text-[#00A8FF]' : 'text-zinc-400'}`} />
+                <span className="hidden xl:inline tracking-tight">SETTINGS</span>
               </button>
             </div>
             
@@ -958,6 +980,7 @@ function App() {
               {activeRightTab === 'settings' && (
                 <SettingsPanel
                   onGoToSongSetup={() => setActiveRightTab('song_setup')}
+                  onOpenAbout={() => setIsAboutOpen(true)}
                   playbackMode={playbackMode}
                   onChangePlaybackMode={(mode) => {
                     setPlaybackMode(mode);
@@ -970,18 +993,67 @@ function App() {
         )}
       </main>
 
-      {/* MIDI Router Modal (Prototype UI) */}
-      <MidiRouterModal
-        isOpen={isMidiRouterOpen}
-        onClose={() => setIsMidiRouterOpen(false)}
-        onApplyToMml={handleApplyMidiRouter}
-        enableYM2151={enableYM2151}
-        onToggleEnableYM2151={() => {
-          const nextVal = !enableYM2151;
-          setEnableYM2151(nextVal);
-          appendLog(`[MIDI ROUTER] ACZ-8BS1MZ (YM2151) sound board turned ${nextVal ? 'ON' : 'OFF'}.`);
-        }}
-      />
+      {/* Footer / Status Bar */}
+      <footer className="h-6 bg-[#181818] border-t border-[#303030] px-3 flex items-center justify-between text-[11px] font-mono select-none shrink-0 text-zinc-400 z-10">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setIsAboutOpen(true)}
+            className="flex items-center gap-1.5 text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer"
+            title={`About & Credits (Commit: ${APP_COMMIT_HASH})`}
+          >
+            <span className="font-semibold text-zinc-300">MZ-1500 Sound IDE</span>
+            <span className="text-[10px] text-[#00A8FF]">{APP_DISPLAY_VERSION}</span>
+          </button>
+          <span className="text-zinc-600">|</span>
+          <span className="text-[10.5px] text-zinc-400 flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_4px_#34d399]" />
+            <span>DCSG (SN76489)</span>
+            {enableYM2151 && (
+              <>
+                <span className="text-zinc-600">+</span>
+                <span className="text-[#00A8FF] flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#00A8FF] shadow-[0_0_4px_#00A8FF]" />
+                  <span>OPM (YM2151)</span>
+                </span>
+              </>
+            )}
+          </span>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setIsAboutOpen(true)}
+            className="text-zinc-400 hover:text-[#00A8FF] hover:underline transition-colors cursor-pointer flex items-center gap-1"
+            title="Copyright & Respects / Credits"
+          >
+            <span>{APP_COPYRIGHT}</span>
+            <span className="text-zinc-400 text-[10px]">(Credits & Respects)</span>
+          </button>
+        </div>
+      </footer>
+
+      {/* MIDI Router Modal */}
+      {isMidiRouterOpen && (
+        <MidiRouterModal
+          isOpen={isMidiRouterOpen}
+          onClose={() => setIsMidiRouterOpen(false)}
+          onApplyToMml={handleApplyMidiRouter}
+          enableYM2151={enableYM2151}
+          onToggleEnableYM2151={() => {
+            const nextVal = !enableYM2151;
+            setEnableYM2151(nextVal);
+            appendLog(`[MIDI ROUTER] ACZ-8BS1MZ (YM2151) sound board turned ${nextVal ? 'ON' : 'OFF'}.`);
+          }}
+        />
+      )}
+
+      {/* About & Credits / Respects Modal */}
+      {isAboutOpen && (
+        <AboutModal
+          isOpen={isAboutOpen}
+          onClose={() => setIsAboutOpen(false)}
+        />
+      )}
     </div>
   );
 }

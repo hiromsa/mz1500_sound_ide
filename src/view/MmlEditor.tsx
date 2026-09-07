@@ -162,6 +162,8 @@ interface MmlEditorProps {
   isBottomCollapsed?: boolean;
   /** 下部エリアの折りたたみ状態変更コールバック */
   onChangeBottomCollapsed?: (collapsed: boolean) => void;
+  /** MIDI ROUTING STUDIO モーダルを開くコールバック */
+  onOpenMidiRouter?: () => void;
   /** MMLスニペットをカーソル位置に挿入するためのエディタインスタンス取得コールバック */
   onEditorMount?: (editorInstance: editor.IStandaloneCodeEditor) => void;
   /** アクティブファイルの MML ソースが変化したときに通知する (BUILD / EXPORT 用) */
@@ -207,6 +209,7 @@ export function MmlEditor({
   onChangeBottomTab,
   isBottomCollapsed: propIsBottomCollapsed,
   onChangeBottomCollapsed,
+  onOpenMidiRouter,
   onEditorMount,
   onActiveSourceChange,
   onFocusEditor,
@@ -880,6 +883,7 @@ export function MmlEditor({
             onSelectFile={handleSelectFile}
             activeFileId={activeFileId}
             width={explorerWidth}
+            onOpenMidiRouter={onOpenMidiRouter}
           />
           {/* エクスプローラーのリサイザーバー */}
           <div

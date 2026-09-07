@@ -1,8 +1,10 @@
-import { Settings, Construction, Music, Keyboard, Volume2, Palette, Sparkles, Cpu } from 'lucide-react';
+import { Settings, Construction, Music, Keyboard, Volume2, Palette, Sparkles, Cpu, Info, Heart } from 'lucide-react';
 import { AudioEngineMode } from '../core/player/AudioEngine';
+import { APP_DISPLAY_VERSION, APP_COMMIT_HASH, APP_COPYRIGHT, APP_NAME } from '../config/version';
 
 interface SettingsPanelProps {
   onGoToSongSetup?: () => void;
+  onOpenAbout?: () => void;
   /** 現在の演奏エンジン (未指定時はパネルのみ表示)。 */
   playbackMode?: AudioEngineMode;
   /** 演奏エンジン切替を反映する。 */
@@ -27,7 +29,7 @@ const playbackEngineOptions: ReadonlyArray<{
   },
 ];
 
-export function SettingsPanel({ onGoToSongSetup, playbackMode, onChangePlaybackMode }: SettingsPanelProps) {
+export function SettingsPanel({ onGoToSongSetup, onOpenAbout, playbackMode, onChangePlaybackMode }: SettingsPanelProps) {
   return (
     <div className="flex flex-col h-full bg-[#1E1E1E] p-5 overflow-y-auto font-mono text-xs select-none text-zinc-300">
       {/* 設定ヘッダー */}
@@ -175,6 +177,34 @@ export function SettingsPanel({ onGoToSongSetup, playbackMode, onChangePlaybackM
               </span>
             </div>
           </div>
+        </div>
+
+        {/* ABOUT & CREDITS カード */}
+        <div className="p-4 rounded-lg bg-[#242424] border border-[#3A3A3A] flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Info className="w-4 h-4 text-[#00A8FF]" />
+              <span className="font-bold text-zinc-200 text-xs">{APP_NAME}</span>
+              <span className="text-[10px] px-1.5 py-0.2 rounded bg-[#00A8FF]/20 text-[#00A8FF] border border-[#00A8FF]/40 font-bold" title={`Commit: ${APP_COMMIT_HASH}`}>
+                {APP_DISPLAY_VERSION}
+              </span>
+            </div>
+            <span className="text-[10px] text-zinc-500 font-mono">{APP_COPYRIGHT}</span>
+          </div>
+
+          <p className="text-[11px] text-zinc-400 font-sans leading-relaxed">
+            Z80 CPU コア移植元の Konamiman 氏、ハードウェア協賛の ぽよこまだんな 氏、技術資料の AKD 氏・紅茶羊羹 氏をはじめとするリスペクト先や謝辞を掲載しています。
+          </p>
+
+          {onOpenAbout && (
+            <button
+              onClick={onOpenAbout}
+              className="h-7 px-3 rounded bg-[#00A8FF]/15 hover:bg-[#00A8FF]/25 text-[#00A8FF] hover:text-[#55c8ff] border border-[#00A8FF]/40 text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+            >
+              <Heart className="w-3.5 h-3.5 text-red-400 fill-red-400/40" />
+              <span>SPECIAL THANKS & RESPECTS (クレジット詳細) を開く</span>
+            </button>
+          )}
         </div>
       </div>
     </div>

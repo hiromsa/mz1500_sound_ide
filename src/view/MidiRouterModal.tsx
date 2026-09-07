@@ -8,7 +8,6 @@ import {
   Check, 
   RefreshCw, 
   ArrowRight, 
-  Sparkles,
   Music2,
   FileCode2,
   Cpu,
@@ -29,11 +28,11 @@ import {
   type MidiTrackSummary,
   type VoicePart,
 } from '../core/midi/midiToMmlConverter';
-import { createDemoMidiBytes } from '../core/midi/demoMidi';
 import { midiNoteToName } from '../utils/noteUtils';
 
 interface WorkTrack {
   id: string; // "t0", "t1", ... (MIDI トラック識別子)
+  trackIndex: number;
   name: string;
   midiCh: number;
   type: 'mono' | 'poly';
@@ -59,8 +58,8 @@ const MZ1500_CHANNELS = [
   // 2. DCSG ノイズ & BEEP (実機標準 3ch)
   { id: 'N1', group: 'Noise/BEEP (標準)', label: 'N1 (Noise 1)' },
   { id: 'N2', group: 'Noise/BEEP (標準)', label: 'N2 (Noise 2)' },
-  { id: 'B1', group: 'Noise/BEEP (標準)', label: 'B1 (BEEP)' },
-  // 3. YM2151 FM (拡張オプションボード 8ch)
+  { id: 'B1', group: 'Noise/BEEP (標準)', label: 'B1 (BEEP 1)' },
+  // 3. YM2151 FM (ACZ-8BS1MZ 拡張ボード 8ch: オプション)
   { id: 'F1', group: 'YM2151 FM (オプション)', label: 'F1 (FM 1)' },
   { id: 'F2', group: 'YM2151 FM (オプション)', label: 'F2 (FM 2)' },
   { id: 'F3', group: 'YM2151 FM (オプション)', label: 'F3 (FM 3)' },
@@ -87,6 +86,7 @@ interface LoadedMidiFile {
 function createWorkTrack(source: MidiTrackSummary, assignedTo: string, index: number): WorkTrack {
   return {
     id: `t${index}`,
+    trackIndex: index,
     name: source.name,
     midiCh: source.channel + 1,
     type: source.type,
@@ -199,14 +199,6 @@ export const MidiRouterModal: React.FC<MidiRouterModalProps> = ({
       });
   };
 
-  // 内蔵デモ MIDI を読み込む (手元にファイルがない場合の動作確認用)
-  const loadDemoFile = () => {
-    const bytes = createDemoMidiBytes();
-    const summary = parseMidiFile('mz1500_demo.mid', bytes);
-    setLoadedFile({ name: summary.fileName, size: bytes.length, summary });
-    applyRouting(summary, preset);
-  };
-
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -246,8 +238,6 @@ export const MidiRouterModal: React.FC<MidiRouterModalProps> = ({
 
   // 単音設定 (DCSGファースト: P1)
   const [monoTarget, setMonoTarget] = useState<string>('P1');
-
-  if (!isOpen) return null;
 
   const selectedTrack = tracks.find((t) => t.id === selectedTrackId);
 
@@ -454,6 +444,161 @@ export const MidiRouterModal: React.FC<MidiRouterModalProps> = ({
     handleClose();
   };
 
+  // ハードウェアスロット一覧の定義
+  const DCSG_PULSE_SLOTS = ['P1', 'P2', 'P3', 'P4', 'P5', 'P6'] as const;
+  const NOISE_BEEP_SLOTS = ['N1', 'N2', 'B1'] as const;
+  const FM_SLOTS = ['F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8'] as const;
+  const WORK_SLOTS = ['W1', 'W2', 'W3', 'W4'] as const;
+
+  // 各ハードウェアスロットへの割り当て状況を動的集計
+  interface SlotItem {
+    trackId: string;
+    badge: string;
+    trackName: string;
+  }
+
+  const slotAssignments = React.useMemo(() => {
+    const map: Record<string, SlotItem[]> = {};
+
+    for (const track of tracks) {
+      if (track.assignedTo === 'Unassigned') continue;
+
+      const trackBadge = `D${track.trackIndex + 1}`;
+
+      if (track.assignedTo === 'SPLIT(3)') {
+        const voiceTargets: Array<{ voiceNum: number; voiceName: string; target: string | undefined }> = [
+          { voiceNum: 1, voiceName: 'V1', target: splitTargets[1] },
+          { voiceNum: 2, voiceName: 'V2', target: splitTargets[2] },
+          { voiceNum: 3, voiceName: 'V3', target: splitTargets[3] },
+        ];
+        for (const { voiceNum, voiceName, target } of voiceTargets) {
+          if (target && target !== 'OFF') {
+            if (!map[target]) map[target] = [];
+            map[target].push({
+              trackId: track.id,
+              badge: `${trackBadge}-${voiceName}`,
+              trackName: `${track.name} (V${voiceNum})`,
+            });
+          }
+        }
+      } else {
+        const target = track.assignedTo;
+        if (!map[target]) map[target] = [];
+        map[target].push({
+          trackId: track.id,
+          badge: trackBadge,
+          trackName: track.name,
+        });
+      }
+    }
+    return map;
+  }, [tracks, splitTargets]);
+
+  const dcsgUsedCount = DCSG_PULSE_SLOTS.filter((s) => (slotAssignments[s]?.length ?? 0) > 0).length;
+  const dcsgFreeCount = DCSG_PULSE_SLOTS.length - dcsgUsedCount;
+
+  const noiseBeepUsedCount = NOISE_BEEP_SLOTS.filter((s) => (slotAssignments[s]?.length ?? 0) > 0).length;
+  const noiseBeepFreeCount = NOISE_BEEP_SLOTS.length - noiseBeepUsedCount;
+
+  const standardUsedCount = dcsgUsedCount + noiseBeepUsedCount; // 9ch
+  const fmUsedCount = FM_SLOTS.filter((s) => (slotAssignments[s]?.length ?? 0) > 0).length;
+  const fmFreeCount = FM_SLOTS.length - fmUsedCount;
+
+  const totalUsedCount = enableYM2151 ? standardUsedCount + fmUsedCount : standardUsedCount;
+  const totalCapacity = enableYM2151 ? 17 : 9;
+
+  const renderHardwareSlot = (
+    slotId: string,
+    theme: 'amber' | 'pink' | 'purple' | 'work'
+  ) => {
+    const items = slotAssignments[slotId] || [];
+    const isEmpty = items.length === 0;
+    const isConflict = items.length > 1;
+
+    const styles = {
+      amber: {
+        borderActive: isConflict
+          ? 'border-red-500/80 bg-red-950/25 text-red-200 shadow-xs'
+          : 'border-amber-500/60 text-amber-200 shadow-xs',
+        badge: isConflict
+          ? 'bg-red-500/20 text-red-300 border-red-500/40'
+          : 'bg-amber-500/15 text-amber-300 border-amber-500/30',
+      },
+      pink: {
+        borderActive: isConflict
+          ? 'border-red-500/80 bg-red-950/25 text-red-200 shadow-xs'
+          : 'border-pink-500/60 text-pink-200 shadow-xs',
+        badge: isConflict
+          ? 'bg-red-500/20 text-red-300 border-red-500/40'
+          : 'bg-pink-500/15 text-pink-300 border-pink-500/30',
+      },
+      purple: {
+        borderActive: isConflict
+          ? 'border-red-500/80 bg-red-950/25 text-red-200 shadow-xs'
+          : 'border-[#9966FF]/60 text-[#c8a8ff] shadow-xs',
+        badge: isConflict
+          ? 'bg-red-500/20 text-red-300 border-red-500/40'
+          : 'bg-[#9966FF]/15 text-[#c8a8ff] border-[#9966FF]/30',
+      },
+      work: {
+        borderActive: isConflict
+          ? 'border-red-500/80 bg-red-950/25 text-red-200 shadow-xs'
+          : 'border-cyan-500/50 text-cyan-200 shadow-xs',
+        badge: isConflict
+          ? 'bg-red-500/20 text-red-300 border-red-500/40'
+          : 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30',
+      },
+    }[theme];
+
+    const displayBadge = isEmpty
+      ? null
+      : isConflict
+      ? `⚠️ CONFLICT (${items.length})`
+      : items[0].badge;
+
+    const displayName = isEmpty
+      ? '(Empty)'
+      : isConflict
+      ? items.map((i) => i.trackName).join(' / ')
+      : items[0].trackName;
+
+    return (
+      <div
+        key={slotId}
+        title={
+          isConflict
+            ? `重複アサイン (${items.length}件): ${items.map((i) => `${i.badge}: ${i.trackName}`).join(', ')}`
+            : undefined
+        }
+        className={`p-1.5 rounded border flex flex-col justify-between min-h-[46px] transition-colors ${
+          isEmpty
+            ? 'bg-[#181818] border-[#303030] text-zinc-500'
+            : `bg-[#1E1E1E] ${styles.borderActive}`
+        }`}
+      >
+        <div className="flex items-center justify-between gap-1">
+          <span className="font-bold shrink-0">{slotId}</span>
+          {displayBadge && (
+            <span
+              className={`text-[8.5px] px-1 rounded border font-semibold truncate max-w-[110px] ${styles.badge}`}
+            >
+              {displayBadge}
+            </span>
+          )}
+        </div>
+        <div
+          className={`text-[9px] truncate mt-0.5 ${
+            isEmpty ? 'text-zinc-500' : isConflict ? 'text-red-300 font-medium' : 'text-zinc-400'
+          }`}
+        >
+          {displayName}
+        </div>
+      </div>
+    );
+  };
+
+  if (!isOpen) return null;
+
   return (
     <div 
       onDragOver={handleDragOver}
@@ -493,9 +638,6 @@ export const MidiRouterModal: React.FC<MidiRouterModalProps> = ({
                 <h2 className="text-xs font-bold text-zinc-100 tracking-wider">
                   MIDI ROUTING STUDIO
                 </h2>
-                <span className="text-[9px] px-1.5 py-0.2 rounded bg-[#383838] text-zinc-300 border border-[#484848] font-bold">
-                  PROTOTYPE
-                </span>
                 <span className="text-[9px] px-1.5 py-0.2 rounded bg-[#2D2D2D] text-zinc-400 border border-[#3C3C3C] font-mono">
                   {enableYM2151 ? '17 CH (FM ON)' : '9 CH (MZ-1500 BASICS)'}
                 </span>
@@ -610,30 +752,17 @@ export const MidiRouterModal: React.FC<MidiRouterModalProps> = ({
                 </p>
               </div>
 
-              <div className="flex items-center gap-3 mt-2">
+              <div className="flex items-center justify-center mt-2">
                 <button
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
                     fileInputRef.current?.click();
                   }}
-                  className="h-8 px-4 rounded text-xs font-bold bg-[#00A8FF] hover:bg-[#33BFFF] text-black shadow-[0_0_10px_rgba(0,168,255,0.3)] flex items-center gap-1.5 transition-all cursor-pointer"
+                  className="h-8 px-5 rounded text-xs font-bold bg-[#00A8FF] hover:bg-[#33BFFF] text-black shadow-[0_0_12px_rgba(0,168,255,0.35)] flex items-center gap-1.5 transition-all cursor-pointer"
                 >
                   <FolderOpen className="w-4 h-4" />
                   <span>Browse .mid File</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    loadDemoFile();
-                  }}
-                  className="h-8 px-3.5 rounded text-xs font-semibold bg-[#383838] hover:bg-[#444444] text-zinc-200 border border-[#484848] flex items-center gap-1.5 transition-all cursor-pointer"
-                  title="手元にMIDIがない場合にデモデータで試す"
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Load Demo File</span>
                 </button>
               </div>
 
@@ -701,7 +830,11 @@ export const MidiRouterModal: React.FC<MidiRouterModalProps> = ({
               <div className="flex-1 overflow-y-auto p-2 space-y-2">
                 {filteredTracks.map((track) => {
                   const isSelected = track.id === selectedTrackId;
-                  const isPlaying = playingTarget === track.id;
+                  const soloActive = tracks.some((t) => t.isSolo);
+                  const isPlayingSolo = playingTarget === track.id;
+                  const isPlayingAll =
+                    playingTarget === 'all' && !track.isMuted && (!soloActive || track.isSolo);
+                  const isPlaying = isPlayingSolo || isPlayingAll;
 
                   return (
                     <div
@@ -713,7 +846,9 @@ export const MidiRouterModal: React.FC<MidiRouterModalProps> = ({
                         }
                       }}
                       className={`p-2.5 rounded border transition-all cursor-pointer relative ${
-                        isSelected
+                        isPlaying
+                          ? 'bg-[#00A8FF]/20 border-[#00A8FF] ring-2 ring-[#00A8FF]/60 shadow-[0_0_12px_rgba(0,168,255,0.4)]'
+                          : isSelected
                           ? 'bg-[#00A8FF]/15 border-[#00A8FF]/70 shadow-[0_0_8px_rgba(0,168,255,0.25)]'
                           : 'bg-[#1E1E1E] border-[#363636] hover:border-[#484848] hover:bg-[#252525]'
                       }`}
@@ -726,6 +861,11 @@ export const MidiRouterModal: React.FC<MidiRouterModalProps> = ({
                           <span className="text-xs font-semibold text-zinc-200 truncate">
                             {track.name}
                           </span>
+                          {isPlaying && (
+                            <span className="text-[9px] px-1.5 py-0.2 rounded font-bold bg-[#00A8FF] text-black animate-pulse flex items-center gap-0.5 shrink-0">
+                              ▶ PLAYING
+                            </span>
+                          )}
                         </div>
 
                         {/* Solo / Mute / Play */}
@@ -1009,7 +1149,7 @@ export const MidiRouterModal: React.FC<MidiRouterModalProps> = ({
                                   className="flex-1 px-2 py-1 rounded bg-[#00A8FF]/15 text-[#00A8FF] border border-[#00A8FF]/40 hover:bg-[#00A8FF]/25 text-[10px] font-bold flex items-center justify-center gap-1 cursor-pointer"
                                   title="DCSG 矩形波 3チャンネル (P2, P3, P4) へ展開"
                                 >
-                                  <Sparkles className="w-3 h-3" /> DCSG (P2-P4)
+                                  <Split className="w-3 h-3" /> DCSG (P2-P4)
                                 </button>
                                 <button 
                                   disabled={!enableYM2151}
@@ -1104,7 +1244,9 @@ export const MidiRouterModal: React.FC<MidiRouterModalProps> = ({
                     ? 'text-[#00A8FF] bg-[#00A8FF]/10 border-[#00A8FF]/30' 
                     : 'text-emerald-400 bg-emerald-950/60 border-emerald-700/50'
                 }`}>
-                  {enableYM2151 ? '5/17 Channels Used' : '5/9 Standard Used'}
+                  {enableYM2151
+                    ? `${totalUsedCount}/${totalCapacity} Channels Used`
+                    : `${standardUsedCount}/9 Standard Used`}
                 </span>
               </div>
 
@@ -1114,38 +1256,12 @@ export const MidiRouterModal: React.FC<MidiRouterModalProps> = ({
                 <div className="space-y-1">
                   <div className="flex items-center justify-between text-[10px] text-zinc-300 px-1 font-bold">
                     <span>1. DCSG 矩形波 (6ch) [標準]</span>
-                    <span className="text-zinc-400 font-normal">2 Free</span>
+                    <span className="text-zinc-400 font-normal">
+                      {dcsgFreeCount} Free ({dcsgUsedCount}/6 Used)
+                    </span>
                   </div>
                   <div className="grid grid-cols-2 gap-1 text-[10px]">
-                    {[
-                      { id: 'P1', name: 'Melody', src: 'D1', active: true },
-                      { id: 'P2', name: 'Chord V1', src: 'D2-V1', active: true },
-                      { id: 'P3', name: 'Chord V2', src: 'D2-V2', active: true },
-                      { id: 'P4', name: 'Chord V3', src: 'D2-V3', active: true },
-                      { id: 'P5', name: 'Bass', src: 'D3', active: true },
-                      { id: 'P6', name: '(Empty)', src: null, active: false },
-                    ].map((slot) => (
-                      <div
-                        key={slot.id}
-                        className={`p-1.5 rounded border flex flex-col justify-between ${
-                          slot.active
-                            ? 'bg-[#1E1E1E] border-amber-500/60 text-amber-200 shadow-xs'
-                            : 'bg-[#181818] border-[#303030] text-zinc-500'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="font-bold">{slot.id}</span>
-                          {slot.active && (
-                            <span className="text-[9px] px-1 bg-amber-500/15 text-amber-300 rounded border border-amber-500/30 font-semibold">
-                              {slot.src}
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-[9px] truncate mt-0.5 text-zinc-400">
-                          {slot.name}
-                        </div>
-                      </div>
-                    ))}
+                    {DCSG_PULSE_SLOTS.map((slotId) => renderHardwareSlot(slotId, 'amber'))}
                   </div>
                 </div>
 
@@ -1153,35 +1269,12 @@ export const MidiRouterModal: React.FC<MidiRouterModalProps> = ({
                 <div className="space-y-1">
                   <div className="flex items-center justify-between text-[10px] text-zinc-300 px-1 font-bold">
                     <span>2. Noise & BEEP (3ch) [標準]</span>
-                    <span className="text-zinc-400 font-normal">2 Free</span>
+                    <span className="text-zinc-400 font-normal">
+                      {noiseBeepFreeCount} Free ({noiseBeepUsedCount}/3 Used)
+                    </span>
                   </div>
                   <div className="grid grid-cols-3 gap-1 text-[10px]">
-                    {[
-                      { id: 'N1', name: 'Rhythm', src: 'D5', active: true },
-                      { id: 'N2', name: '(Empty)', src: null, active: false },
-                      { id: 'B1', name: '(Empty)', src: null, active: false },
-                    ].map((slot) => (
-                      <div
-                        key={slot.id}
-                        className={`p-1.5 rounded border flex flex-col justify-between ${
-                          slot.active
-                            ? 'bg-[#1E1E1E] border-pink-500/60 text-pink-200 shadow-xs'
-                            : 'bg-[#181818] border-[#303030] text-zinc-500'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="font-bold">{slot.id}</span>
-                          {slot.active && (
-                            <span className="text-[8px] px-0.5 bg-pink-500/15 text-pink-300 rounded border border-pink-500/30 font-semibold">
-                              {slot.src}
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-[9px] truncate mt-0.5 text-zinc-400">
-                          {slot.name}
-                        </div>
-                      </div>
-                    ))}
+                    {NOISE_BEEP_SLOTS.map((slotId) => renderHardwareSlot(slotId, 'pink'))}
                   </div>
                 </div>
 
@@ -1207,43 +1300,13 @@ export const MidiRouterModal: React.FC<MidiRouterModalProps> = ({
                         + 有効化
                       </button>
                     ) : (
-                      <span className="text-zinc-500">
-                        {enableYM2151 ? (preset === 'fm_full' ? '4 Used / 4 Free' : '8 Free') : '無効 (OFF)'}
+                      <span className="text-zinc-500 font-normal">
+                        {enableYM2151 ? `${fmFreeCount} Free (${fmUsedCount}/8 Used)` : '無効 (OFF)'}
                       </span>
                     )}
                   </div>
                   <div className={`grid grid-cols-2 gap-1 text-[10px] ${!enableYM2151 ? 'opacity-35 pointer-events-none' : ''}`}>
-                    {[
-                      { id: 'F1', name: preset === 'fm_full' ? 'Melody (FM)' : '(Empty)', src: preset === 'fm_full' ? 'D1' : null, active: preset === 'fm_full' },
-                      { id: 'F2', name: preset === 'fm_full' ? 'Chord V2' : '(Empty)', src: preset === 'fm_full' ? 'D2-V2' : null, active: preset === 'fm_full' },
-                      { id: 'F3', name: preset === 'fm_full' ? 'Chord V3' : '(Empty)', src: preset === 'fm_full' ? 'D2-V3' : null, active: preset === 'fm_full' },
-                      { id: 'F4', name: preset === 'fm_full' ? 'Strings Pad' : '(Empty)', src: preset === 'fm_full' ? 'D4' : null, active: preset === 'fm_full' },
-                      { id: 'F5', name: '(Empty)', src: null, active: false },
-                      { id: 'F6', name: '(Empty)', src: null, active: false },
-                      { id: 'F7', name: '(Empty)', src: null, active: false },
-                      { id: 'F8', name: '(Empty)', src: null, active: false },
-                    ].map((slot) => (
-                      <div
-                        key={slot.id}
-                        className={`p-1.5 rounded border flex flex-col justify-between ${
-                          slot.active
-                            ? 'bg-[#1E1E1E] border-[#9966FF]/60 text-[#c8a8ff] shadow-xs'
-                            : 'bg-[#181818] border-[#303030] text-zinc-500'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="font-bold">{slot.id}</span>
-                          {slot.active && (
-                            <span className="text-[9px] px-1 bg-[#9966FF]/15 text-[#c8a8ff] rounded border border-[#9966FF]/30 font-semibold">
-                              {slot.src}
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-[9px] truncate mt-0.5 text-zinc-400">
-                          {slot.name}
-                        </div>
-                      </div>
-                    ))}
+                    {FM_SLOTS.map((slotId) => renderHardwareSlot(slotId, 'purple'))}
                   </div>
                 </div>
 
@@ -1259,33 +1322,7 @@ export const MidiRouterModal: React.FC<MidiRouterModalProps> = ({
                     <span className="text-zinc-500 font-normal">MML素材保持</span>
                   </div>
                   <div className="grid grid-cols-2 gap-1 text-[10px]">
-                    {[
-                      { id: 'W1', name: 'Strings Pad', src: 'W4', active: true },
-                      { id: 'W2', name: '(Empty)', src: null, active: false },
-                      { id: 'W3', name: '(Empty)', src: null, active: false },
-                      { id: 'W4', name: '(Empty)', src: null, active: false },
-                    ].map((slot) => (
-                      <div
-                        key={slot.id}
-                        className={`p-1.5 rounded border flex flex-col justify-between ${
-                          slot.active
-                            ? 'bg-[#1E1E1E] border-amber-500/50 text-amber-300 shadow-xs'
-                            : 'bg-[#181818] border-[#303030] text-zinc-500'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="font-bold">{slot.id}</span>
-                          {slot.active && (
-                            <span className="text-[9px] px-1 bg-amber-500/15 text-amber-300 rounded border border-amber-500/30 font-semibold">
-                              {slot.src}
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-[9px] truncate mt-0.5 text-zinc-400">
-                          {slot.name}
-                        </div>
-                      </div>
-                    ))}
+                    {WORK_SLOTS.map((slotId) => renderHardwareSlot(slotId, 'work'))}
                   </div>
                 </div>
 

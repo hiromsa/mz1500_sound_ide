@@ -39,6 +39,21 @@
 - scope 例: `core` / `cpu` / `memory` / `sound` / `video` / `io` / `storage` / `ui` / `docs`
 - 例: `feat(sound): PSGのレジスタ書き込み処理を実装`
 
+## バージョン番号運用ルール (決定)
+- **バージョン体系**: `v<Major>.<Minor>.<Patch>-beta.<CommitCount>+<ShortHash>`（パターン1+2 ハイブリッド方式）
+  - 例: `v0.0.1-beta.69+18a7f84`
+  - **表示形式**:
+    - 通常表示（ヘッダー、フッターステータスバー、設定パネル）: `v0.0.1-beta.69`
+    - 詳細表示（About & Respects モーダル）: `v0.0.1-beta.69 (18a7f84)`
+    - `package.json`: `"version": "0.0.1-beta.69"`
+- **コミット時の更新手順 (AIエージェント必須作業)**:
+  コミット（またはセッション終了）を行う直前に、必ず以下を実行してバージョンをインクリメントすること：
+  1. 次のコミット番号（ビルド番号）を算出: `git rev-list --count HEAD`（現在のカウント）+ 1
+  2. 直前 HEAD の短縮ハッシュを取得: `git rev-parse --short HEAD`
+  3. `package.json` の `"version"` を `"0.0.1-beta.<CommitCount>"` に更新
+  4. `src/config/version.ts` の `APP_BUILD_NUMBER` と `APP_COMMIT_HASH` を更新
+  5. 修正ファイル・ドキュメントとともにコミットする（未反映のままコミットしないこと）
+
 ## ドキュメント管理
 - *設計・決定事項**は `docs\specification\` 配下に機能ごとの .md として記録する
 - 機能ドキュメントは `docs\specification\README.md` のインデックスで管理する
