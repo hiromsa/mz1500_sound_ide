@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { AlertTriangle, Trash2, Save } from 'lucide-react';
 
 // ダイアログのタイプ
@@ -57,7 +58,7 @@ export function ConfirmDialog({
   const isConfirm = type === 'confirm';
   const isSave    = type === 'save';
 
-  return (
+  const content = (
     /* オーバーレイ */
     <div
       className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm"
@@ -186,4 +187,9 @@ export function ConfirmDialog({
       </div>
     </div>
   );
+
+  if (typeof document !== 'undefined') {
+    return createPortal(content, document.body);
+  }
+  return content;
 }

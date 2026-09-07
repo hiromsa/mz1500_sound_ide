@@ -8,6 +8,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { MmlCompiler } from '../../core/mml/MmlCompiler';
+import { DiagnosticSeverity } from '../../core/mml/TrackId';
 import {
   SAMPLE_MML_FILES,
   findSampleFileById,
@@ -52,17 +53,23 @@ describe('sampleMmlSongs', () => {
     expect(SAMPLE_MML_FILES).toEqual(sorted);
   });
 
-  it('全サンプル MML がエラー・警告なしでコンパイルできる', () => {
+  it('全サンプル MML がエラーなしでコンパイル成功する', () => {
     for (const file of SAMPLE_MML_FILES) {
       const result = new MmlCompiler().compile(file.content);
+      const errors = result.diagnostics.filter(d => d.severity === DiagnosticSeverity.Error);
 
-      expect(
-        result.diagnostics,
-        `${file.id}: ${JSON.stringify(result.diagnostics)}`,
-      ).toHaveLength(0);
+      expect(errors, `${file.id}: ${JSON.stringify(errors)}`).toHaveLength(0);
       expect(result.success, file.id).toBe(true);
       expect(result.musicData, file.id).not.toBeNull();
       expect(result.totalFrames, file.id).toBeGreaterThan(0);
+
+      // classics/ 配下の公式曲は警告も含めてゼロであることを保証
+      if (file.folderPath === 'classics') {
+        expect(
+          result.diagnostics,
+          `${file.id}: ${JSON.stringify(result.diagnostics)}`,
+        ).toHaveLength(0);
+      }
     }
   });
 

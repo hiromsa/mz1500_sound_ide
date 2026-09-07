@@ -809,6 +809,49 @@ export function MmlEditor({
     }
   };
 
+  // エクスプローラーでファイル名が変更された時のハンドラ
+  const handleRenameFile = useCallback((fileId: string, newName: string, newFileHandle?: FileSystemFileHandle) => {
+    setFiles(prev => prev.map(f => {
+      if (f.id === fileId) {
+        return {
+          ...f,
+          name: newName,
+          ...(newFileHandle ? { fileHandle: newFileHandle } : {}),
+        };
+      }
+      return f;
+    }));
+    if (fileId === activeFileId) {
+      const current = files.find(f => f.id === fileId);
+      if (current) {
+        onActiveSourceChange?.(current.content, newName);
+      }
+    }
+  }, [activeFileId, files, onActiveSourceChange]);
+
+  // エクスプローラーでファイルが削除された時のハンドラ
+  const handleDeleteFile = useCallback((fileId: string) => {
+    setFiles(prev => {
+      if (prev.length <= 1) {
+        return prev;
+      }
+      const filtered = prev.filter(f => f.id !== fileId);
+      if (fileId === activeFileId && filtered.length > 0) {
+        setActiveFileId(filtered[0].id);
+        const parsed = parseSongMetadata(filtered[0].content);
+        prevMetadataRef.current = parsed;
+        onChangeSongMetadata(parsed);
+      }
+      return filtered;
+    });
+    setDirtyFileIds(prev => {
+      if (!prev.has(fileId)) return prev;
+      const next = new Set(prev);
+      next.delete(fileId);
+      return next;
+    });
+  }, [activeFileId, onChangeSongMetadata]);
+
   /**
    * ファイルを保存する（Ctrl+S / 保存して閉じる の共通処理）
    * - FileSystemFileHandle があるファイルは実際にディスクへ書き込む
@@ -994,6 +1037,8 @@ export function MmlEditor({
         <>
           <FileExplorer
             onSelectFile={handleSelectFile}
+            onRenameFile={handleRenameFile}
+            onDeleteFile={handleDeleteFile}
             activeFileId={activeFileId}
             width={explorerWidth}
             onOpenMidiRouter={onOpenMidiRouter}

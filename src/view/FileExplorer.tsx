@@ -1,4 +1,5 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   Folder, 
   FolderOpen, 
@@ -26,6 +27,10 @@ export interface FileItem {
   file?: File;
   /** File System Access API のファイルハンドル (Ctrl+S での書き込み保存に使用) */
   fileHandle?: FileSystemFileHandle;
+  /** 親ディレクトリのハンドル (リネームや削除時に使用) */
+  parentHandle?: FileSystemDirectoryHandle;
+  /** フォルダ自身の場合のディレクトリハンドル (そのフォルダ内での新規作成に使用) */
+  dirHandle?: FileSystemDirectoryHandle;
   content?: string;
 }
 
@@ -129,6 +134,7 @@ async function scanDirectoryPicker(dirHandle: any): Promise<{ tree: FileItem[]; 
     name: rootFolderName,
     isFolder: true,
     isOpen: true,
+    dirHandle,
     children: [],
   };
   const allMmlFiles: FileItem[] = [];
@@ -142,6 +148,8 @@ async function scanDirectoryPicker(dirHandle: any): Promise<{ tree: FileItem[]; 
           name: entry.name,
           isFolder: true,
           isOpen: true,
+          parentHandle: dir,
+          dirHandle: entry as FileSystemDirectoryHandle,
           children: [],
         };
         parent.children!.push(folderItem);
@@ -162,6 +170,7 @@ async function scanDirectoryPicker(dirHandle: any): Promise<{ tree: FileItem[]; 
           isFolder: false,
           file: fileObj,
           fileHandle: entry as FileSystemFileHandle,
+          parentHandle: dir,
           content: preloadedContent,
         };
         parent.children!.push(fileItem);
@@ -250,20 +259,95 @@ function buildSampleMmlTree(): FileItem[] {
 // Sample MML の初期ツリー (samples/ フォルダの内容から自動構築)
 const INITIAL_SAMPLE_FILES: FileItem[] = buildSampleMmlTree();
 
+/** ディスク上のファイルをリネームし、新しい FileSystemFileHandle を返す */
+async function renameFileOnDisk(
+  fileItem: FileItem,
+  newName: string,
+  parentDirHandle?: FileSystemDirectoryHandle
+): Promise<FileSystemFileHandle | undefined> {
+  if (!fileItem.fileHandle) return undefined;
+  const oldName = fileItem.name;
+  if (oldName === newName) return fileItem.fileHandle;
+
+  const handle = fileItem.fileHandle;
+  const parent = parentDirHandle || fileItem.parentHandle;
+
+  // 1. Chromium 111+ の move() API を試みる
+  if (typeof (handle as any).move === 'function') {
+    try {
+      await (handle as any).move(newName);
+      return handle;
+    } catch (err) {
+      console.warn('fileHandle.move failed, falling back to copy & delete:', err);
+    }
+  }
+
+  // 2. move が使えない、または失敗した場合: copy & delete
+  if (parent) {
+    try {
+      const newFileHandle = await parent.getFileHandle(newName, { create: true });
+      const oldFile = await handle.getFile();
+      const content = await oldFile.arrayBuffer();
+      const writable = await newFileHandle.createWritable();
+      await writable.write(content);
+      await writable.close();
+      await parent.removeEntry(oldName);
+      return newFileHandle;
+    } catch (err) {
+      console.error('Failed to rename file via copy & delete:', err);
+      throw err;
+    }
+  }
+
+  return undefined;
+}
+
+/** 指定した ID の FileItem を再帰的に検索する */
+function findItemById(list: FileItem[], id: string): FileItem | undefined {
+  for (const item of list) {
+    if (item.id === id) return item;
+    if (item.children) {
+      const found = findItemById(item.children, id);
+      if (found) return found;
+    }
+  }
+  return undefined;
+}
+
 interface FileExplorerProps {
   onSelectFile?: (file: { id: string; name: string; content?: string; fileHandle?: FileSystemFileHandle }) => void;
+  onRenameFile?: (id: string, newName: string, newFileHandle?: FileSystemFileHandle) => void;
+  onDeleteFile?: (id: string) => void;
   activeFileId?: string;
   width?: number;
   onOpenMidiRouter?: () => void;
 }
 
-export function FileExplorer({ onSelectFile, activeFileId, width, onOpenMidiRouter }: FileExplorerProps) {
+export function FileExplorer({ 
+  onSelectFile, 
+  onRenameFile,
+  onDeleteFile,
+  activeFileId, 
+  width, 
+  onOpenMidiRouter 
+}: FileExplorerProps) {
   const [samples, setSamples] = useState<FileItem[]>(INITIAL_SAMPLE_FILES);
   const [localProject, setLocalProject] = useState<FileItem[]>([]);
   const [hasOpenedLocalFolder, setHasOpenedLocalFolder] = useState<boolean>(false);
   const [openedFolderName, setOpenedFolderName] = useState<string>('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState<string>('');
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+
+  // 右クリックコンテキストメニューの状態
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    item?: FileItem;
+    isSample?: boolean;
+  } | null>(null);
+
+  const contextMenuRef = useRef<HTMLDivElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
   /** showDirectoryPicker で取得したルートフォルダのハンドル (新規ファイル作成・書き込みに使用) */
   const dirHandleRef = useRef<FileSystemDirectoryHandle | null>(null);
@@ -273,6 +357,7 @@ export function FileExplorer({ onSelectFile, activeFileId, width, onOpenMidiRout
     id: string;
     name: string;
     isFolder: boolean;
+    parentHandle?: FileSystemDirectoryHandle;
   } | null>(null);
 
   // フォルダ閉じる確認ダイアログの状態
@@ -297,6 +382,54 @@ export function FileExplorer({ onSelectFile, activeFileId, width, onOpenMidiRout
     };
   }, []);
 
+  // 実ディスクから最新のツリーを再スキャンして同期する
+  const rescanLocalFolder = useCallback(async () => {
+    if (!dirHandleRef.current) return;
+    try {
+      const { tree, folderName } = await scanDirectoryPicker(dirHandleRef.current);
+      setLocalProject(tree);
+      await saveWorkspaceFolder(folderName, tree);
+    } catch (err) {
+      console.warn('Failed to rescan directory picker:', err);
+    }
+  }, []);
+
+  // リネーム開始
+  const startRename = useCallback((item: FileItem) => {
+    setSelectedItemId(item.id);
+    setEditingId(item.id);
+    setEditingName(item.name);
+  }, []);
+
+  // コンテキストメニュー外クリックまたは Esc で閉じる
+  useEffect(() => {
+    const handlePointerDown = (e: PointerEvent) => {
+      if (contextMenuRef.current && !contextMenuRef.current.contains(e.target as Node)) {
+        setContextMenu(null);
+      }
+    };
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setContextMenu(null);
+      } else if (e.key === 'F2' && !editingId) {
+        const targetId = selectedItemId || activeFileId;
+        if (targetId) {
+          const item = findItemById([...localProject, ...samples], targetId);
+          if (item && !item.isSample) {
+            e.preventDefault();
+            startRename(item);
+          }
+        }
+      }
+    };
+    window.addEventListener('pointerdown', handlePointerDown);
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => {
+      window.removeEventListener('pointerdown', handlePointerDown);
+      window.removeEventListener('keydown', handleGlobalKeyDown);
+    };
+  }, [editingId, selectedItemId, activeFileId, localProject, samples, startRename]);
+
   // フォルダ開閉トグル
   const toggleFolder = (list: FileItem[], id: string): FileItem[] => {
     return list.map(item => {
@@ -310,17 +443,79 @@ export function FileExplorer({ onSelectFile, activeFileId, width, onOpenMidiRout
     });
   };
 
+  // リネーム実行中フラグ (Enter と Blur の二重実行防止)
+  const isCommittingRenameRef = useRef<boolean>(false);
+
   // リネーム確定
-  const applyRename = (list: FileItem[], id: string, newName: string): FileItem[] => {
+  const applyRename = (list: FileItem[], id: string, newName: string, newHandle?: FileSystemFileHandle): FileItem[] => {
     return list.map(item => {
       if (item.id === id) {
-        return { ...item, name: newName.trim() || item.name };
+        item.name = newName.trim() || item.name;
+        if (newHandle) item.fileHandle = newHandle;
+        return { 
+          ...item, 
+          name: newName.trim() || item.name,
+          ...(newHandle ? { fileHandle: newHandle } : {}),
+        };
       }
       if (item.children) {
-        return { ...item, children: applyRename(item.children, id, newName) };
+        return { ...item, children: applyRename(item.children, id, newName, newHandle) };
       }
       return item;
     });
+  };
+
+  // リネーム確定処理 (実ディスク・IndexedDB・エディタ同期)
+  const handleConfirmRename = async (item: FileItem, rawNewName: string, isSampleTree: boolean) => {
+    if (isCommittingRenameRef.current) return;
+    isCommittingRenameRef.current = true;
+
+    try {
+      const trimmed = rawNewName.trim();
+      if (!trimmed || trimmed === item.name) {
+        setEditingId(null);
+        return;
+      }
+
+      const newName = trimmed;
+      let newHandle: FileSystemFileHandle | undefined = item.fileHandle;
+
+      if (!isSampleTree && !item.isFolder && item.fileHandle) {
+        try {
+          const updatedHandle = await renameFileOnDisk(item, newName, item.parentHandle || dirHandleRef.current || undefined);
+          if (updatedHandle) {
+            newHandle = updatedHandle;
+          }
+        } catch (err) {
+          console.error('Failed to rename file on disk:', err);
+        }
+      }
+
+      // オブジェクトの name も直接更新
+      item.name = newName;
+      if (newHandle) item.fileHandle = newHandle;
+
+      if (isSampleTree) {
+        setSamples(prev => applyRename(prev, item.id, newName));
+      } else {
+        setLocalProject(prev => {
+          const updated = applyRename(prev, item.id, newName, newHandle);
+          saveWorkspaceFolder(openedFolderName || 'Local Files', updated).catch(console.error);
+          return updated;
+        });
+      }
+
+      // エディタのタブ・親コンポーネントへ通知
+      onRenameFile?.(item.id, newName, newHandle);
+      setEditingId(null);
+
+      // 実ディスクを開いている場合は最新状態に再同期
+      if (dirHandleRef.current) {
+        void rescanLocalFolder();
+      }
+    } finally {
+      isCommittingRenameRef.current = false;
+    }
   };
 
   // 削除
@@ -335,18 +530,57 @@ export function FileExplorer({ onSelectFile, activeFileId, width, onOpenMidiRout
       });
   };
 
-  // 新規ファイル作成
-  const handleCreateNewFile = async () => {
+  // 指定フォルダ内へのアイテム追加ヘルパー
+  const insertItemIntoTree = (tree: FileItem[], targetFolderId: string | undefined, newItem: FileItem): FileItem[] => {
+    if (!targetFolderId) {
+      if (tree.length === 0) return [newItem];
+      const root = tree[0];
+      if (root.isFolder && root.children) {
+        return [{ ...root, isOpen: true, children: [...root.children, newItem] }, ...tree.slice(1)];
+      }
+      return [...tree, newItem];
+    }
+    return tree.map(node => {
+      if (node.id === targetFolderId) {
+        return {
+          ...node,
+          isOpen: true,
+          children: [...(node.children || []), newItem],
+        };
+      }
+      if (node.children) {
+        return { ...node, children: insertItemIntoTree(node.children, targetFolderId, newItem) };
+      }
+      return node;
+    });
+  };
+
+  // 新規ファイル作成 (parentFolder 指定時はそのフォルダ内へ作成)
+  const handleCreateNewFile = async (parentFolder?: FileItem) => {
     const newId = `file-${Date.now()}`;
     const initialContent = '; MZ-1500 MML Track\n';
     let fileHandle: FileSystemFileHandle | undefined = undefined;
+    let fileName = 'new_track.mml';
+
+    const targetDir = parentFolder?.dirHandle || parentFolder?.parentHandle || dirHandleRef.current;
 
     // File System Access API が利用可能な場合はディスク上にファイルを作成
-    if (dirHandleRef.current) {
+    if (targetDir) {
       try {
-        const suggestedName = 'new_track.mml';
-        fileHandle = await dirHandleRef.current.getFileHandle(suggestedName, { create: true });
-        // 初期内容を書き込み
+        let candidate = 'new_track.mml';
+        let counter = 1;
+        while (true) {
+          try {
+            await targetDir.getFileHandle(candidate, { create: false });
+            counter++;
+            candidate = `new_track_${counter}.mml`;
+          } catch {
+            fileName = candidate;
+            break;
+          }
+        }
+
+        fileHandle = await targetDir.getFileHandle(fileName, { create: true });
         const writable = await fileHandle.createWritable();
         await writable.write(initialContent);
         await writable.close();
@@ -358,26 +592,30 @@ export function FileExplorer({ onSelectFile, activeFileId, width, onOpenMidiRout
 
     const newFile: FileItem = {
       id: newId,
-      name: fileHandle?.name ?? 'new_track.mml',
+      name: fileHandle?.name ?? fileName,
       isFolder: false,
       fileHandle,
+      parentHandle: targetDir ?? undefined,
       content: initialContent,
     };
+
     setLocalProject(prev => {
-      let nextTree: FileItem[];
-      if (prev.length === 0) {
-        nextTree = [newFile];
-      } else {
-        const root = prev[0];
-        if (root.isFolder && root.children) {
-          nextTree = [{ ...root, isOpen: true, children: [...root.children, newFile] }, ...prev.slice(1)];
-        } else {
-          nextTree = [...prev, newFile];
-        }
-      }
+      const nextTree = insertItemIntoTree(prev, parentFolder?.id, newFile);
       saveWorkspaceFolder(openedFolderName || 'Local Files', nextTree).catch(console.error);
       return nextTree;
     });
+
+    // 新規作成されたファイルを即座にエディタで開く
+    if (onSelectFile) {
+      onSelectFile({
+        id: newFile.id,
+        name: newFile.name,
+        content: newFile.content,
+        fileHandle: newFile.fileHandle,
+      });
+    }
+
+    setSelectedItemId(newId);
     setEditingId(newId);
     setEditingName(newFile.name);
     if (!hasOpenedLocalFolder) {
@@ -386,33 +624,53 @@ export function FileExplorer({ onSelectFile, activeFileId, width, onOpenMidiRout
     }
   };
 
-  // 新規フォルダ作成
-  const handleCreateNewFolder = () => {
+  // 新規フォルダ作成 (parentFolder 指定時はそのフォルダ内へ作成)
+  const handleCreateNewFolder = async (parentFolder?: FileItem) => {
     const newId = `folder-${Date.now()}`;
+    let folderName = 'new_folder';
+    let folderDirHandle: FileSystemDirectoryHandle | undefined = undefined;
+
+    const targetDir = parentFolder?.dirHandle || parentFolder?.parentHandle || dirHandleRef.current;
+
+    if (targetDir) {
+      try {
+        let candidate = 'new_folder';
+        let counter = 1;
+        while (true) {
+          try {
+            await targetDir.getDirectoryHandle(candidate, { create: false });
+            counter++;
+            candidate = `new_folder_${counter}`;
+          } catch {
+            folderName = candidate;
+            break;
+          }
+        }
+        folderDirHandle = await targetDir.getDirectoryHandle(folderName, { create: true });
+      } catch (e) {
+        console.warn('Failed to create directory on disk:', e);
+      }
+    }
+
     const newFolder: FileItem = {
       id: newId,
-      name: 'new_folder',
+      name: folderName,
       isFolder: true,
       isOpen: true,
+      parentHandle: targetDir ?? undefined,
+      dirHandle: folderDirHandle,
       children: [],
     };
+
     setLocalProject(prev => {
-      let nextTree: FileItem[];
-      if (prev.length === 0) {
-        nextTree = [newFolder];
-      } else {
-        const root = prev[0];
-        if (root.isFolder && root.children) {
-          nextTree = [{ ...root, isOpen: true, children: [...root.children, newFolder] }, ...prev.slice(1)];
-        } else {
-          nextTree = [...prev, newFolder];
-        }
-      }
+      const nextTree = insertItemIntoTree(prev, parentFolder?.id, newFolder);
       saveWorkspaceFolder(openedFolderName || 'Local Files', nextTree).catch(console.error);
       return nextTree;
     });
+
+    setSelectedItemId(newId);
     setEditingId(newId);
-    setEditingName('new_folder');
+    setEditingName(folderName);
     if (!hasOpenedLocalFolder) {
       setHasOpenedLocalFolder(true);
       setOpenedFolderName('my_project');
@@ -497,7 +755,7 @@ export function FileExplorer({ onSelectFile, activeFileId, width, onOpenMidiRout
     return (
       <div className="flex flex-col">
         {items.map(item => {
-          const isSelected = activeFileId === item.id;
+          const isSelected = activeFileId === item.id || selectedItemId === item.id;
           const isEditing = editingId === item.id;
 
           return (
@@ -509,7 +767,19 @@ export function FileExplorer({ onSelectFile, activeFileId, width, onOpenMidiRout
                     ? 'bg-cyan-950/40 text-cyan-200 border-cyan-400 font-semibold shadow-inner'
                     : 'text-slate-350 hover:bg-slate-800/60 border-transparent hover:text-white'
                 }`}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setSelectedItemId(item.id);
+                  setContextMenu({
+                    x: e.clientX,
+                    y: e.clientY,
+                    item,
+                    isSample: isSampleTree,
+                  });
+                }}
                 onClick={async () => {
+                  setSelectedItemId(item.id);
                   if (item.isFolder) {
                     if (isSampleTree) {
                       setSamples(prev => toggleFolder(prev, item.id));
@@ -579,32 +849,16 @@ export function FileExplorer({ onSelectFile, activeFileId, width, onOpenMidiRout
                       onClick={(e) => e.stopPropagation()}
                       onChange={(e) => setEditingName(e.target.value)}
                       onKeyDown={(e) => {
+                        if (e.nativeEvent.isComposing) return;
                         if (e.key === 'Enter') {
-                          if (isSampleTree) {
-                            setSamples(prev => applyRename(prev, item.id, editingName));
-                          } else {
-                            setLocalProject(prev => {
-                              const updated = applyRename(prev, item.id, editingName);
-                              saveWorkspaceFolder(openedFolderName || 'Local Files', updated).catch(console.error);
-                              return updated;
-                            });
-                          }
-                          setEditingId(null);
+                          e.preventDefault();
+                          void handleConfirmRename(item, editingName, isSampleTree);
                         } else if (e.key === 'Escape') {
                           setEditingId(null);
                         }
                       }}
                       onBlur={() => {
-                        if (isSampleTree) {
-                          setSamples(prev => applyRename(prev, item.id, editingName));
-                        } else {
-                          setLocalProject(prev => {
-                            const updated = applyRename(prev, item.id, editingName);
-                            saveWorkspaceFolder(openedFolderName || 'Local Files', updated).catch(console.error);
-                            return updated;
-                          });
-                        }
-                        setEditingId(null);
+                        void handleConfirmRename(item, editingName, isSampleTree);
                       }}
                       className="bg-[#090d16] border border-[#00A8FF] text-zinc-100 px-1.5 py-0.5 text-xs rounded outline-none w-full font-mono shadow-inner"
                     />
@@ -621,18 +875,22 @@ export function FileExplorer({ onSelectFile, activeFileId, width, onOpenMidiRout
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        setEditingId(item.id);
-                        setEditingName(item.name);
+                        startRename(item);
                       }}
                       className="p-1 hover:text-[#00A8FF] text-zinc-400 hover:bg-[#333333] rounded cursor-pointer transition-colors"
-                      title="Rename"
+                      title="Rename (F2)"
                     >
                       <Pencil className="w-3 h-3" />
                     </button>
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        setDeleteConfirm({ id: item.id, name: item.name, isFolder: item.isFolder });
+                        setDeleteConfirm({
+                          id: item.id,
+                          name: item.name,
+                          isFolder: item.isFolder,
+                          parentHandle: item.parentHandle || dirHandleRef.current || undefined,
+                        });
                       }}
                       className="p-1 hover:text-red-400 text-zinc-400 hover:bg-[#333333] rounded cursor-pointer transition-colors"
                       title="Delete"
@@ -655,21 +913,211 @@ export function FileExplorer({ onSelectFile, activeFileId, width, onOpenMidiRout
   };
 
   // 削除確認 → 実行
-  const executeDelete = () => {
+  const executeDelete = async () => {
     if (!deleteConfirm) return;
+    const target = deleteConfirm;
+    setDeleteConfirm(null);
+
+    // 実ディスクから削除
+    const parent = target.parentHandle || dirHandleRef.current;
+    if (parent) {
+      try {
+        await parent.removeEntry(target.name, { recursive: target.isFolder });
+      } catch (e) {
+        console.warn('Failed to remove entry from disk:', e);
+      }
+    }
+
     setLocalProject(prev => {
-      const updated = deleteItem(prev, deleteConfirm.id);
+      const updated = deleteItem(prev, target.id);
       saveWorkspaceFolder(openedFolderName || 'Local Files', updated).catch(console.error);
       return updated;
     });
-    setDeleteConfirm(null);
+
+    onDeleteFile?.(target.id);
   };
 
   return (
     <div 
       style={width ? { width: `${width}px` } : undefined}
-      className={`flex flex-col h-full bg-[#0e0f15] border-r border-white/[0.07] select-none shrink-0 font-mono ${width ? '' : 'w-60'}`}
+      className={`flex flex-col h-full bg-[#0e0f15] border-r border-white/[0.07] select-none shrink-0 font-mono relative ${width ? '' : 'w-60'}`}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        setContextMenu({
+          x: e.clientX,
+          y: e.clientY,
+        });
+      }}
     >
+      {/* 右クリックコンテキストメニュー */}
+      {contextMenu && (typeof document !== 'undefined' ? createPortal(
+        <div
+          ref={contextMenuRef}
+          style={{
+            left: `${Math.max(10, Math.min(contextMenu.x, (typeof window !== 'undefined' ? window.innerWidth : 1000) - 200))}px`,
+            top: `${Math.max(10, Math.min(contextMenu.y, (typeof window !== 'undefined' ? window.innerHeight : 800) - 220))}px`,
+          }}
+          className="fixed z-[9999] min-w-[180px] bg-[#12131a] border border-white/10 rounded-lg shadow-2xl py-1 text-xs font-mono text-zinc-200 select-none animate-in fade-in zoom-in-95 duration-75 backdrop-blur-md"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* 1. ファイル上での右クリック */}
+          {contextMenu.item && !contextMenu.item.isFolder && !contextMenu.isSample && (
+            <>
+              <button
+                onClick={() => {
+                  const target = contextMenu.item!;
+                  setContextMenu(null);
+                  startRename(target);
+                }}
+                className="w-full px-3 py-1.5 flex items-center justify-between hover:bg-cyan-500/20 hover:text-cyan-200 text-left transition-colors cursor-pointer"
+              >
+                <div className="flex items-center gap-2">
+                  <Pencil className="w-3.5 h-3.5 text-zinc-400" />
+                  <span>名称変更</span>
+                </div>
+                <span className="text-[10px] text-zinc-500 font-mono">F2</span>
+              </button>
+              <button
+                onClick={() => {
+                  const target = contextMenu.item!;
+                  setContextMenu(null);
+                  setDeleteConfirm({
+                    id: target.id,
+                    name: target.name,
+                    isFolder: target.isFolder,
+                    parentHandle: target.parentHandle || dirHandleRef.current || undefined,
+                  });
+                }}
+                className="w-full px-3 py-1.5 flex items-center justify-between hover:bg-red-500/20 hover:text-red-300 text-left transition-colors cursor-pointer"
+              >
+                <div className="flex items-center gap-2 text-red-400">
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>削除</span>
+                </div>
+                <span className="text-[10px] text-zinc-500 font-mono">Del</span>
+              </button>
+              <div className="my-1 border-t border-white/10" />
+              <button
+                onClick={() => {
+                  setContextMenu(null);
+                  void handleCreateNewFile();
+                }}
+                className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-cyan-500/20 hover:text-cyan-200 text-left transition-colors cursor-pointer"
+              >
+                <FilePlus className="w-3.5 h-3.5 text-cyan-400" />
+                <span>新規ファイル</span>
+              </button>
+              <button
+                onClick={() => {
+                  setContextMenu(null);
+                  void handleCreateNewFolder();
+                }}
+                className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-cyan-500/20 hover:text-cyan-200 text-left transition-colors cursor-pointer"
+              >
+                <FolderPlus className="w-3.5 h-3.5 text-cyan-400" />
+                <span>新規フォルダ</span>
+              </button>
+            </>
+          )}
+
+          {/* 2. フォルダ上での右クリック */}
+          {contextMenu.item && contextMenu.item.isFolder && !contextMenu.isSample && (
+            <>
+              <button
+                onClick={() => {
+                  const target = contextMenu.item!;
+                  setContextMenu(null);
+                  void handleCreateNewFile(target);
+                }}
+                className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-cyan-500/20 hover:text-cyan-200 text-left transition-colors cursor-pointer"
+              >
+                <FilePlus className="w-3.5 h-3.5 text-cyan-400" />
+                <span>新規ファイル</span>
+              </button>
+              <button
+                onClick={() => {
+                  const target = contextMenu.item!;
+                  setContextMenu(null);
+                  void handleCreateNewFolder(target);
+                }}
+                className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-cyan-500/20 hover:text-cyan-200 text-left transition-colors cursor-pointer"
+              >
+                <FolderPlus className="w-3.5 h-3.5 text-cyan-400" />
+                <span>新規フォルダ</span>
+              </button>
+              <div className="my-1 border-t border-white/10" />
+              <button
+                onClick={() => {
+                  const target = contextMenu.item!;
+                  setContextMenu(null);
+                  startRename(target);
+                }}
+                className="w-full px-3 py-1.5 flex items-center justify-between hover:bg-cyan-500/20 hover:text-cyan-200 text-left transition-colors cursor-pointer"
+              >
+                <div className="flex items-center gap-2">
+                  <Pencil className="w-3.5 h-3.5 text-zinc-400" />
+                  <span>名称変更</span>
+                </div>
+                <span className="text-[10px] text-zinc-500 font-mono">F2</span>
+              </button>
+              <button
+                onClick={() => {
+                  const target = contextMenu.item!;
+                  setContextMenu(null);
+                  setDeleteConfirm({
+                    id: target.id,
+                    name: target.name,
+                    isFolder: target.isFolder,
+                    parentHandle: target.parentHandle || dirHandleRef.current || undefined,
+                  });
+                }}
+                className="w-full px-3 py-1.5 flex items-center justify-between hover:bg-red-500/20 hover:text-red-300 text-left transition-colors cursor-pointer"
+              >
+                <div className="flex items-center gap-2 text-red-400">
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>削除</span>
+                </div>
+                <span className="text-[10px] text-zinc-500 font-mono">Del</span>
+              </button>
+            </>
+          )}
+
+          {/* 3. 背景（空き領域）での右クリック */}
+          {!contextMenu.item && (
+            <>
+              <button
+                onClick={() => {
+                  setContextMenu(null);
+                  void handleCreateNewFile();
+                }}
+                className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-cyan-500/20 hover:text-cyan-200 text-left transition-colors cursor-pointer"
+              >
+                <FilePlus className="w-3.5 h-3.5 text-cyan-400" />
+                <span>新規ファイル</span>
+              </button>
+              <button
+                onClick={() => {
+                  setContextMenu(null);
+                  void handleCreateNewFolder();
+                }}
+                className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-cyan-500/20 hover:text-cyan-200 text-left transition-colors cursor-pointer"
+              >
+                <FolderPlus className="w-3.5 h-3.5 text-cyan-400" />
+                <span>新規フォルダ</span>
+              </button>
+            </>
+          )}
+
+          {/* 4. SAMPLE MML プリセットでの右クリック */}
+          {contextMenu.isSample && (
+            <div className="px-3 py-1.5 text-[11px] text-zinc-500 italic">
+              プリセット (読み取り専用)
+            </div>
+          )}
+        </div>,
+        document.body
+      ) : null)}
+
       {/* 削除確認ダイアログ */}
       {deleteConfirm && (
         <ConfirmDialog
@@ -704,14 +1152,14 @@ export function FileExplorer({ onSelectFile, activeFileId, width, onOpenMidiRout
         {/* 新規ファイル / 新規フォルダ アクション */}
         <div className="flex items-center gap-1">
           <button
-            onClick={handleCreateNewFile}
+            onClick={() => void handleCreateNewFile()}
             className="w-6 h-6 flex items-center justify-center rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 border border-white/10 transition-colors cursor-pointer shadow-xs"
             title="New File (MML)"
           >
             <FilePlus className="w-3.5 h-3.5" />
           </button>
           <button
-            onClick={handleCreateNewFolder}
+            onClick={() => void handleCreateNewFolder()}
             className="w-6 h-6 flex items-center justify-center rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 border border-white/10 transition-colors cursor-pointer shadow-xs"
             title="New Folder"
           >

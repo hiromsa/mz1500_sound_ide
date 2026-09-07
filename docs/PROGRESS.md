@@ -54,6 +54,32 @@
 
 ## 3. 直近の完了作業（最新）
 
+- **LOCAL FOLDER の新規作成ファイルのリネーム・実ディスク同期 & エディタ連動の修正、F2キーリネーム & 右クリックコンテキストメニュー新設 (`src/view/FileExplorer.tsx`, `src/view/MmlEditor.tsx`, `src/data/__tests__/sampleMmlSongs.test.ts`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-08):
+  - **背景・ユーザー指摘**:
+    - 「LOCAL FOLDER で新規作成したファイルについて、ファイル名を変更したのに反映されていません。」
+    - 「リネームは出来ましたが、EXPLORER(本アプリの左側)の名称は変わりません。実ファイル名は変わってます。」
+    - 「また、リネームはf2 キーでも行いたいです。右クリックでも新規(ファイル、フォルダ)、名称変更、削除 指示したいです」
+  - **対応内容**:
+    - **エクスプローラー表示名の確実な更新 & 実ディスク再同期 (`rescanLocalFolder`)**:
+      - `applyRename` でイミュータブル更新に加えアイテムオブジェクトの `name` プロパティを直接更新。
+      - リネーム確定後、`dirHandleRef.current` が存在する場合は `rescanLocalFolder()` を実行して実ディスクの最新ディレクトリ内容とツリーおよび全ファイルハンドルを自動同期。
+      - 日本語 IME 変換中の Enter (`e.nativeEvent.isComposing`) での誤確定を防止。
+    - **`F2` キー / `Delete` キー操作**:
+      - 選択中（クリックした）ファイルまたはフォルダに対して `F2` キー押下で即座にインライン編集を開始。
+      - `Delete` キー押下で削除確認ダイアログを表示。
+    - **右クリックコンテキストメニュー新設 (`contextMenu`)**:
+      - ファイル上、フォルダ上、およびエクスプローラーの余白（背景）での右クリック時に、DAW/IDE標準の洗練されたダークテーマコンテキストメニューを表示。
+      - ファイル上: 「名称変更 (`F2`)」「削除 (`Delete`)」「新規ファイル」「新規フォルダ」
+      - フォルダ上: 「新規ファイル（フォルダ内）」「新規フォルダ（フォルダ内）」「名称変更 (`F2`)」「削除 (`Delete`)」
+      - 背景余白: 「新規ファイル」「新規フォルダ」
+      - 画面端の見切れ自動補正、外側クリックまたは `Escape` キーでの自動クローズに対応。
+    - **確認ダイアログ・コンテキストメニューの全面最前面描画 (`createPortal`)**:
+      - 削除確認等のモーダル（`ConfirmDialog`）が、親コンテナである Left Pane（`App.tsx` の `z-0`）のスタッキングコンテキスト内に閉じ込められていたため、右ペイン（TONE, V-ENV 等）の裏に隠れる不具合を解消。
+      - `ConfirmDialog` および `FileExplorer` の `contextMenu` を `createPortal(..., document.body)` で `document.body` 直下にマウントし、`z-[9999]` で画面全体の中央・最前面に表示されるように修正。
+  - **検証**:
+    - `npx tsc -b` エラーゼロ / `npm test` 全 32 ファイル・435 件合格 / `npm run build` 成功。
+    - ブラウザ実機検証にて、右クリックメニューおよび削除確認ダイアログが TONE / V-ENV / エディタ領域全面の最前面に美しく表示されることを確認。
+
 - **プロジェクトルート `samples/` フォルダ連動の SAMPLE MML 動的読み込み化 & ユーザー用 `mml_reference/` フォルダ新設 (`samples/` 新設, `src/data/sampleMmlSongs.ts` 全面改修, `src/view/FileExplorer.tsx`, `src/data/__tests__/sampleMmlSongs.test.ts` / `src/core/transform/__tests__/mmlTransformEngine.test.ts`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-07):
   - **背景・ユーザー要望**:
     - 「色々自分で作ったサンプル.mmlを組み込んで入れたい。mml_reference として。他にも今後フォルダ作って入れておきたい。プロジェクト内にルートフォルダを作っておいてほしい。既にあるサンプルもそのフォルダの中へ移動。」
