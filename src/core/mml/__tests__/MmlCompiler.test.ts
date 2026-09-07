@@ -151,4 +151,27 @@ describe('MmlCompiler', () => {
     expect(result.diagnostics).toHaveLength(0);
     expect(result.tracks.map((t) => t.id)).toEqual(['P1']);
   });
+
+  it('作業用トラックの音符は実機トラック (P1) のデータへ混線しない', () => {
+    const result = compile('P1 o4 c d e\nW1 o3 c d e');
+    expect(result.success).toBe(true);
+
+    // P1 宣言行の 3 音分のみが MmlMap に記録される (W1 の 3 音は含まれない)
+    const mapTrack = result.map?.tracks.find((t) => t.id === 'P1');
+    expect(mapTrack).toBeDefined();
+    expect(mapTrack?.events.filter((event) => event.kind === 'note')).toHaveLength(3);
+  });
+
+  it('MmlMap に作業用トラックは含まれない (演奏ハイライト・シーケンサの対象外)', () => {
+    const result = compile('P1 o4 c\nW1 o3 e');
+    expect(result.map?.tracks.map((t) => t.id)).toEqual(['P1']);
+  });
+
+  it('作業用トラック行の後の無宣言行はコンテキストクリアでエラーになる (実機トラックへの混線防止)', () => {
+    // W 行の後はコンパイルコンテキストがクリアされるため、無宣言行はエラーになる
+    // (W の音符が直前の実機トラックへ混ざることを防止する仕様)
+    const result = compile('P1 o4 c\nW1 o3 e\n f g');
+    expect(result.success).toBe(false);
+    expect(result.diagnostics.some((d) => d.message.includes('トラック指定'))).toBe(true);
+  });
 });

@@ -5,6 +5,14 @@
 ---
 
 ## 1. 直近の完了作業（最新）
+- **Step 3 検証完了: W トラックのプレビュー除外を担保するテストを追加 (`src/core/mml/__tests__/MmlCompiler.test.ts` +3, [`docs/specification/work_tracks_and_transform_handoff.md`](./specification/work_tracks_and_transform_handoff.md))** (2026-09-07):
+  - **対応内容**: 引継ぎ仕様 Step 3 (W トラックの Web Audio プレビュー除外) の検証。プレビュー再生 (Z80 DRIVER / SOURCE INTERPRETER) はコンパイル結果ベースのため、`MmlParser` の W 行スキップで W データ自体がバイナリ / MmlMap に存在せず無音になることを、下記テストで担保:
+    1. W の音符が実機トラック (P1) のデータへ混線しない (MmlMap の note イベント数 = 宣言行の音数のみ)。
+    2. `MmlMap` に W トラックが含まれない (演奏ハイライト・シーケンサ対象外)。
+    3. W 行の後の無宣言行はコンテキストクリアでエラーになる (実機トラックへの混線防止仕様の固定)。
+  - **残タスク**: MIDI トラックのテスト再生ボタン (Column 1) はモックのまま (Web Audio プレビュー連携は将来タスク)。
+  - **検証**: `npx tsc -b` エラーゼロ / `npm test` 全合格 / `npm run lint` エラーゼロ / `npm run build` 成功。
+
 - **MIDI IMPORT (Step 2) を本実装: 実 `.mid` 解析 → 自動ルーティング → MML 生成 (`src/core/midi/midiToMmlConverter.ts` / `demoMidi.ts` / `src/core/midi/__tests__/midiToMmlConverter.test.ts` 新設, `src/view/MidiRouterModal.tsx`, `package.json` に `@tonejs/midi` 追加, [`docs/specification/ui.md`](./specification/ui.md), [`docs/specification/work_tracks_and_transform_handoff.md`](./specification/work_tracks_and_transform_handoff.md))** (2026-09-07):
   - **背景・ユーザー確定方針**:
     - 引継ぎ仕様 Step 2 に従い MIDI ROUTING STUDIO を本実装。解析ライブラリは `@tonejs/midi` を依存追加する方針をユーザー確定 (自前 SMF パーサー案を上回る選択)。
