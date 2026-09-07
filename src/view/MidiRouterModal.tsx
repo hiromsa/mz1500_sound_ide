@@ -14,8 +14,10 @@ import {
   Cpu,
   FolderOpen,
   Upload,
-  FileUp
+  FileUp,
+  AlertCircle
 } from 'lucide-react';
+import { MidiPreviewPlayer } from '../core/midi/midiPreview';
 import {
   autoAssignRouting,
   extractVoice,
@@ -155,8 +157,21 @@ export const MidiRouterModal: React.FC<MidiRouterModalProps> = ({
   const [isDraggingFile, setIsDraggingFile] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // GM 試聴プレイヤー (遅延生成) と SoundFont ロード失敗時のエラー表示
+  const previewPlayerRef = useRef<MidiPreviewPlayer | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+
+  // アンマウント時にプレイヤー (AudioContext) を破棄する
+  useEffect(() => () => {
+    previewPlayerRef.current?.dispose();
+  }, []);
+
   // 解析済み MIDI へスロットを自動割り当ててトラックリストを再構築する
   const applyRouting = (summary: MidiParseSummary, presetValue: string) => {
+    // 再ルーティング時は GM 試聴を停止する
+    previewPlayerRef.current?.stop();
+    setPlayingTrackId(null);
+
     const fmActive = presetValue === 'fm_full' && enableYM2151;
     const slots = autoAssignRouting(summary.tracks, fmActive, fmActive);
     setTracks(summary.tracks.map((source, index) => createWorkTrack(source, slots[index], index)));
@@ -244,9 +259,41 @@ export const MidiRouterModal: React.FC<MidiRouterModalProps> = ({
     );
   };
 
+  // GM SoundFont でトラックを試聴再生する (再生中に押すと停止)
   const togglePlay = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    setPlayingTrackId((prev) => (prev === id ? null : id));
+
+    if (playingTrackId === id) {
+      previewPlayerRef.current?.stop();
+      setPlayingTrackId(null);
+      return;
+    }
+
+    const track = tracks.find((t) => t.id === id);
+    if (!track?.source || !loadedFile) {
+      return;
+    }
+
+    if (previewPlayerRef.current === null) {
+      previewPlayerRef.current = new MidiPreviewPlayer();
+    }
+
+    setPreviewError(null);
+    setPlayingTrackId(id);
+    void previewPlayerRef.current.play(
+      track.source.notes,
+      loadedFile.summary.bpm,
+      track.source.isPercussion,
+      {
+        onError: (message) => {
+          setPreviewError(message);
+          setPlayingTrackId((prev) => (prev === id ? null : prev));
+        },
+        onFinished: () => {
+          setPlayingTrackId((prev) => (prev === id ? null : prev));
+        },
+      },
+    );
   };
 
   const filteredTracks = tracks.filter((t) => {
@@ -345,13 +392,20 @@ export const MidiRouterModal: React.FC<MidiRouterModalProps> = ({
     return generateMml({ fileName: loadedFile?.name ?? summary.fileName, bpm: summary.bpm }, parts);
   };
 
+  // モーダルを閉じる (GM 試聴を停止してから onClose を呼ぶ)
+  const handleClose = () => {
+    previewPlayerRef.current?.stop();
+    setPlayingTrackId(null);
+    onClose();
+  };
+
   const handleApply = () => {
     const generatedMml = buildRoutedMml();
     if (generatedMml && onApplyToMml) {
       onApplyToMml(generatedMml);
     }
 
-    onClose();
+    handleClose();
   };
 
   return (
@@ -432,6 +486,9 @@ export const MidiRouterModal: React.FC<MidiRouterModalProps> = ({
             {loadedFile && (
               <button
                 onClick={() => {
+                  previewPlayerRef.current?.stop();
+                  setPlayingTrackId(null);
+                  setPreviewError(null);
                   setLoadedFile(null);
                   setTracks([]);
                   setSelectedTrackId('');
@@ -464,13 +521,28 @@ export const MidiRouterModal: React.FC<MidiRouterModalProps> = ({
             )}
 
             <button
-              onClick={onClose}
+              onClick={handleClose}
               className="w-7 h-7 rounded hover:bg-[#383838] text-zinc-400 hover:text-white flex items-center justify-center transition-colors cursor-pointer ml-1 border border-transparent hover:border-[#484848]"
             >
               <X className="w-4 h-4" />
             </button>
           </div>
         </header>
+
+        {/* GM SoundFont のロード失敗などの試聴エラー表示 */}
+        {previewError && (
+          <div className="mx-4 mt-2.5 px-2.5 py-1.5 rounded bg-red-950/80 border border-red-700/60 text-red-300 text-[11px] flex items-center gap-2">
+            <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+            <span className="flex-1">{previewError}</span>
+            <button
+              onClick={() => setPreviewError(null)}
+              className="text-red-400 hover:text-red-200 text-[10px] font-bold px-1.5 py-0.5 rounded hover:bg-red-900/60 transition-colors cursor-pointer shrink-0"
+              title="閉じる"
+            >
+              ✕
+            </button>
+          </div>
+        )}
 
         {/* Modal Body */}
         {!loadedFile ? (
@@ -1188,7 +1260,7 @@ export const MidiRouterModal: React.FC<MidiRouterModalProps> = ({
             </button>
 
             <button
-              onClick={onClose}
+              onClick={handleClose}
               className="h-7 px-3 rounded text-xs font-semibold bg-[#383838] hover:bg-[#444444] text-zinc-300 border border-[#484848] transition-colors cursor-pointer shadow-xs"
             >
               Cancel

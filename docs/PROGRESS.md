@@ -5,6 +5,15 @@
 ---
 
 ## 1. 直近の完了作業（最新）
+- **MIDI トラックのテスト再生 (GM SoundFont) を本実装 (`src/core/midi/midiPreview.ts` / `src/core/midi/__tests__/midiPreview.test.ts` 新設, `src/view/MidiRouterModal.tsx`, `package.json` に `smplr` 追加, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-07):
+  - **背景・ユーザー確定方針**:
+    - MIDI ROUTING STUDIO Column 1 の `Preview Track` ボタン (モック時点で見た目のみだった) を本実装。音源は **smplr の GM SoundFont** を採用 (ユーザー確定)。**SoundFont 取得失敗時はエラー表示**する仕様 (オフラインで再生できないことは許容)。
+  - **対応内容**:
+    1. **`midiPreview.ts` (新規)**: `buildPreviewSchedule` (ノート列 拍→秒 変換、BPM 30-255 / ノート 12-131 / ベロシティ 1-127 クランプ、開始拍ソート) と `MidiPreviewPlayer` クラス (AudioContext 遅延生成、smplr `Soundfont` (`acoustic_grand_piano` / パーカッションは `synth_drum`) のロード待ち、AudioContext 時間基準でのプリスケジューリング、末尾到達で `onFinished`、`stop()` / `dispose()`)。
+    2. **`MidiRouterModal`**: `togglePlay` を実実装に置換 (▶ で再生 / ■ で停止、末尾で自動解除)。**SoundFont 取得失敗時はモーダルヘッダー下に赤色エラーバッジを表示** (`previewError` ステート、✕ で閉じる)。再ルーティング / プリセット変更 / `Clear` で停止。モーダル閉鎖を `handleClose` に統一 (閉じるときに試聴停止)。
+    3. **テスト (+7)**: `buildPreviewSchedule` の純粋関数検証 (秒変換・ソート・BPM/ノート/ベロシティ クランプ・最小音長・空配列)。AudioContext 依存の再生部分はブラウザでのみ確認可能なため対象外。
+  - **検証**: `npx tsc -b` エラーゼロ / **`npm test` 全 419 件合格** (+7) / `npm run lint` エラーゼロ (既存 UI 警告 9 のみ) / `npm run build` 成功。
+
 - **MML TRANSFORM に VOLUME SCALE (音量スケーリング) UI を追加 & QUANTIZE / TEMPO SCALE を不採用化 (`src/view/MmlTransformPanel.tsx`, [`docs/specification/ui.md`](./specification/ui.md), [`docs/specification/work_tracks_and_transform_handoff.md`](./specification/work_tracks_and_transform_handoff.md))** (2026-09-07):
   - **背景・ユーザー確定方針**:
     - 引継ぎ仕様 §2.2 の変換ツール群のうち VOLUME SCALE の UI を追加。**QUANTIZE / NOTE ALIGN と TEMPO SCALE は仕様として不要 (不採用)** とユーザー確定。
