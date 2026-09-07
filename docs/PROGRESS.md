@@ -5,6 +5,24 @@
 ---
 
 ## 1. 直近の完了作業（最新）
+- **SAMPLE MML に著作権フリー古典楽曲集 (classics/) を追加 (`src/data/sampleMmlSongs.ts` 新設, `src/data/__tests__/sampleMmlSongs.test.ts` 新設, `src/view/FileExplorer.tsx`, `src/view/MmlEditor.tsx`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-07):
+  - **背景・ユーザー確定方針**:
+    - 「PSG BEEP FM音源使って 著作権フリー(古典のクラッシックなどで使えたりするものなど)の曲をいくつか追加してください。SAMPLE MMLとして。」
+    - 既存ダミー (demos/ / templates/) は残し、著作権フリー曲は `classics/` フォルダを新設して追加する方針をユーザー確定。
+  - **対応内容**:
+    1. **`sampleMmlSongs.ts` (新規・データ層)**: パブリックドメイン古典楽曲 5 曲を MML 化して収録 (`SampleMmlSong` 型 + `CLASSIC_SAMPLE_MML_SONGS` + `findSampleSongById` / `findSampleSongByFileName`)。MML ソース本体を UI から分離し疎結合化。
+       - `classic_fur_elise.mml` (エリーゼのために / PSG×3)
+       - `classic_ode_to_joy.mml` (歓喜の歌 / BEEP メロディ + PSG×2 + N1 ノイズドラム)
+       - `classic_menuett_g.mml` (メヌエット ト長調 / PSG×2)
+       - `classic_pachelbel_canon.mml` (カノン ニ長調 / FM×3, `#OPM ON`・FM音色 @1/@2・`@v` 音量)
+       - `classic_twinkle_star.mml` (きらきら星 / FM+PSG+BEEP+Noise 全音源, `#OPM ON`)
+    2. **共通構成ルール**: 全トラック先頭行に `L` を配置した曲頭永久ループ (`processWholeLoopMark` は `L` 記述行のトラックにのみループ位置を記録するため、全トラック対応位置への `L` が必須)。ループ復帰時に音量/音色が復元されるよう初期化コマンド (l/o/v/q/@音色/@v/@WN) は `L` より後に記述。BEEP トラックはハードウェア的に音量制御不可のため v/@VE 不使用。パート間の総拍数を揃えて全パート同時ループを保証。
+    3. **FileExplorer**: `classics/` フォルダ (初期展開) を追加し、サンプルクリック時に `onSelectFile` へ `content` を追加で渡すよう拡張 (型: `{ id, name, content? }`)。既存ダミー (demos/templates) の挙動は従来どおり (プレースホルダ生成)。
+    4. **MmlEditor**: `handleSelectFile` が `content` を受け取った場合はその MML をタブに展開 (未指定時は従来のプレースホルダ生成に `??` でフォールバック)。
+    5. **テスト (+8)**: id/fileName ユニーク性、メタデータ必須、全曲エラー/警告ゼロコンパイル + totalFrames > 0、FM 使用曲と `#OPM ON` の一致、B1 行の音量コマンド禁止、全トラックの `L` 宣言、コンパイル結果のトラックテーブルで loopOffset == dataOffset (曲頭ループ) の検証、検索ヘルパーの動作。
+  - **検証**:
+    - `npx tsc -b` エラーゼロ / **`npm test` 全 355 件合格** (+8) / `npm run lint` エラーゼロ (既存 UI 警告 2 のみ) / `npm run build` 成功。
+
 - **演奏中 MML ハイライト・トラッキングを実装 (`src/utils/mmlPlaybackTracker.ts` / `src/view/MmlPlaybackHighlighter.ts` 新設, `src/core/mml/parser/MmlParser.ts`, `src/view/MmlEditor.tsx`, `src/view/TrackMonitor.tsx`, `src/app/App.tsx`, `src/index.css`, `src/utils/__tests__/mmlPlaybackTracker.test.ts` 新設, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-07):
   - **背景・ユーザー確定方針**:
     - 「MMLハイライト・トラッキング追加したいです。演奏中のポイントがMMLで判る機能。」

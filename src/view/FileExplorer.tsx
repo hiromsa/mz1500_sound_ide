@@ -10,6 +10,7 @@ import {
   Pencil, 
   Trash2 
 } from 'lucide-react';
+import { CLASSIC_SAMPLE_MML_SONGS, findSampleSongById } from '../data/sampleMmlSongs';
 
 export interface FileItem {
   id: string;
@@ -33,6 +34,20 @@ const INITIAL_SAMPLE_FILES: FileItem[] = [
       { id: 's2', name: 'fm_fantasy_stage1.mml', isFolder: false, isSample: true },
       { id: 's3', name: 'dcsg_retro_action.mml', isFolder: false, isSample: true },
     ],
+  },
+  {
+    id: 'sample-folder-classics',
+    name: 'classics',
+    isFolder: true,
+    isOpen: true,
+    isSample: true,
+    // 著作権フリー (パブリックドメイン) 古典楽曲集 (実データは sampleMmlSongs.ts で管理)
+    children: CLASSIC_SAMPLE_MML_SONGS.map((song) => ({
+      id: song.id,
+      name: song.fileName,
+      isFolder: false,
+      isSample: true,
+    })),
   },
   {
     id: 'sample-folder-tpl',
@@ -71,7 +86,7 @@ const INITIAL_LOCAL_PROJECT: FileItem[] = [
 ];
 
 interface FileExplorerProps {
-  onSelectFile?: (file: { id: string; name: string }) => void;
+  onSelectFile?: (file: { id: string; name: string; content?: string }) => void;
   activeFileId?: string;
   width?: number;
 }
@@ -192,7 +207,9 @@ export function FileExplorer({ onSelectFile, activeFileId, width }: FileExplorer
                     }
                   } else {
                     if (onSelectFile) {
-                      onSelectFile({ id: item.id, name: item.name });
+                      // SAMPLE MML (classics) の場合は実データの MML を渡す (無ければプレースホルダ)
+                      const sampleSong = findSampleSongById(item.id);
+                      onSelectFile({ id: item.id, name: item.name, content: sampleSong?.content });
                     }
                   }
                 }}

@@ -139,7 +139,16 @@ FlexboxおよびCSS Gridを活用し、解像度変化に追従するペイン�
 - **ファイルエクスプローラー (`FileExplorer.tsx`)**:
   - 左端に折りたたみ可能なツリービューサイドバー（幅 240px）を配置。
   - **エクスプローラー開閉トグル**: タブバー最左端のアイコンボタン（`PanelLeftClose` / `PanelLeftOpen`）で表示/非表示を切替可能。
-  - **Sample MML（プリセット）**: デモ楽曲（`demos/`）やテンプレート（`templates/`）をツリー表示し、クリックでエディタのタブに即時展開。
+  - **Sample MML（プリセット）**: デモ楽曲（`demos/`）、著作権フリーの古典楽曲集（`classics/`）、テンプレート（`templates/`）をツリー表示し、クリックでエディタのタブに即時展開。
+  - **`classics/`（著作権フリー古典楽曲集・2026-09-07 追加）**: パブリックドメインの古典楽曲を MML 化した実データ付きサンプル。MML ソース本体は UI と切り離した `src/data/sampleMmlSongs.ts` で管理し、クリックで実 MML がタブに開かれ BUILD/PLAY でそのまま試聴できる。全曲とも全トラック先頭に `L` を配置した「曲頭永久ループ」構成で、初期化コマンド（音量・音色等）は `L` より後に記述するためループ復帰時も音色/音量が復元される。全曲のエラー・警告ゼロコンパイルを `src/data/__tests__/sampleMmlSongs.test.ts` で自動検証。収録曲は以下の 5 曲:
+
+    | ファイル名 | 曲名 / 原曲 | 使用音源・構成 |
+    | :--- | :--- | :--- |
+    | `classic_fur_elise.mml` | エリーゼのために / L. v. Beethoven (1810) | PSG ×3（P1メロディ / P2アルペジオ / P3低音保持） |
+    | `classic_ode_to_joy.mml` | 歓喜の歌（交響曲第9番）/ L. v. Beethoven (1824) | BEEP メロディ（音量指定なし）+ PSG ×2 + N1 ノイズドラム |
+    | `classic_menuett_g.mml` | メヌエット ト長調 / C. Petzold (1725頃) | PSG ×2（メロディ + 分散和音ベース） |
+    | `classic_pachelbel_canon.mml` | カノン ニ長調 / J. Pachelbel (1690頃) | FM ×3（`#OPM ON`・FM音色 @1/@2・`@v` 音量・2分→4分→8分変奏） |
+    | `classic_twinkle_star.mml` | きらきら星 / フランス民謡（Mozart K.265） | FM + PSG + BEEP + Noise 全音源デモ（`#OPM ON`） |
   - **Local Files（ローカルフォルダ）**:
     - `OPEN FOLDER...` ボタンによりローカルフォルダの選択・表示が可能（モック）。
     - ツールバーより「新規MMLファイル作成 (`📄+`)」「新規フォルダ作成 (`📁+`)」を実行可能。

@@ -747,7 +747,7 @@ export function MmlEditor({
   };
 
   // エクスプローラーからファイルを選択した時のハンドラ
-  const handleSelectFile = (fileItem: { id: string; name: string }) => {
+  const handleSelectFile = (fileItem: { id: string; name: string; content?: string }) => {
     const existing = files.find(f => f.id === fileItem.id);
     if (existing) {
       setActiveFileId(existing.id);
@@ -758,7 +758,7 @@ export function MmlEditor({
       const newFile: MmlFile = {
         id: fileItem.id,
         name: fileItem.name,
-        content: `; MML Source: ${fileItem.name}\n\n#TITLE "${fileItem.name}"\n\nP1 t120 l8 o4 c d e\n`,
+        content: fileItem.content ?? `; MML Source: ${fileItem.name}\n\n#TITLE "${fileItem.name}"\n\nP1 t120 l8 o4 c d e\n`,
       };
       setFiles(prev => [...prev, newFile]);
       setActiveFileId(newFile.id);
