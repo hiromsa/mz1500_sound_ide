@@ -24,6 +24,8 @@ export interface FileItem {
   children?: FileItem[];
   isSample?: boolean;
   file?: File;
+  /** File System Access API のファイルハンドル (Ctrl+S での書き込み保存に使用) */
+  fileHandle?: FileSystemFileHandle;
   content?: string;
 }
 
@@ -159,6 +161,7 @@ async function scanDirectoryPicker(dirHandle: any): Promise<{ tree: FileItem[]; 
           name: entry.name,
           isFolder: false,
           file: fileObj,
+          fileHandle: entry as FileSystemFileHandle,
           content: preloadedContent,
         };
         parent.children!.push(fileItem);
@@ -248,7 +251,7 @@ function buildSampleMmlTree(): FileItem[] {
 const INITIAL_SAMPLE_FILES: FileItem[] = buildSampleMmlTree();
 
 interface FileExplorerProps {
-  onSelectFile?: (file: { id: string; name: string; content?: string }) => void;
+  onSelectFile?: (file: { id: string; name: string; content?: string; fileHandle?: FileSystemFileHandle }) => void;
   activeFileId?: string;
   width?: number;
   onOpenMidiRouter?: () => void;
@@ -262,6 +265,8 @@ export function FileExplorer({ onSelectFile, activeFileId, width, onOpenMidiRout
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState<string>('');
   const folderInputRef = useRef<HTMLInputElement>(null);
+  /** showDirectoryPicker で取得したルートフォルダのハンドル (新規ファイル作成・書き込みに使用) */
+  const dirHandleRef = useRef<FileSystemDirectoryHandle | null>(null);
 
   // 削除確認ダイアログの状態
   const [deleteConfirm, setDeleteConfirm] = useState<{
@@ -331,13 +336,32 @@ export function FileExplorer({ onSelectFile, activeFileId, width, onOpenMidiRout
   };
 
   // 新規ファイル作成
-  const handleCreateNewFile = () => {
+  const handleCreateNewFile = async () => {
     const newId = `file-${Date.now()}`;
+    const initialContent = '; MZ-1500 MML Track\n';
+    let fileHandle: FileSystemFileHandle | undefined = undefined;
+
+    // File System Access API が利用可能な場合はディスク上にファイルを作成
+    if (dirHandleRef.current) {
+      try {
+        const suggestedName = 'new_track.mml';
+        fileHandle = await dirHandleRef.current.getFileHandle(suggestedName, { create: true });
+        // 初期内容を書き込み
+        const writable = await fileHandle.createWritable();
+        await writable.write(initialContent);
+        await writable.close();
+      } catch (e) {
+        console.warn('Failed to create file on disk:', e);
+        fileHandle = undefined;
+      }
+    }
+
     const newFile: FileItem = {
       id: newId,
-      name: 'new_track.mml',
+      name: fileHandle?.name ?? 'new_track.mml',
       isFolder: false,
-      content: '; MZ-1500 MML Track\n',
+      fileHandle,
+      content: initialContent,
     };
     setLocalProject(prev => {
       let nextTree: FileItem[];
@@ -355,7 +379,7 @@ export function FileExplorer({ onSelectFile, activeFileId, width, onOpenMidiRout
       return nextTree;
     });
     setEditingId(newId);
-    setEditingName('new_track.mml');
+    setEditingName(newFile.name);
     if (!hasOpenedLocalFolder) {
       setHasOpenedLocalFolder(true);
       setOpenedFolderName('my_project');
@@ -408,14 +432,16 @@ export function FileExplorer({ onSelectFile, activeFileId, width, onOpenMidiRout
     setLocalProject([]);
     setOpenedFolderName('');
     setHasOpenedLocalFolder(false);
+    dirHandleRef.current = null;
   };
 
   // ローカルフォルダを開く (File System Access API 優先、input フォールバック)
   const handleOpenLocalFolder = async () => {
     if (typeof window !== 'undefined' && 'showDirectoryPicker' in window) {
       try {
-        const dirHandle = await (window as any).showDirectoryPicker();
+        const dirHandle = await (window as any).showDirectoryPicker() as FileSystemDirectoryHandle;
         const { tree, folderName, allMmlFiles } = await scanDirectoryPicker(dirHandle);
+        dirHandleRef.current = dirHandle;
         setLocalProject(tree);
         setOpenedFolderName(folderName);
         setHasOpenedLocalFolder(true);
@@ -426,7 +452,7 @@ export function FileExplorer({ onSelectFile, activeFileId, width, onOpenMidiRout
         if (allMmlFiles.length > 0 && onSelectFile) {
           const first = allMmlFiles[0];
           const content = first.content ?? (first.file ? await first.file.text() : '');
-          onSelectFile({ id: first.id, name: first.name, content });
+          onSelectFile({ id: first.id, name: first.name, content, fileHandle: first.fileHandle });
         }
         return;
       } catch (err: any) {
@@ -496,7 +522,18 @@ export function FileExplorer({ onSelectFile, activeFileId, width, onOpenMidiRout
                     }
                   } else {
                     if (onSelectFile) {
-                      if (item.file) {
+                      if (item.fileHandle) {
+                        // fileHandle から最新のファイル内容を読み込む (File System Access API)
+                        try {
+                          const fileObj = await item.fileHandle.getFile();
+                          const text = await fileObj.text();
+                          item.content = text;
+                          onSelectFile({ id: item.id, name: item.name, content: text, fileHandle: item.fileHandle });
+                        } catch (e) {
+                          console.error('Failed to read file via fileHandle:', e);
+                          onSelectFile({ id: item.id, name: item.name, content: item.content || '', fileHandle: item.fileHandle });
+                        }
+                      } else if (item.file) {
                         try {
                           const text = await item.file.text();
                           item.content = text;

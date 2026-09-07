@@ -42,6 +42,8 @@ interface MmlFile {
   id: string;
   name: string;
   content: string;
+  /** File System Access API のファイルハンドル (Ctrl+S での書き込みに使用) */
+  fileHandle?: FileSystemFileHandle;
 }
 
 const DUMMY_FILES: MmlFile[] = [
@@ -779,9 +781,15 @@ export function MmlEditor({
   };
 
   // エクスプローラーからファイルを選択した時のハンドラ
-  const handleSelectFile = (fileItem: { id: string; name: string; content?: string }) => {
+  const handleSelectFile = (fileItem: { id: string; name: string; content?: string; fileHandle?: FileSystemFileHandle }) => {
     const existing = files.find(f => f.id === fileItem.id);
     if (existing) {
+      // fileHandle が新たに渡された場合は更新する
+      if (fileItem.fileHandle && !existing.fileHandle) {
+        setFiles(prev => prev.map(f =>
+          f.id === fileItem.id ? { ...f, fileHandle: fileItem.fileHandle } : f
+        ));
+      }
       setActiveFileId(existing.id);
       const parsed = parseSongMetadata(existing.content);
       prevMetadataRef.current = parsed;
@@ -791,6 +799,7 @@ export function MmlEditor({
         id: fileItem.id,
         name: fileItem.name,
         content: fileItem.content ?? `; MML Source: ${fileItem.name}\n\n#TITLE "${fileItem.name}"\n\nP1 t120 l8 o4 c d e\n`,
+        fileHandle: fileItem.fileHandle,
       };
       setFiles(prev => [...prev, newFile]);
       setActiveFileId(newFile.id);
@@ -810,12 +819,19 @@ export function MmlEditor({
     const file = files.find(f => f.id === targetId);
     if (!file) return;
 
-    // ファイルシステム書き込み (File オブジェクトが存在する場合)
-    if (file && 'showSaveFilePicker' in window) {
-      // 書き込み可能なハンドルを持っているかは外部から判断できないため、
-      // 現時点では dirty フラグのクリアのみ実施（将来的にハンドルを保持する拡張が可能）
+    if (file.fileHandle) {
+      // File System Access API でディスクへ書き込む
+      try {
+        const writable = await file.fileHandle.createWritable();
+        await writable.write(file.content);
+        await writable.close();
+        console.log(`[MmlEditor] Saved: ${file.name}`);
+      } catch (e) {
+        console.error(`[MmlEditor] Failed to save ${file.name}:`, e);
+        // 権限エラーなどの場合はユーザーへ通知しない（フラグはクリアしない）
+        return;
+      }
     }
-
     // dirty フラグを解除
     setDirtyFileIds(prev => {
       if (!prev.has(targetId)) return prev;
