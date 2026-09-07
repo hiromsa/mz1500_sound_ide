@@ -1,7 +1,7 @@
 {
     "name": "mz1500_sound_ide",
     "private": true,
-    "version": "0.0.1-beta.76",
+    "version": "0.0.1-beta.77",
     "type": "module",
     "scripts": {
         "dev": "vite",

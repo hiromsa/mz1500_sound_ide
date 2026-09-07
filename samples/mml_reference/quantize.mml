@@ -5,6 +5,23 @@
 #OPM OFF
 #OCTAVE NORMAL
 
-@VE1 = {15,13,|9,>,5,4,3,2,1}
+P1 t120 o4 l8 
+P1 q8 cccc
+P1 q7 dddd
+P1 q6 eeee
+P1 q5 ffff
+P1 q4 gggg
+P1 q3 aaaa
+P1 q2 bbbb
+P1 q1 >cccc
 
-P1 t240 o4 l4 q8 @VE1 cdefgfed
+P1 o4
+P1 @q0 cccc
+P1 @q1 dddd
+P1 @q2 eeee
+P1 @q3 ffff
+P1 @q4 gggg
+P1 @q5 aaaa
+P1 @q6 bbbb
+P1 @q7 >cccc
+

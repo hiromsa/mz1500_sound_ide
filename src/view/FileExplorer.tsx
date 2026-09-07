@@ -12,6 +12,7 @@ import {
   Music2,
   FolderX
 } from 'lucide-react';
+import { ConfirmDialog } from './components/ConfirmDialog';
 import { SAMPLE_MML_FILES } from '../data/sampleMmlSongs';
 import { saveWorkspaceFolder, loadWorkspaceFolder, clearWorkspaceFolder } from '../utils/workspaceStorage';
 
@@ -262,6 +263,16 @@ export function FileExplorer({ onSelectFile, activeFileId, width, onOpenMidiRout
   const [editingName, setEditingName] = useState<string>('');
   const folderInputRef = useRef<HTMLInputElement>(null);
 
+  // 削除確認ダイアログの状態
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    id: string;
+    name: string;
+    isFolder: boolean;
+  } | null>(null);
+
+  // フォルダ閉じる確認ダイアログの状態
+  const [closeConfirm, setCloseConfirm] = useState<boolean>(false);
+
   // 初回マウント時: 前回読み込んだローカルフォルダを永続化ストレージから復元
   useEffect(() => {
     let isMounted = true;
@@ -384,9 +395,15 @@ export function FileExplorer({ onSelectFile, activeFileId, width, onOpenMidiRout
     }
   };
 
-  // ローカルフォルダを閉じる（アンロード & ストレージ消去）
-  const handleCloseLocalFolder = async (e: React.MouseEvent) => {
+  // ローカルフォルダを閉じる（確認ダイアログを表示）
+  const handleCloseLocalFolder = (e: React.MouseEvent) => {
     e.stopPropagation();
+    setCloseConfirm(true);
+  };
+
+  // フォルダ閉じる確認後の実処理
+  const executeCloseLocalFolder = async () => {
+    setCloseConfirm(false);
     await clearWorkspaceFolder();
     setLocalProject([]);
     setOpenedFolderName('');
@@ -578,11 +595,7 @@ export function FileExplorer({ onSelectFile, activeFileId, width, onOpenMidiRout
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        setLocalProject(prev => {
-                          const updated = deleteItem(prev, item.id);
-                          saveWorkspaceFolder(openedFolderName || 'Local Files', updated).catch(console.error);
-                          return updated;
-                        });
+                        setDeleteConfirm({ id: item.id, name: item.name, isFolder: item.isFolder });
                       }}
                       className="p-1 hover:text-red-400 text-zinc-400 hover:bg-[#333333] rounded cursor-pointer transition-colors"
                       title="Delete"
@@ -604,11 +617,47 @@ export function FileExplorer({ onSelectFile, activeFileId, width, onOpenMidiRout
     );
   };
 
+  // 削除確認 → 実行
+  const executeDelete = () => {
+    if (!deleteConfirm) return;
+    setLocalProject(prev => {
+      const updated = deleteItem(prev, deleteConfirm.id);
+      saveWorkspaceFolder(openedFolderName || 'Local Files', updated).catch(console.error);
+      return updated;
+    });
+    setDeleteConfirm(null);
+  };
+
   return (
     <div 
       style={width ? { width: `${width}px` } : undefined}
       className={`flex flex-col h-full bg-[#0e0f15] border-r border-white/[0.07] select-none shrink-0 font-mono ${width ? '' : 'w-60'}`}
     >
+      {/* 削除確認ダイアログ */}
+      {deleteConfirm && (
+        <ConfirmDialog
+          type="confirm"
+          title={deleteConfirm.isFolder ? 'フォルダを削除' : 'ファイルを削除'}
+          fileName={deleteConfirm.name}
+          message={`"${deleteConfirm.name}" を削除しますか？\nこの操作は元に戻せません。`}
+          confirmLabel="削除"
+          onConfirm={executeDelete}
+          onCancel={() => setDeleteConfirm(null)}
+        />
+      )}
+      {/* フォルダ閉じる確認ダイアログ */}
+      {closeConfirm && (
+        <ConfirmDialog
+          type="confirm"
+          title="フォルダを閉じる"
+          fileName={openedFolderName}
+          message={`"${openedFolderName}" をアンロードします。\nエクスプローラーからフォルダが閉じられます。`}
+          confirmLabel="閉じる"
+          onConfirm={() => { void executeCloseLocalFolder(); }}
+          onCancel={() => setCloseConfirm(false)}
+        />
+      )}
+
       {/* エクスプローラータイトルバー */}
       <div className="h-9 px-3 bg-[#0b0c12] border-b border-white/[0.07] flex items-center justify-between shrink-0">
         <span className="text-[11px] font-semibold text-zinc-300 tracking-wider flex items-center gap-1.5">

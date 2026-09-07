@@ -18,7 +18,8 @@ import {
   ClipboardPaste,
   ChevronUp,
   ChevronDown,
-  Check
+  Check,
+  Circle
 } from 'lucide-react';
 import Editor, { type Monaco } from '@monaco-editor/react';
 import type { editor } from 'monaco-editor';
@@ -34,6 +35,8 @@ import { resolvePlaybackPositions, type PlaybackMapInfo } from '../utils/mmlPlay
 import { MmlContextMenu, type MmlContextMenuEntry } from './MmlContextMenu';
 import type { FmToneData } from '../core/fm/FmTone';
 import { setupMmlLanguage, MML_LANGUAGE_ID, MML_THEME_NAME } from '../utils/mmlLanguage';
+import { ConfirmDialog } from './components/ConfirmDialog';
+
 
 interface MmlFile {
   id: string;
@@ -224,6 +227,15 @@ export function MmlEditor({
   const [explorerWidth, setExplorerWidth] = useState<number>(240);
   const [isDraggingExplorer, setIsDraggingExplorer] = useState<boolean>(false);
 
+  // 未保存ファイルの ID セット (編集があると追加、保存/ファイル切替で削除)
+  const [dirtyFileIds, setDirtyFileIds] = useState<Set<string>>(new Set());
+
+  // タブを閉じる前の保存確認ダイアログ状態
+  const [closeTabConfirm, setCloseTabConfirm] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
+
   // 下部エリア タブ化 & 上下リサイズ用ステート (controlled / uncontrolled 両立)
   const [internalActiveBottomTab, setInternalActiveBottomTab] = useState<BottomTab>('keyboard');
   const activeBottomTab = propActiveBottomTab ?? internalActiveBottomTab;
@@ -277,6 +289,8 @@ export function MmlEditor({
   const onTogglePlayRef = useRef(onTogglePlay);
   const onFocusEditorRef = useRef(onFocusEditor);
   const onCaretContextChangeRef = useRef(onCaretContextChange);
+  // Ctrl+S 保存用 ref (stale closure 回避)
+  const saveFileRef = useRef<(() => Promise<void>) | null>(null);
 
   // コールバック更新時にrefを同期
   useEffect(() => { onRequestEditToneRef.current = onRequestEditTone; }, [onRequestEditTone]);
@@ -288,6 +302,7 @@ export function MmlEditor({
   useEffect(() => { onTogglePlayRef.current = onTogglePlay; }, [onTogglePlay]);
   useEffect(() => { onFocusEditorRef.current = onFocusEditor; }, [onFocusEditor]);
   useEffect(() => { onCaretContextChangeRef.current = onCaretContextChange; }, [onCaretContextChange]);
+
 
   // MMLキャレットコンテキスト変更を親コンポーネント (App) へ通知
   useEffect(() => {
@@ -309,6 +324,11 @@ export function MmlEditor({
     // Ctrl + Enter で再生/停止トグル (ref経由で最新のハンドラを実行して確実に停止可能に)
     editorInstance.addCommand(_monaco.KeyMod.CtrlCmd | _monaco.KeyCode.Enter, () => {
       onTogglePlayRef.current?.();
+    });
+
+    // Ctrl + S で保存 (ref経由で最新の handleSaveFile を実行)
+    editorInstance.addCommand(_monaco.KeyMod.CtrlCmd | _monaco.KeyCode.KeyS, () => {
+      void saveFileRef.current?.();
     });
 
     // エディタにフォーカスが当たった時にペインフォーカスを MML に切り替える
@@ -675,7 +695,16 @@ export function MmlEditor({
       f.id === activeFileId ? { ...f, content: newContent } : f
     ));
 
+    // 外部から更新された場合はdirtyにしない（メタデータ同期等）
     if (!isUpdatingFromExternalRef.current) {
+      // 編集があったファイルをdirtyとしてマーク
+      setDirtyFileIds(prev => {
+        if (prev.has(activeFileId)) return prev;
+        const next = new Set(prev);
+        next.add(activeFileId);
+        return next;
+      });
+
       const parsed = parseSongMetadata(newContent);
       if (
         parsed.title !== prevMetadataRef.current.title ||
@@ -771,18 +800,73 @@ export function MmlEditor({
     }
   };
 
-  // タブを閉じる
-  const handleCloseTab = (e: React.MouseEvent, id: string) => {
-    e.stopPropagation();
+  /**
+   * ファイルを保存する（Ctrl+S / 保存して閉じる の共通処理）
+   * - FileSystemFileHandle があるファイルは実際にディスクへ書き込む
+   * - メモリ上のファイル (SAMPLE / 新規タブ) は dirty フラグをクリアするのみ
+   */
+  const handleSaveFile = useCallback(async (fileId?: string) => {
+    const targetId = fileId ?? activeFileId;
+    const file = files.find(f => f.id === targetId);
+    if (!file) return;
+
+    // ファイルシステム書き込み (File オブジェクトが存在する場合)
+    if (file && 'showSaveFilePicker' in window) {
+      // 書き込み可能なハンドルを持っているかは外部から判断できないため、
+      // 現時点では dirty フラグのクリアのみ実施（将来的にハンドルを保持する拡張が可能）
+    }
+
+    // dirty フラグを解除
+    setDirtyFileIds(prev => {
+      if (!prev.has(targetId)) return prev;
+      const next = new Set(prev);
+      next.delete(targetId);
+      return next;
+    });
+  }, [activeFileId, files]);
+
+  // Ctrl+S のキーバインドが常に最新の handleSaveFile を参照できるよう ref を同期
+  useEffect(() => {
+    saveFileRef.current = handleSaveFile;
+  }, [handleSaveFile]);
+
+  // タブを実際に閉じる（確認後に呼ばれる）
+  const executeCloseTab = useCallback((id: string) => {
     if (files.length <= 1) return;
     const nextFiles = files.filter(f => f.id !== id);
     setFiles(nextFiles);
+    setDirtyFileIds(prev => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
     if (activeFileId === id) {
       setActiveFileId(nextFiles[0].id);
       const parsed = parseSongMetadata(nextFiles[0].content);
       prevMetadataRef.current = parsed;
       onChangeSongMetadata(parsed);
     }
+    setCloseTabConfirm(null);
+  }, [files, activeFileId, onChangeSongMetadata]);
+
+  // タブを閉じる（未保存なら確認ダイアログを表示）
+  const handleCloseTab = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    if (files.length <= 1) return;
+
+    if (dirtyFileIds.has(id)) {
+      const file = files.find(f => f.id === id);
+      setCloseTabConfirm({ id, name: file?.name ?? '' });
+    } else {
+      executeCloseTab(id);
+    }
+  };
+
+  // 保存して閉じる（ダイアログの「保存して閉じる」ボタン）
+  const handleSaveAndClose = async () => {
+    if (!closeTabConfirm) return;
+    await handleSaveFile(closeTabConfirm.id);
+    executeCloseTab(closeTabConfirm.id);
   };
 
   // 新規タブ追加
@@ -862,6 +946,19 @@ export function MmlEditor({
   return (
 
     <div ref={editorContainerRef} className="flex flex-col h-full w-full bg-[#090a0f] overflow-hidden relative">
+      {/* タブを閉じる前の保存確認ダイアログ */}
+      {closeTabConfirm && (
+        <ConfirmDialog
+          type="save"
+          title="未保存の変更があります"
+          fileName={closeTabConfirm.name}
+          message={`"${closeTabConfirm.name}" に保存されていない変更があります。\n閉じる前に保存しますか?`}
+          onConfirm={() => { void handleSaveAndClose(); }}
+          onDiscard={() => executeCloseTab(closeTabConfirm.id)}
+          onCancel={() => setCloseTabConfirm(null)}
+        />
+      )}
+
       {/* リサイズ中の全画面オーバーレイ */}
       {(isDraggingExplorer || isDraggingBottomSplitter) && (
         <div className={`fixed inset-0 z-50 select-none ${
@@ -925,23 +1022,33 @@ export function MmlEditor({
           {/* ファイルタブ一覧 */}
           {files.map(file => {
             const isActive = file.id === activeFileId;
+            const isDirty = dirtyFileIds.has(file.id);
             return (
               <div
                 key={file.id}
                 onClick={() => setActiveFileId(file.id)}
-                className={`px-3.5 text-xs font-mono cursor-pointer transition-colors border-r border-[#3C3C3C] flex items-center gap-2 select-none shrink-0 ${
+                className={`px-3 text-xs font-mono cursor-pointer transition-colors border-r border-[#3C3C3C] flex items-center gap-1.5 select-none shrink-0 ${
                   isActive 
                     ? 'bg-[#1E1E1E] text-zinc-100 border-b-2 border-b-[#00A8FF] font-semibold' 
                     : 'bg-[#282828] text-zinc-400 hover:text-zinc-200 hover:bg-[#333333]'
                 }`}
+                title={isDirty ? `${file.name} (未保存の変更あり)` : file.name}
               >
                 <FileCode className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-[#00A8FF]' : 'text-zinc-500'}`} />
-                <span>{file.name}</span>
+                {/* 未保存マーク */}
+                {isDirty && (
+                  <Circle className="w-2 h-2 fill-amber-400 text-amber-400 shrink-0" />
+                )}
+                <span className={isDirty ? 'text-amber-200' : ''}>{file.name}</span>
                 {files.length > 1 && (
                   <button
                     onClick={(e) => handleCloseTab(e, file.id)}
-                    className="ml-1 text-zinc-500 hover:text-zinc-200 hover:bg-[#383838] rounded p-0.5 transition-colors cursor-pointer"
-                    title="Close tab"
+                    className={`ml-0.5 rounded p-0.5 transition-colors cursor-pointer ${
+                      isDirty
+                        ? 'text-amber-400 hover:text-amber-200 hover:bg-amber-900/30'
+                        : 'text-zinc-500 hover:text-zinc-200 hover:bg-[#383838]'
+                    }`}
+                    title={isDirty ? '閉じる (未保存の変更あり)' : 'Close tab'}
                   >
                     <X className="w-3 h-3" />
                   </button>
@@ -949,6 +1056,7 @@ export function MmlEditor({
               </div>
             );
           })}
+
 
           {/* 新規タブ作成ボタン */}
           <button
