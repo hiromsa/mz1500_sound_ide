@@ -1,0 +1,54 @@
+; ============================================================
+; エリーゼのために (WoO 59 / 1810)
+; 原曲: L. v. Beethoven 〔著作権フリー: パブリックドメイン〕
+; 構成: PSG ×3  P1=メロディ / P2=アルペジオ / P3=低音保持
+; 各トラック先頭の L から曲頭へ永久ループします
+; ============================================================
+#TITLE "Fur Elise"
+#COMPOSER "L. v. Beethoven"
+#OPM OFF
+#OCTAVE NORMAL
+
+; テンポ (曲全体)
+t120
+
+; --- P1: メロディ (有名な主題) ---
+P1 L l16 o5 v13 q7
+P1 r4.
+P1 o5 e d+ e d+ e o4 b
+P1 o5 d c o4 a4
+P1 o4 c e a b8.
+P1 o4 e g+ b o5 c8.
+P1 o4 e o5 e d+ e d+ e
+P1 o4 b o5 d c o4 a8.
+P1 o4 c e a b8.
+P1 o4 e g+ b o5 c8.
+P1 o5 c b o4 a4
+P1 o5 e d+ e d+ e o4 b
+P1 o5 d c o4 a4
+P1 r4.
+
+; --- P2: アルペジオ伴奏 (根音-5度-3度の16分流れ) ---
+P2 L l16 o2 v9 q7
+P2 o2 a > e a < a > e a
+P2 o2 a > e a < a > e a
+P2 o2 a > e a < a > e a
+P2 o2 a > e a < a > e a
+P2 o2 e > e g+ < e > e g+
+P2 o2 e > e g+ < e > e g+
+P2 o2 a > e a < a > e a
+P2 o2 a > e a < a > e a
+P2 o2 e > e g+ < e > e g+
+P2 o2 a > e a < a > e a
+P2 o2 a > e a < a > e a
+P2 o2 a > e a < a > e a
+P2 o2 a > e a < a > e a
+
+; --- P3: 低音保持 (控えめな和音の土台) ---
+P3 L l4 o3 v5
+P3 a4. a4. a4. a4.
+P3 e4. e4.
+P3 a4. a4.
+P3 e4.
+P3 a4.
+P3 a4. a4. a4.

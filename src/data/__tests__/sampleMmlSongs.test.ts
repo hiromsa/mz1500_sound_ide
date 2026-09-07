@@ -1,76 +1,109 @@
 /**
- * SAMPLE MML (パブリックドメイン古典楽曲) のデータ整合性テスト。
- * 全サンプル曲がコンパイラでエラー / 警告なしにコンパイルできること、
- * 音源特性 (BEEP 音量不可・#OPM 連動) や永久ループ (L) の規約を
- * 守っていることを保証する。
+ * SAMPLE MML (samples/ フォルダ) のデータ整合性テスト。
+ *
+ * - samples/ 配下の全 .mml がエラー / 警告なしでコンパイルできること
+ * - id / パスの一意性と検索ヘルパーの動作
+ * - classics/ 楽曲の作法規約 (曲頭永久ループ L / BEEP 音量不可 / #OPM 連動)
+ * を保証する。ユーザーが samples/ に追加した .mml も自動的に検証対象になる。
  */
 import { describe, expect, it } from 'vitest';
 import { MmlCompiler } from '../../core/mml/MmlCompiler';
 import {
-  CLASSIC_SAMPLE_MML_SONGS,
-  findSampleSongByFileName,
-  findSampleSongById,
+  SAMPLE_MML_FILES,
+  findSampleFileById,
+  findSampleFileByRelativePath,
 } from '../sampleMmlSongs';
 
-describe('sampleMmlSongs', () => {
-  it('id と fileName はユニークである', () => {
-    const ids = CLASSIC_SAMPLE_MML_SONGS.map((song) => song.id);
-    const fileNames = CLASSIC_SAMPLE_MML_SONGS.map((song) => song.fileName);
+/** classics/ フォルダ (著作権フリー古典楽曲集) のファイルのみ取得する。 */
+const classics = SAMPLE_MML_FILES.filter((file) => file.folderPath === 'classics');
 
-    expect(new Set(ids).size).toBe(ids.length);
-    expect(new Set(fileNames).size).toBe(fileNames.length);
+describe('sampleMmlSongs', () => {
+  it('samples/ フォルダから .mml が読み込まれ、classics に 5 曲ある', () => {
+    expect(classics.map((file) => file.fileName)).toEqual([
+      'classic_fur_elise.mml',
+      'classic_menuett_g.mml',
+      'classic_ode_to_joy.mml',
+      'classic_pachelbel_canon.mml',
+      'classic_twinkle_star.mml',
+    ]);
   });
 
-  it('メタデータ (title / composer / chips / .mml 形式の fileName) を持つ', () => {
-    for (const song of CLASSIC_SAMPLE_MML_SONGS) {
-      expect(song.fileName.endsWith('.mml'), song.fileName).toBe(true);
-      expect(song.title.length, song.fileName).toBeGreaterThan(0);
-      expect(song.composer.length, song.fileName).toBeGreaterThan(0);
-      expect(song.chips.length, song.fileName).toBeGreaterThan(0);
+  it('id と相対パスはユニークであり、各メタ情報が正しく生成されている', () => {
+    const ids = SAMPLE_MML_FILES.map((file) => file.id);
+    const relativePaths = SAMPLE_MML_FILES.map((file) => file.relativePath);
+
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(new Set(relativePaths).size).toBe(relativePaths.length);
+
+    for (const file of SAMPLE_MML_FILES) {
+      expect(file.fileName.endsWith('.mml'), file.id).toBe(true);
+      expect(file.content.length, file.id).toBeGreaterThan(0);
+      expect(file.relativePath, file.id).toBe(`samples/${file.id}`);
+      expect(file.id.startsWith(`${file.folderPath}/`), file.id).toBe(true);
     }
   });
 
-  it('全サンプル曲がエラー・警告なしでコンパイルできる', () => {
-    for (const song of CLASSIC_SAMPLE_MML_SONGS) {
-      const result = new MmlCompiler().compile(song.content);
+  it('samples/ 配下はフォルダパス・ファイル名順にソートされている', () => {
+    const sorted = [...SAMPLE_MML_FILES].sort(
+      (a, b) =>
+        a.folderPath.localeCompare(b.folderPath) || a.fileName.localeCompare(b.fileName),
+    );
+
+    expect(SAMPLE_MML_FILES).toEqual(sorted);
+  });
+
+  it('全サンプル MML がエラー・警告なしでコンパイルできる', () => {
+    for (const file of SAMPLE_MML_FILES) {
+      const result = new MmlCompiler().compile(file.content);
 
       expect(
         result.diagnostics,
-        `${song.fileName}: ${JSON.stringify(result.diagnostics)}`,
+        `${file.id}: ${JSON.stringify(result.diagnostics)}`,
       ).toHaveLength(0);
-      expect(result.success, song.fileName).toBe(true);
-      expect(result.musicData, song.fileName).not.toBeNull();
-      expect(result.totalFrames, song.fileName).toBeGreaterThan(0);
+      expect(result.success, file.id).toBe(true);
+      expect(result.musicData, file.id).not.toBeNull();
+      expect(result.totalFrames, file.id).toBeGreaterThan(0);
     }
   });
 
-  it('FM トラック (F1〜F8) の使用と #OPM ON の宣言が一致する', () => {
-    for (const song of CLASSIC_SAMPLE_MML_SONGS) {
-      const usesFm = /(^|\s)F[1-8]\b/.test(song.content);
-      const declaresOpmOn = /#OPM\s+ON\b/i.test(song.content);
+  it('検索ヘルパー (id / relativePath) が正しく動作する', () => {
+    const first = SAMPLE_MML_FILES[0];
 
-      expect(usesFm, song.fileName).toBe(declaresOpmOn);
+    expect(findSampleFileById(first.id)).toBe(first);
+    expect(findSampleFileByRelativePath(first.relativePath)).toBe(first);
+    expect(findSampleFileById('not-exist.mml')).toBeUndefined();
+    expect(findSampleFileByRelativePath('samples/not_exist.mml')).toBeUndefined();
+  });
+
+  // === 以下は classics/ 楽曲の作法規約テスト (ユーザー追加曲には適用しない) ===
+
+  it('[classics] FM トラック (F1〜F8) の使用と #OPM ON の宣言が一致する', () => {
+    for (const file of classics) {
+      const usesFm = /(^|\s)F[1-8]\b/.test(file.content);
+      const declaresOpmOn = /#OPM\s+ON\b/i.test(file.content);
+
+      expect(usesFm, file.fileName).toBe(declaresOpmOn);
     }
   });
 
-  it('BEEP トラック (B1) の行に音量コマンド (v / @VE) を書いていない', () => {
-    for (const song of CLASSIC_SAMPLE_MML_SONGS) {
-      const beepLines = song.content.split('\n').filter((line) => line.trimStart().startsWith('B1'));
+  it('[classics] BEEP トラック (B1) の行に音量コマンド (v / @VE) を書いていない', () => {
+    for (const file of classics) {
+      const beepLines = file.content.split('\n').filter((line) => line.trimStart().startsWith('B1'));
 
       // B1 を使用しない曲はチェック対象外 (BEEP はハードウェア的に音量制御不可)
       for (const line of beepLines) {
-        expect(line, song.fileName).not.toMatch(/(^|\s)v\d+/);
-        expect(line, song.fileName).not.toMatch(/@VE/i);
+        expect(line, file.fileName).not.toMatch(/(^|\s)v\d+/);
+        expect(line, file.fileName).not.toMatch(/@VE/i);
       }
     }
   });
 
-  it('使用中の全トラックが先頭行で L を宣言している (曲頭永久ループの規約)', () => {
-    for (const song of CLASSIC_SAMPLE_MML_SONGS) {
+  it('[classics] 使用中の全トラックが先頭行で L を宣言している (曲頭永久ループの規約)', () => {
+    for (const file of classics) {
       const usedTracks = new Set<string>();
       const loopTracks = new Set<string>();
 
-      for (const rawLine of song.content.split('\n')) {
+      for (const rawLine of file.content.split('\n')) {
         const line = rawLine.trim();
         const match = line.match(/^(P[1-6]|N[12]|B1|F[1-8])\b/);
         if (match === null) {
@@ -84,13 +117,13 @@ describe('sampleMmlSongs', () => {
       }
 
       const missing = [...usedTracks].filter((track) => !loopTracks.has(track));
-      expect(missing, song.fileName).toHaveLength(0);
+      expect(missing, file.fileName).toHaveLength(0);
     }
   });
 
-  it('全トラックのループ復帰位置がトラックデータ先頭と一致する (曲頭ループ)', () => {
-    for (const song of CLASSIC_SAMPLE_MML_SONGS) {
-      const result = new MmlCompiler().compile(song.content);
+  it('[classics] 全トラックのループ復帰位置がトラックデータ先頭と一致する (曲頭ループ)', () => {
+    for (const file of classics) {
+      const result = new MmlCompiler().compile(file.content);
       const data = result.musicData as Uint8Array;
       // ヘッダ 10-11 バイト目にトラックテーブルのオフセットが格納される
       // (トラックテーブル: dataOffset 2 バイト + loopOffset 2 バイト / トラック)
@@ -101,17 +134,8 @@ describe('sampleMmlSongs', () => {
         const dataOffset = data[slot] | (data[slot + 1] << 8);
         const loopOffset = data[slot + 2] | (data[slot + 3] << 8);
 
-        expect(loopOffset, `${song.fileName}: ${track.id}`).toBe(dataOffset);
+        expect(loopOffset, `${file.fileName}: ${track.id}`).toBe(dataOffset);
       }
     }
-  });
-
-  it('検索ヘルパー (id / fileName) が正しく動作する', () => {
-    const first = CLASSIC_SAMPLE_MML_SONGS[0];
-
-    expect(findSampleSongById(first.id)).toBe(first);
-    expect(findSampleSongByFileName(first.fileName)).toBe(first);
-    expect(findSampleSongById('not-exist')).toBeUndefined();
-    expect(findSampleSongByFileName('not_exist.mml')).toBeUndefined();
   });
 });

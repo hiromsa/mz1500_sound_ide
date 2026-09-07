@@ -1,0 +1,33 @@
+; ============================================================
+; メヌエット ト長調 (BWV Anh. 114 / 1725頃)
+; 原曲: C. Petzold (バッハの名で親しまれる) 〔著作権フリー: パブリックドメイン〕
+; 構成: PSG ×2  P1=メロディ / P2=分散和音ベース
+; ============================================================
+#TITLE "Menuet in G"
+#COMPOSER "C. Petzold"
+#OPM OFF
+#OCTAVE NORMAL
+
+t132
+
+; --- P1: メロディ ---
+P1 L l8 o5 v13 q7
+P1 d4 < g a b c
+P1 d4 < g4 g4
+P1 o5 e4 c8 d8 e8 f+8
+P1 o5 g4 < g4 g4
+P1 o5 c4 d8 c8 < b8 a8
+P1 o4 b4 o5 c8 o4 b8 a8 g8
+P1 o4 f+4 g8 a8 b8 g8
+P1 o4 b4 a2
+
+; --- P2: 分散和音ベース (8分6音で小節を埋める) ---
+P2 L l8 o2 v9 q7
+P2 o2 g > d < b > d < g > d
+P2 o2 g > d < b > d < g > d
+P2 o2 c > g < e > g < c > g
+P2 o2 g > d < b > d < g > d
+P2 o2 c > g < e > g < c > g
+P2 o2 g > d < b > d < g > d
+P2 o2 d > a < f+ > a < d > a
+P2 o2 g > d < b > d < g > d

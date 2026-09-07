@@ -12,7 +12,7 @@ import {
   Music2,
   FolderX
 } from 'lucide-react';
-import { CLASSIC_SAMPLE_MML_SONGS, findSampleSongById } from '../data/sampleMmlSongs';
+import { SAMPLE_MML_FILES } from '../data/sampleMmlSongs';
 import { saveWorkspaceFolder, loadWorkspaceFolder, clearWorkspaceFolder } from '../utils/workspaceStorage';
 
 export interface FileItem {
@@ -185,46 +185,66 @@ async function scanDirectoryPicker(dirHandle: any): Promise<{ tree: FileItem[]; 
   return { tree: [rootNode], folderName: rootFolderName, allMmlFiles };
 }
 
-// サンプルMMLの初期データ
-const INITIAL_SAMPLE_FILES: FileItem[] = [
-  {
-    id: 'sample-folder-demo',
-    name: 'demos',
-    isFolder: true,
-    isOpen: true,
-    isSample: true,
-    children: [
-      { id: 's1', name: 'mz_theme_song.mml', isFolder: false, isSample: true },
-      { id: 's2', name: 'fm_fantasy_stage1.mml', isFolder: false, isSample: true },
-      { id: 's3', name: 'dcsg_retro_action.mml', isFolder: false, isSample: true },
-    ],
-  },
-  {
-    id: 'sample-folder-classics',
-    name: 'classics',
-    isFolder: true,
-    isOpen: true,
-    isSample: true,
-    // 著作権フリー (パブリックドメイン) 古典楽曲集 (実データは sampleMmlSongs.ts で管理)
-    children: CLASSIC_SAMPLE_MML_SONGS.map((song) => ({
-      id: song.id,
-      name: song.fileName,
+/**
+ * Sample MML ファイル群からエクスプローラー表示用のフォルダツリーを構築する。
+ * プロジェクトルートの samples/ 配下の実フォルダ構造がそのまま
+ * 「SAMPLE MML」ツリーへ反映される (フォルダは初期展開)。
+ */
+function buildSampleMmlTree(): FileItem[] {
+  const rootChildren: FileItem[] = [];
+
+  // 指定位置のフォルダを取得 (無ければ作成)。fullPath はフォルダ id のユニーク化に使用
+  const getOrCreateFolder = (parentChildren: FileItem[], folderName: string, fullPath: string): FileItem => {
+    let folder = parentChildren.find((n) => n.isFolder && n.name === folderName);
+    if (!folder) {
+      folder = {
+        id: `sample-folder-${fullPath}`,
+        name: folderName,
+        isFolder: true,
+        isOpen: true,
+        isSample: true,
+        children: [],
+      };
+      parentChildren.push(folder);
+    }
+    return folder;
+  };
+
+  for (const file of SAMPLE_MML_FILES) {
+    const segments = file.folderPath ? file.folderPath.split('/') : [];
+    let currentChildren = rootChildren;
+    let accumulatedPath = '';
+    for (const segment of segments) {
+      accumulatedPath = accumulatedPath ? `${accumulatedPath}/${segment}` : segment;
+      currentChildren = getOrCreateFolder(currentChildren, segment, accumulatedPath).children!;
+    }
+    currentChildren.push({
+      id: file.id,
+      name: file.fileName,
       isFolder: false,
       isSample: true,
-    })),
-  },
-  {
-    id: 'sample-folder-tpl',
-    name: 'templates',
-    isFolder: true,
-    isOpen: false,
-    isSample: true,
-    children: [
-      { id: 's4', name: 'template_all_17ch.mml', isFolder: false, isSample: true },
-      { id: 's5', name: 'template_opm_only.mml', isFolder: false, isSample: true },
-    ],
-  },
-];
+      content: file.content,
+    });
+  }
+
+  // フォルダ先行・名前順でソート (ローカルプロジェクトツリーと同じ規則)
+  const sortTree = (nodes: FileItem[]) => {
+    nodes.sort((a, b) => {
+      if (a.isFolder && !b.isFolder) return -1;
+      if (!a.isFolder && b.isFolder) return 1;
+      return a.name.localeCompare(b.name);
+    });
+    nodes.forEach((n) => {
+      if (n.children) sortTree(n.children);
+    });
+  };
+  sortTree(rootChildren);
+
+  return rootChildren;
+}
+
+// Sample MML の初期ツリー (samples/ フォルダの内容から自動構築)
+const INITIAL_SAMPLE_FILES: FileItem[] = buildSampleMmlTree();
 
 interface FileExplorerProps {
   onSelectFile?: (file: { id: string; name: string; content?: string }) => void;
@@ -470,13 +490,9 @@ export function FileExplorer({ onSelectFile, activeFileId, width, onOpenMidiRout
                           console.error('Failed to read file content:', e);
                           onSelectFile({ id: item.id, name: item.name, content: item.content || '' });
                         }
-                      } else if (item.content !== undefined) {
-                        // リロード復元されたファイル（Fileオブジェクトはないがテキストを保持）
-                        onSelectFile({ id: item.id, name: item.name, content: item.content });
                       } else {
-                        // SAMPLE MML (classics) の場合は実データの MML を渡す
-                        const sampleSong = findSampleSongById(item.id);
-                        onSelectFile({ id: item.id, name: item.name, content: sampleSong?.content });
+                        // SAMPLE MML (プリセット) / リロード復元ファイルは保持済み content を渡す
+                        onSelectFile({ id: item.id, name: item.name, content: item.content ?? '' });
                       }
                     }
                   }

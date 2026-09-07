@@ -1,0 +1,10 @@
+/* クオンタイズのサンプルです */
+
+#TITLE "Quantize Sample"
+#COMPOSER "Hotate"
+#OPM OFF
+#OCTAVE NORMAL
+
+@VE1 = {15,13,|9,>,5,4,3,2,1}
+
+P1 t240 o4 l4 q8 @VE1 cdefgfed

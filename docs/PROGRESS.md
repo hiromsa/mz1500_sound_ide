@@ -6,8 +6,8 @@
 ---
 
 ## 1. 現在のステータス概要
-- **バージョン**: `v0.0.1-beta.75`（コミット通番＋短縮ハッシュ ハイブリッド方式）
-- **テスト通過状況**: 全 32 テストファイル / 434 件パス（`npm test` / Vitest）
+- **バージョン**: `v0.0.1-beta.76`（コミット通番＋短縮ハッシュ ハイブリッド方式）
+- **テスト通過状況**: 全 32 テストファイル / 435 件パス（`npm test` / Vitest）
 - **型検査状況**: エラー 0 件（`npx tsc -b`）
 - **主要機能の稼働状況**:
   - Web ネイティブ MML コンパイラ（9ch / 17ch / ワークトラック W1〜W99 対応）
@@ -53,6 +53,18 @@
 ---
 
 ## 3. 直近の完了作業（最新）
+
+- **プロジェクトルート `samples/` フォルダ連動の SAMPLE MML 動的読み込み化 & ユーザー用 `mml_reference/` フォルダ新設 (`samples/` 新設, `src/data/sampleMmlSongs.ts` 全面改修, `src/view/FileExplorer.tsx`, `src/data/__tests__/sampleMmlSongs.test.ts` / `src/core/transform/__tests__/mmlTransformEngine.test.ts`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-07):
+  - **背景・ユーザー要望**:
+    - 「色々自分で作ったサンプル.mmlを組み込んで入れたい。mml_reference として。他にも今後フォルダ作って入れておきたい。プロジェクト内にルートフォルダを作っておいてほしい。既にあるサンプルもそのフォルダの中へ移動。」
+    - 構成はユーザー確定: `samples/` 直下に `mml_reference/`（新規）と `classics/`（既存 5 曲）を並列配置し、中身の無い demos/・templates/ ダミーは削除。
+  - **対応内容**:
+    - **`samples/` フォルダ新設**: プロジェクトルートに `samples/mml_reference/`（ユーザー自作 MML 置き場・使い方 README 同梱）と `samples/classics/`（古典 5 曲を .mml 実ファイル化して移行）を配置。
+    - **`src/data/sampleMmlSongs.ts` 全面改修（データ層）**: TS 文字列ハードコードから Vite `import.meta.glob('/samples/**/*.mml', { query: '?raw', import: 'default', eager: true })` による**フォルダ動的読み込み**へ刷新。`SampleMmlFile` 型（id / fileName / folderPath / relativePath / content）+ `SAMPLE_MML_FILES` + `findSampleFileById` / `findSampleFileByRelativePath` を提供。id は `samples/` からの相対パス（例: `classics/classic_fur_elise.mml`）で一意性を保証。UI とデータの疎結合を維持（本モジュールはファイル解決のみを担い、ツリー構築は UI 側）。
+    - **`FileExplorer.tsx`**: `INITIAL_SAMPLE_FILES` ハードコード（demos/classics/templates ダミー含む）を廃止し、`buildSampleMmlTree()` で samples/ の実フォルダ構造からツリーを自動構築（フォルダ初期展開・フォルダ先行/名前順ソート・フォルダ id はパスベースでユニーク化）。サンプルクリック時は保持済み `content` を渡す簡素化（`findSampleSongById` 参照廃止）。
+    - **テスト刷新**: `sampleMmlSongs.test.ts` は samples/ 配下の全 .mml を対象に（一意性 / ソート順 / 全曲エラー・警告ゼロコンパイル / 検索ヘルパー）+ classics/ 固有の作法規約（`L` 宣言 / BEEP 音量禁止 / `#OPM` 連動 / loopOffset==dataOffset）を分離検証。`mmlTransformEngine.test.ts` のサンプル曲統合テストも `SAMPLE_MML_FILES` ベースへ移行。ユーザーが追加した .mml も自動的に検証対象になる。
+  - **検証**:
+    - `npx tsc -b` エラーゼロ / `npm test` 全 435 件合格 (+1) / `npm run build` 成功（バンドルへ samples/ の MML 同梱を確認）。
 
 - **`q` ゲートタイミングのオフバイワン修正 & 演奏自然終了が UI へ反映されない問題の修正 (`src/core/player/TrackSequencer.ts`, `src/core/player/AudioEngine.ts`, `driver/mzsd_driver.asm`, `src/core/player/__tests__/MzsdSequencer.test.ts` / `Z80DriverMachine.test.ts` / `AudioEngine.test.ts` (新規), [`docs/specification/mml_reference.md`](./specification/mml_reference.md))** (2026-09-07):
   - **背景・ユーザー指摘**:

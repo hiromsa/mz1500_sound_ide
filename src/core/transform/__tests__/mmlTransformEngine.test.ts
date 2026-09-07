@@ -10,7 +10,7 @@ import { applyMmlTransform } from '../mmlTransformEngine';
 import { resolveLineScopes } from '../mmlTrackScope';
 import { MmlCompiler, type MmlCompileResult } from '../../mml/MmlCompiler';
 import { DiagnosticSeverity } from '../../mml/TrackId';
-import { CLASSIC_SAMPLE_MML_SONGS } from '../../../data/sampleMmlSongs';
+import { SAMPLE_MML_FILES } from '../../../data/sampleMmlSongs';
 
 function compile(mml: string): MmlCompileResult {
   return new MmlCompiler().compile(mml);
@@ -317,8 +317,8 @@ describe('integration with MmlCompiler', () => {
   });
 
   it('compiles all sample songs with zero errors after transforms', () => {
-    for (const song of CLASSIC_SAMPLE_MML_SONGS) {
-      let source = applyMmlTransform(song.content, {
+    for (const file of SAMPLE_MML_FILES) {
+      let source = applyMmlTransform(file.content, {
         kind: 'shiftOctave',
         targetTracks: ['P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'F1', 'F2', 'F3', 'W1', 'W2', 'W3', 'W4'],
         shift: -1,

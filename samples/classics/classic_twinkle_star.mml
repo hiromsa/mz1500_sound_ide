@@ -1,0 +1,52 @@
+; ============================================================
+; きらきら星 (フランス民謡 «Ah! vous dirai-je, maman» / 1761)
+; モーツァルト ピアノ変奏曲 K.265 の主題 〔著作権フリー: パブリックドメイン〕
+; 構成: FM=メロディ / PSG=アルペジオ / BEEP=3度下カウンター / N1=ドラム
+; 全音源 (FM + PSG + BEEP + Noise) を組み合わせたデモ曲
+; ============================================================
+#TITLE "Twinkle Twinkle"
+#COMPOSER "Trad. (Mozart K.265)"
+#OPM ON
+#OCTAVE NORMAL
+
+t120
+
+; --- FM 音色定義 (@1 = ベル風 ALG7) ---
+@1 = {
+  7, 0,
+  31, 20, 0, 8, 0, 18, 0, 1, 0, 0, 0,
+  31, 24, 0, 8, 0, 24, 0, 2, 0, 0, 0,
+  31, 16, 0, 6, 0, 30, 0, 4, 0, 0, 0,
+  31, 12, 0, 6, 0, 16, 0, 8, 0, 0, 0
+}
+
+; --- F1: メロディ (FM) ---
+F1 L @1 @v110 l4 o5 q7
+F1 c4 c4 g4 g4 a4 a4 g2
+F1 f4 f4 e4 e4 d4 d4 c2
+F1 g4 g4 f4 f4 e4 e4 d2
+F1 g4 g4 f4 f4 e4 e4 d2
+F1 c4 c4 g4 g4 a4 a4 g2
+F1 f4 f4 e4 e4 d4 d4 c2
+
+; --- B1: カウンター旋律 (BEEP・3度下平行) ---
+B1 L l4 o4
+B1 a4 a4 e4 e4 f4 f4 e2
+B1 d4 d4 c4 c4 o3 b4 b4 a2
+B1 o4 e4 e4 d4 d4 c4 c4 o3 b2
+B1 o4 e4 e4 d4 d4 c4 c4 o3 b2
+B1 a4 a4 e4 e4 f4 f4 e2
+B1 d4 d4 c4 c4 o3 b4 b4 a2
+
+; --- P1: アルペジオ伴奏 (PSG) ---
+P1 L l8 o3 v10 q7
+P1 [c e g e]2
+P1 f a c a c e g e g b d b c e g e
+P1 g b d b c e g e g b d b c e g e
+P1 g b d b c e g e g b d b c e g e
+P1 [c e g e]2
+P1 f a c a c e g e g b d b c e g e
+
+; --- N1: ノイズドラム ---
+N1 L @WN1 v8 l4
+N1 [c4 c8 c8 c4 c4]12
