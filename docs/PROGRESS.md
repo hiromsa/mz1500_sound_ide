@@ -6,7 +6,7 @@
 ---
 
 ## 1. 現在のステータス概要
-- **バージョン**: `v0.0.1-beta.71`（コミット通番＋短縮ハッシュ ハイブリッド方式）
+- **バージョン**: `v0.0.1-beta.72`（コミット通番＋短縮ハッシュ ハイブリッド方式）
 - **テスト通過状況**: 全 31 テストファイル / 429 件パス（`npm test` / Vitest）
 - **型検査状況**: エラー 0 件（`npx tsc -b`）
 - **主要機能の稼働状況**:
@@ -44,6 +44,35 @@
 ---
 
 ## 3. 直近の完了作業（最新）
+
+- **MML Live Dock: FM / V-ENV / P-ENV 各エディタへのドラッグリサイズ機能追加 (`src/view/MmlLiveDock.tsx`, `src/view/FmToneEditor.tsx`, `src/view/VolEnvelopeEditor.tsx`, `src/view/PitchEnvelopeEditor.tsx`)** (2026-09-07):
+  - **背景・ユーザー要望**:
+    - 「FMの部分は全体見せるとき、もちょっと高さあった方がいいですね。各タブとも一応ドラッグして高さ調節できるようにもしておけますか。それにより、入力エリアも広がる感じで。」
+  - **対応内容**:
+    - **ドラッグリサイズハンドル実装 (`MmlLiveDock.tsx`)**:
+      - ドック上端に半透明のピルバー形状のリサイズハンドルを配置。ホバー時にシアン色に発光、ドラッグ中はグロー強調。
+      - ポインターキャプチャ（`setPointerCapture`）を利用し、ドラッグ中に意図せずカーソルが外れないよう堅牢なリサイズ処理を実装。
+      - 上方向にドラッグで拡大・下方向で縮小。最小高さ 120px ～ 最大高さ 560px の範囲内で自由調節。
+      - チラ見え状態（閉じている）でもハンドルをドラッグすると自動展開してリサイズ開始。
+    - **展開中の現在高さ表示**: ヘッダーに「Drag top bar to resize: 340px」のようなインジケータを常時表示。
+    - **FM TONE エディタのデフォルト展開高さ増加**: 4オペレータ分のMMLがすべて見えるよう、FM専用のデフォルト展開高さを 220px → 340px (最大 650px) に設定。
+    - **高さトランジション制御**: ドラッグ中は `transition-none`、展開/折りたたみ時は `transition-[height] duration-200` でスムーズなアニメーション。
+  - **検証**:
+    - `npx tsc -b` エラーゼロ / `npm test` 全 31 ファイル・429 件合格。
+    - ブラウザ実機にて FM (340px デフォルト展開 / 最大 650px)、V-ENV・P-ENV (220px デフォルト展開) のリサイズ動作を確認完了。
+
+- **MML Live Dock: FM / V-ENV / P-ENV 各エディタへのチラ見えボトムドック実装 (`src/view/MmlLiveDock.tsx`, `src/view/FmToneEditor.tsx`, `src/view/VolEnvelopeEditor.tsx`, `src/view/PitchEnvelopeEditor.tsx`)** (2026-09-07):
+  - **背景・ユーザー要望**:
+    - 「TONE、P-ENV、V-ENV下のMML部分はちらっと常に見えていて、フォーカスしたりすると全体が見えるように固定され、GUIを見ながらMML部分を編集するとGUIへ反映されるとかできますか」
+    - 「まずはちらみの部分の雰囲気だけモックできますか」
+  - **対応内容**:
+    - **`MmlLiveDock.tsx` 新規コンポーネント作成**: 各エディタ最下部に sticky 配置されるチラ見えドック UI。
+    - **チラ見え状態（高さ 38px）**: MML 定義コードを1行サマリーでプレビュー表示。COPY / EXPAND ボタン付き。
+    - **展開状態**: textarea でコード閲覧・編集可能。MINIMIZE ボタン・MMLに反映ボタン付き。
+    - **全 3 エディタへ配置**: `FmToneEditor.tsx`・`VolEnvelopeEditor.tsx`・`PitchEnvelopeEditor.tsx` の旧 MML 出力カードを `MmlLiveDock` に置換。
+  - **検証**:
+    - `npx tsc -b` エラーゼロ / `npm test` 全 31 ファイル・429 件合格。
+    - ブラウザ実機にて全3タブのチラ見えバー・展開・COPY 動作を確認完了。
 
 - **FM TONE / V-ENV / P-ENV の音色・エンベロープ名称（NAMEコメント）仕様策定 & 各タブへの名称入力欄新設 (`src/utils/mmlDefinitionLoader.ts`, `src/utils/__tests__/mmlDefinitionLoader.test.ts`, `src/view/FmToneEditor.tsx`, `src/view/VolEnvelopeEditor.tsx`, `src/view/PitchEnvelopeEditor.tsx`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-07):
   - **背景・ユーザー要望**:

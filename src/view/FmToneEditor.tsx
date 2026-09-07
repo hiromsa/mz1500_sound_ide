@@ -23,6 +23,7 @@ import { isIdDefined, loadFmToneDefinition } from '../utils/mmlDefinitionLoader'
 import { DefinitionIdInput } from './DefinitionIdInput';
 import { TestNoteButton } from './components/TestNoteButton';
 import { midiNoteToFrequency } from '../utils/virtualSynth';
+import { MmlLiveDock } from './MmlLiveDock';
 
 // プリセット音色定義
 const PRESET_TONES: FmToneData[] = [
@@ -1731,25 +1732,14 @@ export function FmToneEditor({
         </div>
       </div>
 
-      {/* 5. Bento Card: MML エクスポートプレビュー */}
-      <div className="p-3 bg-[#12131a] rounded-lg border border-white/[0.08] flex flex-col gap-2 shrink-0 shadow-xs">
-        <div className="flex justify-between items-center text-[10px] font-medium text-zinc-400">
-          <span className="flex items-center gap-1.5 tracking-wide">
-            <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse"></span>
-            GENERATED FM TONE MML
-          </span>
-          <button
-            onClick={() => navigator.clipboard.writeText(generateMmlSnippet())}
-            className="h-6 px-2.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-zinc-100 border border-white/10 transition-colors text-[10px] cursor-pointer shadow-xs flex items-center gap-1"
-          >
-            <Copy className="w-3 h-3 text-zinc-400" />
-            <span>COPY TO CLIPBOARD</span>
-          </button>
-        </div>
-        <div className="bg-[#0c0d12] p-2.5 rounded border border-white/[0.06] font-mono text-cyan-300 text-xs tracking-wide select-all overflow-x-auto shadow-inner whitespace-pre-wrap">
-          {generateMmlSnippet()}
-        </div>
-      </div>
+      {/* 5. ボトムドック: MML チラ見せ & 展開編集 (LIVE MML DOCK) */}
+      <MmlLiveDock
+        title="FM TONE MML"
+        code={generateMmlSnippet()}
+        defaultExpandedHeight={340}
+        maxExpandedHeight={650}
+        onApplyToMml={onApplyToMml ? handleApplyToMml : undefined}
+      />
     </div>
   );
 }

@@ -6,7 +6,6 @@ import {
   FlipHorizontal,
   ArrowUpDown,
   Trash2,
-  Copy,
   ArrowLeft,
   ArrowRight,
   ArrowUp,
@@ -16,6 +15,7 @@ import { isIdDefined, loadVolEnvDefinition } from '../utils/mmlDefinitionLoader'
 import { DefinitionIdInput } from './DefinitionIdInput';
 import { TestNoteButton } from './components/TestNoteButton';
 import { midiNoteToFrequency } from '../utils/virtualSynth';
+import { MmlLiveDock } from './MmlLiveDock';
 
 const MAX_FRAMES = 128;
 
@@ -1313,25 +1313,12 @@ export function VolEnvelopeEditor({
         </div>
       </div>
 
-      {/* 4. Bento Card: MML エクスポートプレビュー */}
-      <div className="p-3 bg-[#12131a] rounded-lg border border-white/[0.08] flex flex-col gap-2 shrink-0 shadow-xs">
-        <div className="flex justify-between items-center text-[10px] font-medium text-zinc-400">
-          <span className="flex items-center gap-1.5 tracking-wide">
-            <span className="w-1.5 h-1.5 rounded-full bg-cyan-400"></span>
-            GENERATED MML COMMAND
-          </span>
-          <button
-            onClick={() => navigator.clipboard.writeText(generateMmlSnippet())}
-            className="h-6 px-2.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-zinc-100 border border-white/10 transition-colors text-[10px] cursor-pointer shadow-xs flex items-center gap-1"
-          >
-            <Copy className="w-3 h-3" />
-            <span>COPY MML</span>
-          </button>
-        </div>
-        <div className="bg-[#0c0d12] p-2.5 rounded border border-white/[0.06] font-mono text-cyan-300 text-xs tracking-wide select-all overflow-x-auto shadow-inner">
-          {generateMmlSnippet()}
-        </div>
-      </div>
+      {/* 4. ボトムドック: MML チラ見せ & 展開編集 (LIVE MML DOCK) */}
+      <MmlLiveDock
+        title="VOL ENV MML"
+        code={generateMmlSnippet()}
+        onApplyToMml={onApplyToMml ? handleApplyToMml : undefined}
+      />
     </div>
   );
 }
