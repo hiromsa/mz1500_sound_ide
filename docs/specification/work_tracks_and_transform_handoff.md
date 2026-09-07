@@ -85,8 +85,9 @@ graph TD
 
 | ファイルパス | 役割・状態 | 後続AIの作業 |
 | :--- | :--- | :--- |
-| `src/view/MmlTransformPanel.tsx` | MML TRANSFORM パネル UIモック | 実テキスト変換エンジンの実装・Monaco Editor への反映ロジック接続 |
-| `src/view/MidiRouterModal.tsx` | MIDI ROUTING STUDIO UIモック | 実際の `.mid` ファイルドラッグ＆ドロップ解析、MML変換エンジンの接続 |
+| `src/core/transform/mmlTransformEngine.ts` / `mmlTrackScope.ts` | **MML TRANSFORM 実テキスト変換エンジン (Step 1 完了・2026-09-07)**。リマップ/オクターブシフト/半音移調/音量スケーリングを実装。テスト 30 件 (`src/core/transform/__tests__/mmlTransformEngine.test.ts`) | 現状のままで可。VOLUME/QUANTIZE/TEMPO の UI 追加時に operation 型を拡張 |
+| `src/view/MmlTransformPanel.tsx` | MML TRANSFORM パネル (**本実装済み・Monaco Editor へ `MmlTransformRequest` 経由で反映**) | Step 1 完了。UI 追加 (VOLUME/QUANTIZE/TEMPO) の場合は操作組み立てを追加 |
+| `src/view/MidiRouterModal.tsx` | MIDI ROUTING STUDIO UIモック | 実際の `.mid` ファイルドラッグ＆ドロップ解析、MML変換エンジンの接続 (Step 2) |
 | `src/core/mml/parser/MmlParser.ts` | MMLコンパイラ本体（`W\d+` スキップ実装済み） | 現状のままで実機バイナリ生成から安全に除外される（完了） |
 | `src/core/mml/__tests__/MmlCompiler.test.ts` | コンパイラ単体テスト（Wトラック除外テスト追加済み） | 必要に応じて追加テストを作成 |
 | `src/utils/mmlCaretParser.ts` | エディタキャレット位置追跡（`W1-W99` 登録済み） | 完了 |

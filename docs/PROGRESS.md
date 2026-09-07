@@ -5,6 +5,23 @@
 ---
 
 ## 1. 直近の完了作業（最新）
+- **MML TRANSFORM 変換エンジンを本実装し Monaco Editor への反映経路を接続 (`src/core/transform/mmlTransformEngine.ts` / `mmlTrackScope.ts` / `src/core/transform/__tests__/mmlTransformEngine.test.ts` 新設, `src/view/MmlTransformPanel.tsx`, `src/app/App.tsx`, [`docs/specification/ui.md`](./specification/ui.md), [`docs/specification/work_tracks_and_transform_handoff.md`](./specification/work_tracks_and_transform_handoff.md))** (2026-09-07):
+  - **背景・ユーザー確定方針**:
+    - 別 AI が作成した `MmlTransformPanel` (右ペイン TRANSFORM タブ) は UI モックのみだったため、引継ぎ仕様 (`work_tracks_and_transform_handoff.md` §4 Step 1) に従い **Step 1: MML TRANSFORM の実テキスト変換エンジン** を本実装 (Step 2 の MIDI 実装は次フェーズへ)。
+  - **対応内容**:
+    1. **`mmlTrackScope.ts` (新規・行スコープ解析)**: 各行のトラック帰属を解決。検出は正式パーサ (`MmlParser.detectTrackSpec`) 準拠 (行頭大文字 `P1-6`/`N1-2`/`B1`/`F1-8` + カンマ区切り複数指定) に加え、パーサの W 行判定と同一条件 (行頭 `W数字`) で作業用トラック (`W1`-`W99`) も検出。**継続行は直前行のトラックに帰属**、マクロ定義行 (`@1 = { ... }`) とディレクティブ行 (`#TITLE` 等) は変換対象外 (帰属は維持)。
+    2. **`mmlTransformEngine.ts` (新規・変換エンジン)**: UI 非依存の純粋関数 `applyMmlTransform(source, operation)` が 4 操作を提供:
+       - `remapTracks`: 行頭宣言識別子の位置ベース一括置換 (スワップ等の衝突が起きない)。
+       - `shiftOctave`: 対象トラックの `o` コマンド値を一括シフト (0-10 クランプ、`<`/`>` は不変)。
+       - `transpose`: 半音移調。各トラックの現在オクターブを `o`/`<`/`>` で追跡 (初期値 o4 = 正式パーサ `TrackState` 同一) し、**オクターブ跨ぎは音符直前に `o` コマンドを挿入**。臨時記号は `#` 表記に正規化 (`c+4` → `c#4` 等、二重臨時記号を防止)。連符 (`{ceg}`) 内は `o` 挿入不可のため同オクターブ内にクランプ。
+       - `scaleVolume`: `round(v × percent/100) + add` で変換 (`v` 0-15 クランプ)。`@v` は行に FM トラックが含まれる場合のみ 0-127 クランプで適用。
+       - 共通保護: コメント (`;`/`/` 以降) 不変、`t120`/`l8`/`v15`/`@1` 等のコマンド数値を音符誤認しない、実変化なしトークンは `changedCount` に含めない。
+    3. **`MmlTransformPanel`**: `onApplyTransform` (ログのみ) を廃止し、`MmlTransformRequest` (description + scope + `MmlTransformOperation[]`) を組み立てて `onRequestTransform` へ送出する方式に改修。`ピッチのみ反映` / `APPLY TO MML` / 一括リマップ / 単一振り替え / スワップの各ボタンを実変換に接続。
+    4. **`App.tsx`**: `handleMmlTransform` を新設。Monaco Editor からスコープ (`Entire Track` = 全文 / `Selection` = 選択範囲、未選択時は全文フォールバック) のテキストを取得しエンジンで変換 → **`executeEdits` + `pushUndoStop` で書き戻し (Undo/Redo 履歴保持)** → 適用件数を `[MML TRANSFORM]` ログへ出力 (0 件時は「適用可能な変更はありませんでした」)。
+    5. **テスト (+30)**: リマップ/スワップ/W トラック移動/複数宣言行、オクターブシフトのクランプ・継続行適用、移調のオクターブ跨ぎ (状態引き継ぎ含む)・連符内クランプ・コマンド数値の誤認防止・コメント不変、音量スケーリングの FM/PSG 値域、スコープ解析、および **変換後 MML の `MmlCompiler` コンパイル検証** (ノート番号 +2 検証、オクターブ跨ぎ後のノート番号 72/73 検証、SAMPLE MML 全曲への 3 操作連続適用でエラーゼロ)。
+  - **検証**:
+    - `npx tsc -b` エラーゼロ / **`npm test` 全 387 件合格** (+30) / `npm run lint` エラーゼロ (既存 UI 警告 9 のみ) / `npm run build` 成功。
+
 - **SAMPLE MML に著作権フリー古典楽曲集 (classics/) を追加 (`src/data/sampleMmlSongs.ts` 新設, `src/data/__tests__/sampleMmlSongs.test.ts` 新設, `src/view/FileExplorer.tsx`, `src/view/MmlEditor.tsx`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-07):
   - **背景・ユーザー確定方針**:
     - 「PSG BEEP FM音源使って 著作権フリー(古典のクラッシックなどで使えたりするものなど)の曲をいくつか追加してください。SAMPLE MMLとして。」

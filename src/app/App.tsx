@@ -22,7 +22,8 @@ import { SongSetupPanel, type SongMetadata } from '../view/SongSetupPanel';
 import { VolEnvelopeEditor } from '../view/VolEnvelopeEditor';
 import { PitchEnvelopeEditor } from '../view/PitchEnvelopeEditor';
 import { FmToneEditor } from '../view/FmToneEditor';
-import { MmlTransformPanel } from '../view/MmlTransformPanel';
+import { MmlTransformPanel, type MmlTransformRequest } from '../view/MmlTransformPanel';
+import { applyMmlTransform } from '../core/transform/mmlTransformEngine';
 import { MmlCompiler } from '../core/mml/MmlCompiler';
 import type { MmlDiagnostic } from '../core/mml/TrackId';
 import { DiagnosticSeverity } from '../core/mml/TrackId';
@@ -357,6 +358,40 @@ function App() {
     mmlSourceRef.current = { source, fileName };
     setActiveMmlSource(source);
   }, []);
+
+  // MML TRANSFORM パネルからの変換要求を Monaco Editor へ適用する (Undo/Redo 履歴を保持)
+  const handleMmlTransform = useCallback((request: MmlTransformRequest) => {
+    const ed = monacoEditorRef.current;
+    const model = ed?.getModel();
+    if (!ed || !model) return;
+
+    const selection = ed.getSelection();
+    const useSelection = request.scope === 'selection'
+      && selection !== null
+      && !selection.isEmpty();
+    const range = useSelection && selection ? selection : model.getFullModelRange();
+    const source = model.getValueInRange(range);
+
+    let transformed = source;
+    let totalChanges = 0;
+    for (const operation of request.operations) {
+      const result = applyMmlTransform(transformed, operation);
+      transformed = result.source;
+      totalChanges += result.changedCount;
+    }
+
+    if (request.operations.length === 0 || totalChanges === 0) {
+      appendLog(`[MML TRANSFORM] ${request.description}: 適用可能な変更はありませんでした`);
+      return;
+    }
+
+    // executeEdits で置換することで Undo (Ctrl+Z) で変換前に戻せる
+    ed.executeEdits('mml-transform', [{ range, text: transformed }]);
+    ed.pushUndoStop();
+
+    const scopeLabel = useSelection ? ' / 選択範囲のみ' : '';
+    appendLog(`[MML TRANSFORM] ${request.description} (${totalChanges} 件を適用${scopeLabel})`);
+  }, [appendLog]);
 
   // 演奏ファサードを遅延生成する (AudioContext はユーザ操作内の play 時に生成される)
   const ensurePlayer = useCallback((): Player => {
@@ -916,10 +951,7 @@ function App() {
                     appendLog(`[MML TRANSFORM] ACZ-8BS1MZ (YM2151) sound board turned ${nextVal ? 'ON' : 'OFF'}.`);
                   }}
                   onOpenMidiRouter={() => setIsMidiRouterOpen(true)}
-                  onApplyTransform={(desc) => {
-                    const time = new Date().toLocaleTimeString();
-                    appendLog(`[${time}] [MML TRANSFORM] ${desc}`);
-                  }}
+                  onRequestTransform={handleMmlTransform}
                 />
               )}
 

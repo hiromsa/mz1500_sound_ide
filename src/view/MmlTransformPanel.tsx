@@ -8,12 +8,23 @@ import {
   Layers,
   Shuffle
 } from 'lucide-react';
+import type { MmlTransformOperation } from '../core/transform/mmlTransformEngine';
+
+/** TRANSFORM パネルから App (Monaco Editor) へ送る変換適用要求。 */
+export interface MmlTransformRequest {
+  /** ログ / トースト表示用の説明文。 */
+  description: string;
+  /** 適用スコープ (track = 全文 / selection = エディタ選択範囲のみ)。 */
+  scope: 'track' | 'selection';
+  /** 順次適用する変換操作。 */
+  operations: readonly MmlTransformOperation[];
+}
 
 interface MmlTransformPanelProps {
   enableYM2151?: boolean;
   onToggleEnableYM2151?: () => void;
   onOpenMidiRouter?: () => void;
-  onApplyTransform?: (description: string) => void;
+  onRequestTransform?: (request: MmlTransformRequest) => void;
 }
 
 // MZ-1500 全17ch 定義
@@ -59,7 +70,7 @@ const WORK_TRACK_IDS = ['W1', 'W2', 'W3', 'W4'];
 export const MmlTransformPanel: React.FC<MmlTransformPanelProps> = ({
   enableYM2151 = false,
   onToggleEnableYM2151,
-  onApplyTransform,
+  onRequestTransform,
 }) => {
   const availableTracks = enableYM2151
     ? ALL_TRACKS
@@ -213,27 +224,64 @@ export const MmlTransformPanel: React.FC<MmlTransformPanelProps> = ({
     setBatchMappings(newMappings);
   };
 
-  const handleApply = (actionName: string) => {
+  // 変換適用要求を App (Monaco Editor) へ送出する
+  const requestTransform = (description: string, operations: readonly MmlTransformOperation[]) => {
     const targetDesc = selectedTracks.length === 0
       ? 'NO TRACKS'
       : selectedTracks.length === availableTracks.length
       ? (enableYM2151 ? 'ALL TRACKS (17ch)' : 'ALL TRACKS (9ch)')
       : selectedTracks.join(', ');
-    const msg = `Applied [${actionName}] to [${targetDesc}] (${scope === 'track' ? 'Entire Track' : 'Selection'})`;
+    const msg = `${description} → [${targetDesc}] (${scope === 'track' ? 'Entire Track' : 'Selection'})`;
     setAppliedToast(msg);
-    onApplyTransform?.(msg);
+    onRequestTransform?.({ description: msg, scope, operations });
     setTimeout(() => setAppliedToast(null), 3000);
   };
 
+  // ピッチのみ反映 (オクターブシフト + 半音移調を順次適用)
+  const handleApplyPitch = () => {
+    if (selectedTracks.length === 0) return;
+
+    const operations: MmlTransformOperation[] = [];
+    if (octaveShift !== 0) {
+      operations.push({ kind: 'shiftOctave', targetTracks: selectedTracks, shift: octaveShift });
+    }
+    if (semitoneShift !== 0) {
+      operations.push({ kind: 'transpose', targetTracks: selectedTracks, semitones: semitoneShift });
+    }
+
+    if (operations.length === 0) return;
+    requestTransform(`Pitch Shift (${octaveShift} oct, ${semitoneShift} semi)`, operations);
+  };
+
   const handleApplyBatchRemap = () => {
-    const mapPairs = Object.entries(batchMappings)
-      .filter(([src, tgt]) => src !== tgt)
-      .map(([src, tgt]) => `${src}➔${tgt}`);
+    const mappings = Object.fromEntries(
+      Object.entries(batchMappings).filter(([src, tgt]) => src !== tgt),
+    );
+    const mapPairs = Object.entries(mappings).map(([src, tgt]) => `${src}➔${tgt}`);
     if (mapPairs.length === 0) {
-      handleApply('Batch Remap (No changes)');
+      requestTransform('Batch Remap (No changes)', []);
       return;
     }
-    handleApply(`Batch Remap: ${mapPairs.join(', ')}`);
+
+    requestTransform(`Batch Remap: ${mapPairs.join(', ')}`, [
+      { kind: 'remapTracks', mappings },
+    ]);
+  };
+
+  // 単一チャンネルの振り替え (移動・トラック名置換)
+  const handleApplyReassign = () => {
+    if (reassignSource === reassignTarget) return;
+    requestTransform(`Reassign ${reassignSource} to ${reassignTarget}`, [
+      { kind: 'remapTracks', mappings: { [reassignSource]: reassignTarget } },
+    ]);
+  };
+
+  // 2 チャンネルの相互入替 (スワップ)
+  const handleApplySwap = () => {
+    if (swapTrackA === swapTrackB) return;
+    requestTransform(`Swap ${swapTrackA} <-> ${swapTrackB}`, [
+      { kind: 'remapTracks', mappings: { [swapTrackA]: swapTrackB, [swapTrackB]: swapTrackA } },
+    ]);
   };
 
   // 選択トラックの要約表示テキスト
@@ -289,7 +337,7 @@ export const MmlTransformPanel: React.FC<MmlTransformPanelProps> = ({
           {/* 一括反映ボタン */}
           <button
             disabled={selectedTracks.length === 0}
-            onClick={() => handleApply(`Pitch (Oct ${octaveShift > 0 ? `+${octaveShift}` : octaveShift}, Semi ${semitoneShift > 0 ? `+${semitoneShift}` : semitoneShift})`)}
+            onClick={handleApplyPitch}
             className={`h-6.5 px-3 rounded text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
               selectedTracks.length === 0
                 ? 'bg-[#2E2E2E] text-zinc-500 border border-[#3C3C3C] cursor-not-allowed'
@@ -549,7 +597,7 @@ export const MmlTransformPanel: React.FC<MmlTransformPanelProps> = ({
           <div className="pt-1 mt-auto">
             <button
               disabled={selectedTracks.length === 0}
-              onClick={() => handleApply(`Pitch Shift (${octaveShift} oct, ${semitoneShift} semi)`)}
+              onClick={handleApplyPitch}
               className={`w-full h-6 rounded text-[10px] font-medium transition-colors cursor-pointer border ${
                 selectedTracks.length === 0
                   ? 'bg-[#2E2E2E] text-zinc-500 border-[#3C3C3C] cursor-not-allowed'
@@ -777,7 +825,7 @@ export const MmlTransformPanel: React.FC<MmlTransformPanelProps> = ({
                   </select>
 
                   <button
-                    onClick={() => handleApply(`Reassign ${reassignSource} to ${reassignTarget}`)}
+                    onClick={handleApplyReassign}
                     className="h-6 px-3 text-[10px] font-medium bg-[#383838] hover:bg-[#444444] text-zinc-200 rounded border border-[#484848] transition-colors cursor-pointer"
                   >
                     変更
@@ -818,7 +866,7 @@ export const MmlTransformPanel: React.FC<MmlTransformPanelProps> = ({
                   </select>
 
                   <button
-                    onClick={() => handleApply(`Swap ${swapTrackA} <-> ${swapTrackB}`)}
+                    onClick={handleApplySwap}
                     className="h-6 px-3 text-[10px] font-medium bg-[#383838] hover:bg-[#444444] text-zinc-200 rounded border border-[#484848] transition-colors cursor-pointer flex items-center gap-1"
                   >
                     <ArrowRightLeft className="w-3 h-3 text-[#00A8FF]" />
