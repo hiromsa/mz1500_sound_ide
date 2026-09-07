@@ -139,4 +139,16 @@ describe('MmlCompiler', () => {
     const missing = compile('F1 p c');
     expect(missing.success).toBe(false);
   });
+
+  it('作業用トラック (W1〜W99) はエラーにならず実機バイナリからスキップされる', () => {
+    const mml = `
+      P1 o4 c d e
+      W1 o3 [c e g]
+      W2 o2 c r e r
+    `;
+    const result = compile(mml);
+    expect(result.success).toBe(true);
+    expect(result.diagnostics).toHaveLength(0);
+    expect(result.tracks.map((t) => t.id)).toEqual(['P1']);
+  });
 });

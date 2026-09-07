@@ -8,10 +8,13 @@ import {
   TrendingUp, 
   LineChart, 
   Music,
+  Music2,
   Settings,
   Repeat,
-  AlertCircle
+  AlertCircle,
+  Wand2
 } from 'lucide-react';
+import { MidiRouterModal } from '../view/MidiRouterModal';
 import { MmlEditor, type BottomTab } from '../view/MmlEditor';
 import { TrackMonitor } from '../view/TrackMonitor';
 import { SettingsPanel } from '../view/SettingsPanel';
@@ -19,6 +22,7 @@ import { SongSetupPanel, type SongMetadata } from '../view/SongSetupPanel';
 import { VolEnvelopeEditor } from '../view/VolEnvelopeEditor';
 import { PitchEnvelopeEditor } from '../view/PitchEnvelopeEditor';
 import { FmToneEditor } from '../view/FmToneEditor';
+import { MmlTransformPanel } from '../view/MmlTransformPanel';
 import { MmlCompiler } from '../core/mml/MmlCompiler';
 import type { MmlDiagnostic } from '../core/mml/TrackId';
 import { DiagnosticSeverity } from '../core/mml/TrackId';
@@ -36,7 +40,7 @@ import type { MmlCaretContext } from '../utils/mmlCaretParser';
 import type { editor } from 'monaco-editor';
 import mz1500Logo from '../assets/mz1500logo.svg';
 
-type RightTab = 'track' | 'tone' | 'vol_envelope' | 'pitch_envelope' | 'song_setup' | 'settings';
+type RightTab = 'track' | 'tone' | 'vol_envelope' | 'pitch_envelope' | 'song_setup' | 'mml_tools' | 'settings';
 
 /** コンパイル診断を PROBLEMS パネル用の項目へ変換する。 */
 function toCompileErrorItems(
@@ -107,7 +111,7 @@ function App() {
   // バーチャルキーボードの発音コンテキスト判定:
   // - 左ペイン (MMLエディタ等) 選択中 / 右ペイン非表示 / 右ペインがエディタ以外のタブ → MMLキャレットコンテキスト
   // - 右ペインで FM TONE / VOL ENV / PITCH ENV を選択中 → そのエディタのプレビューコンテキスト
-  const activeTabContext: ActiveTabContext = (focusedPane === 'mml' || !showRightPane || activeRightTab === 'track' || activeRightTab === 'song_setup' || activeRightTab === 'settings')
+  const activeTabContext: ActiveTabContext = (focusedPane === 'mml' || !showRightPane || activeRightTab === 'track' || activeRightTab === 'song_setup' || activeRightTab === 'mml_tools' || activeRightTab === 'settings')
     ? 'mml'
     : (activeRightTab as ActiveTabContext);
 
@@ -116,6 +120,22 @@ function App() {
 
   // Monaco Editor インスタンス参照 (MMLスニペット挿入用)
   const monacoEditorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
+
+  // MIDI Router モーダル開閉ステート
+  const [isMidiRouterOpen, setIsMidiRouterOpen] = useState<boolean>(false);
+
+  // MIDI Router からの MML 反映処理
+  const handleApplyMidiRouter = useCallback((generatedMml: string) => {
+    if (monacoEditorRef.current) {
+      const currentVal = monacoEditorRef.current.getValue();
+      monacoEditorRef.current.setValue(`${generatedMml}\n${currentVal}`);
+    }
+    const time = new Date().toLocaleTimeString();
+    setLogs((prev) => [
+      ...prev,
+      `[${time}] [MIDI ROUTER] Generated MZ-1500 tracks applied to MML editor.`,
+    ]);
+  }, []);
 
   // 右クリックメニュー: FM TONE 編集リクエスト
   const handleRequestEditTone = useCallback((id: number) => {
@@ -601,6 +621,16 @@ function App() {
             <Download className="w-3.5 h-3.5 text-zinc-400" />
             <span>EXPORT (.qdf)</span>
           </button>
+
+          {/* IMPORT MIDI (Experimental Prototype) */}
+          <button 
+            onClick={() => setIsMidiRouterOpen(true)}
+            className="h-7 px-3 rounded text-xs font-bold bg-[#00A8FF]/15 hover:bg-[#00A8FF]/25 active:bg-[#00A8FF]/35 text-[#00A8FF] border border-[#00A8FF]/50 shadow-[0_0_8px_rgba(0,168,255,0.2)] transition-all flex items-center gap-1.5 cursor-pointer"
+            title="MIDIファイル (.mid) をインポートしてチャンネル割り当てを行う"
+          >
+            <Music2 className="w-3.5 h-3.5 text-[#00A8FF]" />
+            <span>IMPORT MIDI</span>
+          </button>
         </div>
       </header>
 
@@ -767,7 +797,24 @@ function App() {
                 <span>SONG SETUP</span>
               </button>
 
-              {/* タブ 6: SETTINGS */}
+              {/* タブ 6: MML TRANSFORM */}
+              <button
+                onClick={() => {
+                  setActiveRightTab('mml_tools');
+                  setFocusedPane('rightPane');
+                }}
+                className={`px-3.5 text-xs font-mono font-medium focus:outline-none transition-colors border-b-2 flex items-center gap-1.5 select-none shrink-0 cursor-pointer ${
+                  activeRightTab === 'mml_tools'
+                    ? 'bg-[#1E1E1E] text-zinc-100 border-[#00A8FF] font-semibold'
+                    : 'text-zinc-400 border-transparent hover:text-zinc-200 hover:bg-[#333333]'
+                }`}
+                title="MML Transformation & Batch Editing Tools"
+              >
+                <Wand2 className={`w-3.5 h-3.5 ${activeRightTab === 'mml_tools' ? 'text-[#00A8FF]' : 'text-zinc-400'}`} />
+                <span>MML TRANSFORM</span>
+              </button>
+
+              {/* タブ 7: SETTINGS */}
               <button
                 onClick={() => {
                   setActiveRightTab('settings');
@@ -860,6 +907,22 @@ function App() {
                 />
               )}
 
+              {activeRightTab === 'mml_tools' && (
+                <MmlTransformPanel 
+                  enableYM2151={enableYM2151}
+                  onToggleEnableYM2151={() => {
+                    const nextVal = !enableYM2151;
+                    setEnableYM2151(nextVal);
+                    appendLog(`[MML TRANSFORM] ACZ-8BS1MZ (YM2151) sound board turned ${nextVal ? 'ON' : 'OFF'}.`);
+                  }}
+                  onOpenMidiRouter={() => setIsMidiRouterOpen(true)}
+                  onApplyTransform={(desc) => {
+                    const time = new Date().toLocaleTimeString();
+                    appendLog(`[${time}] [MML TRANSFORM] ${desc}`);
+                  }}
+                />
+              )}
+
               {activeRightTab === 'settings' && (
                 <SettingsPanel
                   onGoToSongSetup={() => setActiveRightTab('song_setup')}
@@ -874,6 +937,19 @@ function App() {
           </div>
         )}
       </main>
+
+      {/* MIDI Router Modal (Prototype UI) */}
+      <MidiRouterModal
+        isOpen={isMidiRouterOpen}
+        onClose={() => setIsMidiRouterOpen(false)}
+        onApplyToMml={handleApplyMidiRouter}
+        enableYM2151={enableYM2151}
+        onToggleEnableYM2151={() => {
+          const nextVal = !enableYM2151;
+          setEnableYM2151(nextVal);
+          appendLog(`[MIDI ROUTER] ACZ-8BS1MZ (YM2151) sound board turned ${nextVal ? 'ON' : 'OFF'}.`);
+        }}
+      />
     </div>
   );
 }

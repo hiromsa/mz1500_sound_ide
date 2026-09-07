@@ -81,6 +81,14 @@ export class MmlParser {
 
     for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
       const line = lines[lineIndex].replace(/\r$/, '');
+      const trimmed = line.trimStart();
+
+      // 作業用トラック (W1〜W99) は実機音源バイナリ生成対象外としてスキップ
+      if (/^W\d+\b/i.test(trimmed)) {
+        current = null;
+        continue;
+      }
+
       const { ids, contentStart } = detectTrackSpec(line);
 
       if (ids !== null) {

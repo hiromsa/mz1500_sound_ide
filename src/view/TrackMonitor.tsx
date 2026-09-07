@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Volume2, VolumeX, Sliders } from 'lucide-react';
+import { Volume2, VolumeX, Sliders, Layers } from 'lucide-react';
 import { allTracks } from '../core/mml/TrackId';
 
 // 演奏位置 → MML 対応情報は MML ハイライト・トラッキング共通ユーティリティへ移設 (既存 import 互換のため再エクスポート)
@@ -476,6 +476,56 @@ export function TrackMonitor({
               </p>
             </div>
           )}
+        </div>
+      </div>
+
+      {/* ワークトラック (W1〜W99) の説明カード */}
+      <div className="bg-[#242424] p-3 rounded-lg border border-[#3C3C3C] shadow-xs shrink-0 flex flex-col gap-2">
+        <div className="flex items-center justify-between border-b border-[#353535] pb-1.5">
+          <div className="flex items-center gap-2">
+            <Layers className="w-3.5 h-3.5 text-amber-400" />
+            <span className="text-xs font-semibold text-zinc-200 tracking-wide">
+              WORK TRACKS (W1〜W99) について
+            </span>
+            <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-950/60 text-amber-300 border border-amber-800/40 font-medium">
+              作業用トラック・実機演奏外
+            </span>
+          </div>
+          <span className="text-[10px] text-zinc-500 font-mono">
+            ※モニター機能の対象外です（再生・VUメーター表示なし）
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-[11px] text-zinc-400 leading-relaxed pt-0.5">
+          <div className="p-2 rounded bg-[#1C1C1C] border border-[#333333] space-y-1">
+            <div className="text-zinc-200 font-semibold flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+              <span>1. 素材の一時退避・保持</span>
+            </div>
+            <p className="text-[10px] text-zinc-400">
+              MIDI Import 時に実機チャンネル（P1〜P6, N1〜N2, B1, F1〜F8）へ収まりきらなかったフレーズや、後で使いたいメロディ素材が自動的に <code className="text-amber-300 font-bold">W1〜W99</code> として MML に保存されます。
+            </p>
+          </div>
+
+          <div className="p-2 rounded bg-[#1C1C1C] border border-[#333333] space-y-1">
+            <div className="text-zinc-200 font-semibold flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+              <span>2. PSG (DCSG) 互換文法</span>
+            </div>
+            <p className="text-[10px] text-zinc-400">
+              文法は PSG 準拠（音程・オクターブ・音長・テンポ等）で記述でき、エディタ上で構文エラーになりません。実機バイナリ生成（QDF/BIN）および演奏時は自動スキップされます。
+            </p>
+          </div>
+
+          <div className="p-2 rounded bg-[#1C1C1C] border border-[#333333] space-y-1">
+            <div className="text-zinc-200 font-semibold flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+              <span>3. MML TRANSFORM で実機へ配分</span>
+            </div>
+            <p className="text-[10px] text-zinc-400">
+              画面右上の <strong className="text-zinc-200">MML TRANSFORM</strong> タブから、作業用トラックを選んで <code className="text-amber-300 font-bold">W# ➔ P#</code>（または <code className="text-amber-300 font-bold">W# ➔ F#</code>）をクリックすることで、いつでも実機チャンネルへ簡単に一括再割り当てが可能です。
+            </p>
+          </div>
         </div>
       </div>
     </div>

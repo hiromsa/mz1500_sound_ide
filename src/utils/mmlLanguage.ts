@@ -64,11 +64,12 @@ export const mmlMonarchTokensProvider: languages.IMonarchLanguage = {
         { token: 'delimiter.bracket', next: '@macroBody' }
       ]],
 
-      // トラック指定子 (全17トラック: P1〜P6, N1〜N2, B1, F1〜F8)
+      // トラック指定子 (全17トラック: P1〜P6, N1〜N2, B1, F1〜F8、および作業用トラック: W1〜W99)
       [/\b(P[1-6])\b/i, 'track.psg'],
       [/\b(N[1-2])\b/i, 'track.noise'],
       [/\b(B1)\b/i, 'track.beep'],
       [/\b(F[1-8])\b/i, 'track.fm'],
+      [/\b(W\d+)\b/i, 'track.psg'],
 
       // 音色・エンベロープ・効果音マクロ適用 / 解除
       [/[@](?:FM)?\d+\b/i, 'macro.fm'],

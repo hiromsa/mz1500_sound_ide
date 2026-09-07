@@ -30,8 +30,8 @@ export interface TrackPlayState {
   fmVolume: number;
 }
 
-/** 有効なトラック名 (P1-P6 / N1-N2 / B1 / F1-F8) のパターン (大文字のみ。正式パーサ準拠) */
-const TRACK_NAME_PATTERN = /^(?:P[1-6]|N[1-2]|B1|F[1-8])$/;
+/** 有効なトラック名 (P1-P6 / N1-N2 / B1 / F1-F8 / W1-W99) のパターン (大文字のみ) */
+const TRACK_NAME_PATTERN = /^(?:P[1-6]|N[1-2]|B1|F[1-8]|W\d+)$/;
 
 /**
  * 演奏状態に影響するコマンドトークンのパターン。

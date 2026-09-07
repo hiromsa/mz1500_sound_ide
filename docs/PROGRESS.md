@@ -1182,6 +1182,28 @@ Konamiman氏の `Z80.Net` をTypeScriptへ移植するにあたり、以下の�
     - UI仕様書 [`docs/specification/ui.md`](./docs/specification/ui.md) 作成・継続更新
     - ルール定義 [`GEMINI.md`](./GEMINI.md), [`AGENTS.md`](./AGENTS.md) 作成
     - 進捗管理 [`PROGRESS.md`](./PROGRESS.md) 作成・継続更新
+13. **ワークトラック (`W1`〜`W99`) & MML TRANSFORM & MIDI ROUTING STUDIO (モック＆基盤完了 2026-09-07)**
+    - **ワークトラック (`W1`〜`W99`) システムの導入**:
+      - 実機バイナリ生成対象外の作業用トラック仕様策定。文法は PSG 準拠。
+      - `src/core/mml/parser/MmlParser.ts` にて `W\d+` 行を安全にスキップ（実機Z80バイナリに非出力・無影響）。
+      - `src/core/mml/__tests__/MmlCompiler.test.ts` 単体テスト追加（全357件PASS）。
+      - `src/utils/mmlCaretParser.ts` & `src/utils/mmlLanguage.ts` で PSG 準拠の構文解析・シンタックスハイライト・補完対応。
+      - トラックモニターに W トラック解説 Bento Card を配置。
+    - **MML TRANSFORM パネル ([`src/view/MmlTransformPanel.tsx`](./src/view/MmlTransformPanel.tsx))**:
+      - 右ペイン第5タブに配置。PSG・NOISE・BEEP・FM・WORK を網羅する対象トラック複数選択グリッド。
+      - 単一トラックリマップ、および一括リマップ（`P# ➔ F#`, `F# ➔ P#`, `W# ➔ P#`, `W# ➔ F#`）。
+      - オクターブシフト（`o±1`, `o±2`）、音量スケーリング（`±1`, `±2`, `%`）、クオンタイズ、テンポスケール。
+      - FM音源スイッチ（OFF時）と連動し、FMトラックの非活性化＆有効化リンク案内。
+    - **MIDI ROUTING STUDIO ([`src/view/MidiRouterModal.tsx`](./src/view/MidiRouterModal.tsx))**:
+      - ヘッダー `[MIDI IMPORT]` より起動するインテリジェントルーティングモーダル。
+      - 実機スロット（PSG 6ch, NOISE 2ch, BEEP 1ch, 拡張FM 8ch）と作業用プール（`W1`〜`W4`）の3カラム配置。
+      - 枠を超過したトラックを自動的に `W1`〜`W4` に割り当て、警告表示。
+      - FM音源OFF時のロックおよび「+ FM音源(YM2151)を有効化する」ボタンによるワンクリック連動。
+      - MML 出力時に `P1 ...`, `W1 ...` 形式で正しくエディタへ反映。
+    - **仕様書および引継ぎ資料の整備**:
+      - [`docs/specification/ui.md`](./docs/specification/ui.md) (§3.3, §3.9, §3.10, §3.11)
+      - [`docs/specification/mml_reference.md`](./docs/specification/mml_reference.md) (§2 トラック構成表)
+      - [`docs/specification/work_tracks_and_transform_handoff.md`](./docs/specification/work_tracks_and_transform_handoff.md) (後続AI向け実装引継ぎ書)
 
 ---
 
@@ -1199,5 +1221,10 @@ Konamiman氏の `Z80.Net` をTypeScriptへ移植するにあたり、以下の�
   - **残作業 (ユーザー操作)**: リポジトリ Settings → Pages の Source を `GitHub Actions` へ切替。
 - [x] **`<title>` タグの更新** (完了 2026-09-06)
   - `temp_vite` → `MZ-1500 Sound IDE` に変更 (`lang="ja"` へ統一)。
+- [x] **ワークトラック (W1〜W99) & MML TRANSFORM & MIDI IMPORT モック・基盤整備** (完了 2026-09-07)
+  - 後続AIによる本実装手順は [`docs/specification/work_tracks_and_transform_handoff.md`](./docs/specification/work_tracks_and_transform_handoff.md) 参照。
+- [ ] **MML TRANSFORM 実変換エンジンの実装** (Phase 2)
+- [ ] **MIDI ファイル実解析 (SMFパーサー) & MML変換エンジンの実装** (Phase 2)
 - [ ] **MCP chrome-devtools-mcp の初回動作確認**
   - 設定済み・未検証 ([`docs/specification/mcp-browser-debug.md`](./specification/mcp-browser-debug.md))。次回ブラウザデバッグが必要になった際、`npm run dev` → `http://localhost:5173/mz1500_sound_ide/` を Chrome で起動 → コンソールログ / スクリーンショット取得の一連の流れを確認する。
+
