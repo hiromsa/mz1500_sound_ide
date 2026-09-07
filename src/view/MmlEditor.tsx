@@ -1003,6 +1003,11 @@ export function MmlEditor({
               renderLineHighlight: 'all',
               mouseWheelZoom: true,
               contextmenu: false,
+              // MML 専用補完プロバイダー未実装のため、Monaco 既定のワードベースサジェスト
+              // (文書内の既存単語を機械的に候補表示) を無効化。
+              // 有効なままだと MML の無間記述トークン断片やコメント英単語が不自然な候補として出現する。
+              // 将来の MML 専用補完実装時に専用プロバイダーへ置き換え。
+              wordBasedSuggestions: 'off',
             }}
           />
 

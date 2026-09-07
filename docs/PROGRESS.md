@@ -31,6 +31,15 @@
 - [ ] **和音（Poly）トラックの複数独立スプリット管理 (別AIへの引継ぎタスク)**
   - 現状の `MidiRouterModal` は単一の `splitTargets: { [voice: number]: string }` を共有しているため、複数和音トラック存在時にスプリット先が同一になる。
   - `WorkTrack` 内部にトラック固有の `splitTargets`（または個別ボイスアサインマップ）を内包化し、トラックごとに独立したスプリット先へ振り分けられるよう内部データ構造を拡張する。
+- [ ] **MML エディタへの専用コード補完プロバイダー実装 (辞書ベース)**
+  - 不自然な候補の原因だった Monaco 既定ワードベースサジェストは無効化済み (`MmlEditor.tsx` の `options.wordBasedSuggestions: 'off'`)。ただし現状 Ctrl+Space でも何も候補が出ない状態。
+  - **実装方針 (2026-09-07 調査・確定済み)**:
+    1. `src/utils/mmlCompletion.ts` (新規・ロジック層): MML コマンド辞書 (静的データ: トラック指定子 / ディレクティブ / 音符・休符 / コマンド `o`,`l`,`v`,`t`,`q`,`K`,`D`,`^`,`[`,`]`,`@`系 等 + 説明文) とプレフィックス・文脈フィルタの純粋関数。規模感 約 200〜300 行。
+    2. `src/utils/mmlLanguage.ts` へ `monaco.languages.registerCompletionItemProvider` の登録を追加 (約 50 行)。
+    3. 文脈判定は既存 `src/utils/mmlCaretParser.ts` (`MmlCaretContext.engine`) を流用。FM トラック内では `@v` (0-127) を優先提示、DCSG トラックでは `v` (0-15) を提示、等の絞り込み。
+    4. 候補出し分け: 行頭=トラック指定子 (`P1`-`P6` / `N1`-`N2` / `B1` / `F1`-`F8` / `W1`-`W99`)、`#` 入力=ディレクティブ (`#TITLE` / `#COMPOSER` / `#OCTAVE` / `#OPM` / `#FM`)、`@` 入力=マクロ (`@1` / `@VE1` / `@PE1` / `@v` / `@q` / `@t` / `@WN` / `@IN` / `@SW`)、英字入力=MML コマンド。
+    5. 辞書の元ネタ: Monarch トークン定義 (`src/utils/mmlLanguage.ts`) と `docs/specification/mml_reference.md`。
+    6. テスト: `src/utils/__tests__/mmlCompletion.test.ts` を `mmlCaretParser.test.ts` のパターンに準拠して新設 (ロジック層は Monaco 非依存でテスト可能に設計)。
 - [ ] **`lkesteloot/trs80` の `z80-test` (1356 テスト) による命令セット全数検証**
   - 実現可能性調査完了済み。テストデータ取り込み + Delegate 実装に加え、**MEMPTR 実装 (コア大規模変更)** が前提要件（詳細は [`docs/specification/web_core_port.md`](./specification/web_core_port.md) §4.5 参照）。
 
@@ -44,6 +53,14 @@
 ---
 
 ## 3. 直近の完了作業（最新）
+
+- **MML エディタの不自然な補完候補 (Monaco 既定ワードベースサジェスト) を無効化 (`src/view/MmlEditor.tsx`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-07):
+  - **背景・ユーザー指摘**: 「MMLエディタとしては不自然なコードアシスト出てきます。」
+  - **原因調査結果**:
+    - MML 言語 (`mz1500-mml`) には補完プロバイダー (`registerCompletionItemProvider`) が未実装で、Monaco Editor 既定の「ワードベースサジェスト」(文書内の既存単語を機械的に候補表示) が唯一の補完ソースとして作動していた。
+    - MML は `P1o4l8v15cde` のような無間記述 (スペースなしコマンド連結) 言語のため、Monaco の単語定義と噛み合わず、トークン断片 (`cdef` / `c#4` 等) や行の大半が意味不明な長い文字列として候補に出現、コメント内英単語も混入していた。
+  - **対応内容**: `MmlEditor.tsx` のエディタ `options` に `wordBasedSuggestions: 'off'` を追加し不自然な候補を完全消滅 (最小対応・1 プロパティ追加)。MML 専用補完の実装はユーザー確定方針により別セッションへ分離し、実装方針を ToDo に記録済み。
+  - **検証**: `npx tsc -b` エラーゼロ / `npm test` 全 31 ファイル・429 件合格。
 
 - **MML Live Dock: FM / V-ENV / P-ENV 各エディタへのドラッグリサイズ機能追加 (`src/view/MmlLiveDock.tsx`, `src/view/FmToneEditor.tsx`, `src/view/VolEnvelopeEditor.tsx`, `src/view/PitchEnvelopeEditor.tsx`)** (2026-09-07):
   - **背景・ユーザー要望**:
