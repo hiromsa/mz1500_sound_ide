@@ -5,6 +5,20 @@
 ---
 
 ## 1. 直近の完了作業（最新）
+- **MIDI IMPORT (Step 2) を本実装: 実 `.mid` 解析 → 自動ルーティング → MML 生成 (`src/core/midi/midiToMmlConverter.ts` / `demoMidi.ts` / `src/core/midi/__tests__/midiToMmlConverter.test.ts` 新設, `src/view/MidiRouterModal.tsx`, `package.json` に `@tonejs/midi` 追加, [`docs/specification/ui.md`](./specification/ui.md), [`docs/specification/work_tracks_and_transform_handoff.md`](./specification/work_tracks_and_transform_handoff.md))** (2026-09-07):
+  - **背景・ユーザー確定方針**:
+    - 引継ぎ仕様 Step 2 に従い MIDI ROUTING STUDIO を本実装。解析ライブラリは `@tonejs/midi` を依存追加する方針をユーザー確定 (自前 SMF パーサー案を上回る選択)。
+  - **対応内容**:
+    1. **`midiToMmlConverter.ts` (新規・変換エンジン)**: `parseMidiFile` (tonejs で解析しノート時刻を `ticks / ppq` で拍単位へ正規化、mono/poly 判定はイベントスイープによる最大同時発音数)、`extractVoice` (poly トラックを Top/Middle/Bottom の単音列へ分解)、`quantizeNoteLength` (拍→最も近い MML 音長+付点へ量子化)、`convertNotesToMmlBody` (32 分グリッドスナップ・休符補間・オクターブ変更時のみ `o` 出力・シャープ表記正規化・ノート番号 12-131 クランプ)、`autoAssignRouting` (ドラム→N1/N2、最初の poly→SPLIT(3)、mono→P1/P5/P6→FM→W1-W4、fmFirst オプション)、`generateMml` (実機→W 順にグループ化、テンポは最初の実機トラックのみ、ベロシティ→v1-v15)。
+    2. **`demoMidi.ts` (新規)**: SMF Format 1 バイト列をコード構築するヘルパ (可変長 delta エンコード実装)。「Load Demo File」ボタンとテストフィクスチャで共用。
+    3. **`MidiRouterModal`**: ダミーデータ (`INITIAL_MIDI_TRACKS` / 固定出力) を廃止し、ドロップ / ファイル選択 → `file.arrayBuffer()` → `parseMidiFile` → 自動ルーティングでトラックリスト構築。プリセット変更は実データへの再ルーティング、`Reset` はルーティングやり直し、`Clear` でトラック解放。`✔ APPLY TO MML` はミュート/ソロ状態を反映し SPLIT ターゲット (FM 無効時は FM ボイスをスキップ) で MML 生成 → 既存の `handleApplyMidiRouter` (エディタ先頭挿入) へ。
+    4. **テスト (+19)**: デモ MIDI の解析 (BPM/mono-poly/パーカッション)、ボイス抽出、音長量子化、MML ボディ変換、出力構成、自動ルーティング、生成 MML の `MmlCompiler` エラーゼロ検証。
+  - **判明事項・次の予定**:
+    - Step 3 (W トラックの Web Audio プレビュー除外) はパーサーの W スキップ実装により実現済みの見込み → 検証タスクとして残す。
+    - MIDI トラックのテスト再生ボタン (Column 1) はモックのまま (playingTrackId 表示のみ)。
+  - **検証**:
+    - `npx tsc -b` エラーゼロ / **`npm test` 全 406 件合格** (+19) / `npm run lint` エラーゼロ (既存 UI 警告 9 のみ) / `npm run build` 成功。
+
 - **MML TRANSFORM 変換エンジンを本実装し Monaco Editor への反映経路を接続 (`src/core/transform/mmlTransformEngine.ts` / `mmlTrackScope.ts` / `src/core/transform/__tests__/mmlTransformEngine.test.ts` 新設, `src/view/MmlTransformPanel.tsx`, `src/app/App.tsx`, [`docs/specification/ui.md`](./specification/ui.md), [`docs/specification/work_tracks_and_transform_handoff.md`](./specification/work_tracks_and_transform_handoff.md))** (2026-09-07):
   - **背景・ユーザー確定方針**:
     - 別 AI が作成した `MmlTransformPanel` (右ペイン TRANSFORM タブ) は UI モックのみだったため、引継ぎ仕様 (`work_tracks_and_transform_handoff.md` §4 Step 1) に従い **Step 1: MML TRANSFORM の実テキスト変換エンジン** を本実装 (Step 2 の MIDI 実装は次フェーズへ)。

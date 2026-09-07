@@ -16,9 +16,21 @@ import {
   Upload,
   FileUp
 } from 'lucide-react';
+import {
+  autoAssignRouting,
+  extractVoice,
+  generateMml,
+  parseMidiFile,
+  type AssignedPart,
+  type MidiParseSummary,
+  type MidiTrackSummary,
+  type VoicePart,
+} from '../core/midi/midiToMmlConverter';
+import { createDemoMidiBytes } from '../core/midi/demoMidi';
+import { midiNoteToName } from '../utils/noteUtils';
 
 interface WorkTrack {
-  id: string; // "W1", "W2", etc.
+  id: string; // "t0", "t1", ... (MIDI トラック識別子)
   name: string;
   midiCh: number;
   type: 'mono' | 'poly';
@@ -28,6 +40,8 @@ interface WorkTrack {
   assignedTo: string; // "P1", "SPLIT(3)", "N1", "W1", "Unassigned", etc.
   isMuted?: boolean;
   isSolo?: boolean;
+  /** 元 MIDI トラックの解析結果 (MML 生成に使用)。ファイル読み込み時に設定される。 */
+  source?: MidiTrackSummary;
 }
 
 // MZ-1500 実音源全17チャンネル + 作業用トラック (実機標準 DCSG/Noise/BEEP 9ch 最優先)
@@ -59,65 +73,29 @@ const MZ1500_CHANNELS = [
   { id: 'W4', group: 'Work (作業用)', label: 'W4 (Work 4)' },
 ];
 
-const INITIAL_MIDI_TRACKS: WorkTrack[] = [
-  {
-    id: 'W1',
-    name: 'Melody / Lead',
-    midiCh: 1,
-    type: 'mono',
-    range: 'C3 - G5',
-    noteCount: 148,
-    assignedTo: 'P1',
+/** 読み込み済み MIDI ファイルの情報 (ヘッダー表示 / MML 生成に使用)。 */
+interface LoadedMidiFile {
+  name: string;
+  size: number;
+  summary: MidiParseSummary;
+}
+
+/** 解析済み MIDI トラックをトラックリスト (WorkTrack) へ変換する。 */
+function createWorkTrack(source: MidiTrackSummary, assignedTo: string, index: number): WorkTrack {
+  return {
+    id: `t${index}`,
+    name: source.name,
+    midiCh: source.channel + 1,
+    type: source.type,
+    polyCount: source.type === 'poly' ? source.maxPolyphony : undefined,
+    range: `${midiNoteToName(source.lowestNote)} - ${midiNoteToName(source.highestNote)}`,
+    noteCount: source.noteCount,
+    assignedTo,
     isMuted: false,
     isSolo: false,
-  },
-  {
-    id: 'W2',
-    name: 'Harmony Chords',
-    midiCh: 2,
-    type: 'poly',
-    polyCount: 3,
-    range: 'C2 - E5',
-    noteCount: 320,
-    assignedTo: 'SPLIT(3)',
-    isMuted: false,
-    isSolo: false,
-  },
-  {
-    id: 'W3',
-    name: 'Bass Line',
-    midiCh: 3,
-    type: 'mono',
-    range: 'E1 - A2',
-    noteCount: 184,
-    assignedTo: 'P5',
-    isMuted: false,
-    isSolo: false,
-  },
-  {
-    id: 'W4',
-    name: 'Strings Pad',
-    midiCh: 4,
-    type: 'poly',
-    polyCount: 4,
-    range: 'G2 - C6',
-    noteCount: 256,
-    assignedTo: 'W1', // 実機に収まらない分は自動的に作業用トラック W1 にプール
-    isMuted: false,
-    isSolo: false,
-  },
-  {
-    id: 'W5',
-    name: 'Rhythm / Percussion',
-    midiCh: 10,
-    type: 'mono',
-    range: 'B0 - A4',
-    noteCount: 210,
-    assignedTo: 'N1',
-    isMuted: false,
-    isSolo: false,
-  },
-];
+    source,
+  };
+}
 
 const FM_CHANNELS = ['F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8'];
 
@@ -136,8 +114,8 @@ export const MidiRouterModal: React.FC<MidiRouterModalProps> = ({
   enableYM2151 = true,
   onToggleEnableYM2151,
 }) => {
-  const [tracks, setTracks] = useState<WorkTrack[]>(INITIAL_MIDI_TRACKS);
-  const [selectedTrackId, setSelectedTrackId] = useState<string>('W1');
+  const [tracks, setTracks] = useState<WorkTrack[]>([]);
+  const [selectedTrackId, setSelectedTrackId] = useState<string>('');
   const [filterType, setFilterType] = useState<'all' | 'mono' | 'poly'>('all');
   const [preset, setPreset] = useState<string>('standard');
   const [playingTrackId, setPlayingTrackId] = useState<string | null>(null);
@@ -173,31 +151,39 @@ export const MidiRouterModal: React.FC<MidiRouterModalProps> = ({
   }, [enableYM2151, preset]);
 
   // ファイル読み込みステート
-  const [loadedFile, setLoadedFile] = useState<{
-    name: string;
-    size: number;
-    bpm: number;
-    trackCount: number;
-  } | null>({
-    name: 'sample_bgm.mid',
-    size: 18432,
-    bpm: 138,
-    trackCount: 5,
-  });
+  const [loadedFile, setLoadedFile] = useState<LoadedMidiFile | null>(null);
   const [isDraggingFile, setIsDraggingFile] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // 解析済み MIDI へスロットを自動割り当ててトラックリストを再構築する
+  const applyRouting = (summary: MidiParseSummary, presetValue: string) => {
+    const fmActive = presetValue === 'fm_full' && enableYM2151;
+    const slots = autoAssignRouting(summary.tracks, fmActive, fmActive);
+    setTracks(summary.tracks.map((source, index) => createWorkTrack(source, slots[index], index)));
+    setSelectedTrackId(summary.tracks.length > 0 ? 't0' : '');
+  };
+
   const handleProcessFile = (file: File) => {
-    setLoadedFile({
-      name: file.name,
-      size: file.size,
-      bpm: 138,
-      trackCount: 5,
-    });
-    setTracks((prev) => [
-      { ...prev[0], name: `${file.name.replace(/\.[^/.]+$/, '')} - Track 1` },
-      ...prev.slice(1),
-    ]);
+    void file.arrayBuffer()
+      .then((buffer) => {
+        const summary = parseMidiFile(file.name, buffer);
+        setLoadedFile({ name: summary.fileName, size: file.size, summary });
+        applyRouting(summary, preset);
+      })
+      .catch((error: unknown) => {
+        // 不正な MIDI ファイル: ドロップゾーンへ戻す
+        console.error('Failed to parse MIDI file:', error);
+        setLoadedFile(null);
+        setTracks([]);
+      });
+  };
+
+  // 内蔵デモ MIDI を読み込む (手元にファイルがない場合の動作確認用)
+  const loadDemoFile = () => {
+    const bytes = createDemoMidiBytes();
+    const summary = parseMidiFile('mz1500_demo.mid', bytes);
+    setLoadedFile({ name: summary.fileName, size: bytes.length, summary });
+    applyRouting(summary, preset);
   };
 
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -268,23 +254,19 @@ export const MidiRouterModal: React.FC<MidiRouterModalProps> = ({
     return t.type === filterType;
   });
 
-  // プリセット変更
+  // プリセット変更 (実データに対して再ルーティングする)
   const handlePresetChange = (newPreset: string) => {
     if (newPreset === 'fm_full' && !enableYM2151) return;
     setPreset(newPreset);
-    if (newPreset === 'standard') {
-      setTracks(INITIAL_MIDI_TRACKS);
-      setMonoTarget('P1');
-      setSplitTargets({ 1: 'P2', 2: 'P3', 3: 'P4' });
-    } else if (newPreset === 'fm_full') {
-      setTracks([
-        { ...INITIAL_MIDI_TRACKS[0], assignedTo: 'F1' },
-        { ...INITIAL_MIDI_TRACKS[1], assignedTo: 'SPLIT(3)' },
-        { ...INITIAL_MIDI_TRACKS[2], assignedTo: 'P5' },
-        { ...INITIAL_MIDI_TRACKS[3], assignedTo: 'F4' },
-        { ...INITIAL_MIDI_TRACKS[4], assignedTo: 'N1' },
-      ]);
+    if (loadedFile) {
+      applyRouting(loadedFile.summary, newPreset);
+    }
+
+    setMonoTarget('P1');
+    if (newPreset === 'fm_full') {
       setSplitTargets({ 1: 'F1', 2: 'F2', 3: 'F3' });
+    } else {
+      setSplitTargets({ 1: 'P2', 2: 'P3', 3: 'P4' });
     }
   };
 
@@ -299,29 +281,76 @@ export const MidiRouterModal: React.FC<MidiRouterModalProps> = ({
     }
   };
 
-  const handleApply = () => {
-    const fileName = loadedFile?.name || 'sample_bgm.mid';
-    const sampleOutput = `; ==============================================================================
-; MZ-1500 MML Generated by MIDI Routing Studio
-; Source: ${fileName} (138 BPM, 4/4)
-; @router_metadata: {"preset":"${preset}","file":"${fileName}","tracks":["W1->P1","W2->P2,P3,P4","W3->P5","W4->W1","W5->N1"]}
-; ==============================================================================
-
-; --- [MZ-1500 HARDWARE TRACKS (DCSG & NOISE)] ---
-P1  t138 o4 v14 q7 l8 c d e f g a b >c   ; from W1 (${tracks[0]?.name})
-P2  t138 o4 v12 q6 l4 e g >c e           ; from W2-voice1 (Top)
-P3  t138 o3 v12 q6 l4 c e g >c           ; from W2-voice2 (Mid)
-P4  t138 o2 v12 q6 l4 c g c g           ; from W2-voice3 (Low)
-P5  t138 o2 v14 q7 l8 c r e r g r >c r   ; from W3 (${tracks[2]?.name})
-N1  t138 v15 @n1 l8 r c r c r c r c     ; from W5 (${tracks[4]?.name})
-
-; --- [WORK TRACKS (作業用・MML TRANSFORMで後から実機へ配分可能)] ---
-; 文法はPSG準拠。実機演奏・エクスポート時は自動的にスキップされます。
-W1  t138 o3 v12 q7 l2 [c e g b]         ; from W4 (${tracks[3]?.name} - 素材保持)
-`;
-    if (onApplyToMml) {
-      onApplyToMml(sampleOutput);
+  // 割り当て設定から MML を生成する (ミュート解除トラックのみ、ソロ優先)
+  const buildRoutedMml = (): string | null => {
+    const summary = loadedFile?.summary;
+    if (!summary) {
+      return null;
     }
+
+    const soloActive = tracks.some((track) => track.isSolo);
+    const parts: AssignedPart[] = [];
+    for (const track of tracks) {
+      const source = track.source;
+      if (!source || track.isMuted) {
+        continue;
+      }
+
+      if (soloActive && !track.isSolo) {
+        continue;
+      }
+
+      if (track.assignedTo === 'Unassigned') {
+        continue;
+      }
+
+      const velocity = source.notes.reduce((sum, note) => sum + note.velocity, 0) / source.notes.length;
+
+      if (track.assignedTo === 'SPLIT(3)') {
+        const voiceTargets: ReadonlyArray<{ voice: VoicePart; target: string | undefined }> = [
+          { voice: 'top', target: splitTargets[1] },
+          { voice: 'middle', target: splitTargets[2] },
+          { voice: 'bottom', target: splitTargets[3] },
+        ];
+
+        for (const { voice, target } of voiceTargets) {
+          if (!target || target === 'OFF' || (!enableYM2151 && FM_CHANNELS.includes(target))) {
+            continue;
+          }
+
+          const voiceNotes = extractVoice(source.notes, voice);
+          if (voiceNotes.length > 0) {
+            parts.push({
+              targetTrack: target,
+              sourceLabel: `${source.name} (${voice})`,
+              notes: voiceNotes,
+              velocity,
+            });
+          }
+        }
+      } else {
+        parts.push({
+          targetTrack: track.assignedTo,
+          sourceLabel: source.name,
+          notes: [...source.notes],
+          velocity,
+        });
+      }
+    }
+
+    if (parts.length === 0) {
+      return null;
+    }
+
+    return generateMml({ fileName: loadedFile?.name ?? summary.fileName, bpm: summary.bpm }, parts);
+  };
+
+  const handleApply = () => {
+    const generatedMml = buildRoutedMml();
+    if (generatedMml && onApplyToMml) {
+      onApplyToMml(generatedMml);
+    }
+
     onClose();
   };
 
@@ -378,7 +407,7 @@ W1  t138 o3 v12 q7 l2 [c e g b]         ; from W4 (${tracks[3]?.name} - 素材�
                     <span className="text-zinc-500">|</span>
                     <span>{(loadedFile.size / 1024).toFixed(1)} KB</span>
                     <span className="text-zinc-500">|</span>
-                    <span>{loadedFile.bpm} BPM</span>
+                    <span>{loadedFile.summary.bpm} BPM</span>
                     <span className="text-zinc-500">|</span>
                     <span>{tracks.length} Tracks</span>
                   </>
@@ -402,7 +431,11 @@ W1  t138 o3 v12 q7 l2 [c e g b]         ; from W4 (${tracks[3]?.name} - 素材�
 
             {loadedFile && (
               <button
-                onClick={() => setLoadedFile(null)}
+                onClick={() => {
+                  setLoadedFile(null);
+                  setTracks([]);
+                  setSelectedTrackId('');
+                }}
                 className="h-7 px-2 rounded text-[11px] text-zinc-400 hover:text-zinc-200 hover:bg-[#383838] transition-colors cursor-pointer"
                 title="読み込みファイルをクリアしてドロップゾーンを表示"
               >
@@ -476,12 +509,7 @@ W1  t138 o3 v12 q7 l2 [c e g b]         ; from W4 (${tracks[3]?.name} - 素材�
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
-                    setLoadedFile({
-                      name: 'sample_battle_theme.mid',
-                      size: 18432,
-                      bpm: 138,
-                      trackCount: 5,
-                    });
+                    loadDemoFile();
                   }}
                   className="h-8 px-3.5 rounded text-xs font-semibold bg-[#383838] hover:bg-[#444444] text-zinc-200 border border-[#484848] flex items-center gap-1.5 transition-all cursor-pointer"
                   title="手元にMIDIがない場合にデモデータで試す"
@@ -1149,7 +1177,9 @@ W1  t138 o3 v12 q7 l2 [c e g b]         ; from W4 (${tracks[3]?.name} - 素材�
           <div className="flex items-center gap-2">
             <button
               onClick={() => {
-                setTracks(INITIAL_MIDI_TRACKS);
+                if (loadedFile) {
+                  applyRouting(loadedFile.summary, preset);
+                }
               }}
               className="h-7 px-3 rounded text-xs font-semibold bg-[#383838] hover:bg-[#444444] text-zinc-300 border border-[#484848] flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
             >

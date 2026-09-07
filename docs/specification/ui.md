@@ -671,6 +671,20 @@ FlexboxおよびCSS Gridを活用し、解像度変化に追従するペイン�
   - ステータスインジケーター: `MZ-1500 Standard 9ch Ready` または `MZ-1500 Full 17ch Ready`。
   - **`✔ APPLY TO MML`**: 実機チャンネル用 MML と、溢れたトラック用の `W1`〜 作業用トラック MML を正式コードとして出力。
 
+- **4. MIDI 解析 & MML 生成エンジン (`src/core/midi/` / 本実装)**:
+  外部ライブラリ `@tonejs/midi` (SMF Format 0 / 1 対応) で解析した結果を UI 非依存の純粋関数で MML へ変換する。
+
+  - **`midiToMmlConverter.ts` (変換エンジン)**:
+    - `parseMidiFile(fileName, data)`: `Midi` (tonejs) で解析し、トラックごとの `MidiTrackSummary` (名前 / チャンネル / mono・poly 判定 / 最大同時発音数 / ノート数 / 音域 / ノート列) を返す。ノート時刻は `ticks / ppq` で**拍単位へ正規化** (テンポ変化の影響を受けない)。テンポ値は先頭イベントを採用し 30-255 にクランプ。ノートを含まないトラックは除外。
+    - `extractVoice(notes, part)`: poly トラックを Top (最高音) / Middle (中央) / Bottom (最低音) の単音列へ分解。開始拍が重なるノートを同一グループ化して選択する。
+    - `quantizeNoteLength(durationBeats)`: 発音長 (拍) を最も近い MML 音長 (1〜32 分 + 付点最大 2 個) へ量子化。
+    - `convertNotesToMmlBody(notes)`: ノート列を 1 トラック分の MML ボディへ変換。開始拍は 32 分音符グリッドへスナップし、隙間は休符 (`r`) で埋め、オクターブ変更時のみ `o` コマンドを出力。音名はシャープ表記 (`midiNoteToMmlName`)。ノート番号は MML 表現可能範囲 (o0c-o10b = 12-131) にクランプ。
+    - `autoAssignRouting(tracks, enableFm, fmFirst)`: ドラム (ch10) → `N1`/`N2`、最初の poly → `SPLIT(3)`、mono → `P1`/`P5`/`P6` (P2-P4 はスプリット用に予約) → FM → `W1`-`W4` → `Unassigned`。`fmFirst` (fm_full プリセット) では FM を優先。
+    - `generateMml(meta, parts)`: `AssignedPart` (出力先トラック + ボイス分解済みノート列 + 代表音量) のリストから MML を生成。実機トラックを先に、W トラックを後にグループ化。テンポ (`t`) は最初の実機トラック行のみ。トラック行書式: `P1  t120 v12 q7 l16 <body>  ; from <元トラック名>`。ベロシティ (0-1) は `v1`-`v15` へ変換。
+  - **`demoMidi.ts` (内蔵デモ MIDI)**: SMF Format 1 のバイト列をコードで構築するヘルパ。`Load Demo File` ボタンと単体テストフィクスチャで共用 (Melody mono / Chords poly 3 和音 / Drums ch10 の 4 トラック構成)。
+  - **モーダル側のデータフロー** (`MidiRouterModal.tsx`): ドロップ / ファイル選択 → `file.arrayBuffer()` → `parseMidiFile` → `autoAssignRouting` でトラックリスト構築 → ミュート / ソロ / SPLIT ターゲット設定 → `✔ APPLY TO MML` で `generateMml` を実行し `onApplyToMml` へ。プリセット変更 (`standard` / `fm_full`) は実データへの再ルーティングとして動作する。`Reset` ボタンは現在のファイルに対するルーティングやり直し。
+  - **テスト**: `src/core/midi/__tests__/midiToMmlConverter.test.ts` (19 件)。デモ MIDI の解析 (BPM・mono/poly・パーカッション判定)、ボイス抽出、音長量子化、MML ボディ変換 (休符・オクターブ・オフグリッドスナップ)、出力構成 (実機→W 順・テンポ 1 回)、自動ルーティング、および **生成 MML の `MmlCompiler` エラーゼロ検証**。
+
 ---
 
 ### 3.11 ワークトラック仕様 (Work Track System: `W1`〜`W99` / 2026-09-07 新設)
