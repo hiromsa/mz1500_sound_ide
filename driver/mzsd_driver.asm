@@ -242,6 +242,7 @@ pf_ch:
         set     0,(ix+CH_FLAGS)
         jr      pf_next
 pf_active:
+        call    gate_tick               ; ゲート終端でキーオフ (ノート開始フレームは発音フレームとして数える)
         ; len == 0 ならイベント実行、そうでなければ減算
         ld      a,(ix+CH_LEN)
         ld      l,a
@@ -259,7 +260,6 @@ pf_tick:
         ld      a,h
                 ld      (ix+CH_LEN+1),a
 pf_after:
-        call    gate_tick               ; ゲート終端でキーオフ
         call    venv_frame              ; 音量エンベロープ 1 フレーム進行
         call    penv_frame              ; ピッチエンベロープ 1 フレーム進行
         call    pitch_frame             ; スイープ / ディチューン / PENV をレジスタへ反映
@@ -289,6 +289,7 @@ pf_chk2:
         bit     1,a
         jr      z,ps_stop
         call    loop_rewind
+        jp      z,ps_stop               ; L (全体ループ) 未定義曲はループ要求でも停止
         jr      pf_end
 ps_stop:
         ; 自然終了: 各トラックは ev_end -> do_keyoff 済みのためレジスタは終了状態のまま
@@ -375,6 +376,7 @@ sp_loop:
         ret
 
 ; ---- 全体ループ (L) 復帰: loopOffset > 0 のチャンネルを復帰点へリセット
+;      復帰したチャンネルが 1 つも無い場合は Z を返す (呼び出し側は演奏停止へ分岐)
 loop_rewind:
         push    bc
         push    de
@@ -383,8 +385,10 @@ loop_rewind:
         ld      ix,CH_BLOCKS
         ld      hl,CB_LOOPS
         ld      b,TRACK_COUNT
+        xor     a                       ; a bit0 = 復帰実施フラグ
 lr_loop:
         push    bc
+        push    af
         ld      e,(hl)
         inc     hl
         ld      d,(hl)
@@ -402,7 +406,12 @@ lr_loop:
         res     0,(ix+CH_FLAGS)         ; ended クリア
         ld      (ix+CH_VREL),0          ; リリース状態解除 (C# Reset 相当)
         call    do_keyoff               ; キーオフ (リセット相当)
+        pop     af
+        set     0,a                     ; 復帰実施
+        jr      lr_cont
 lr_next:
+        pop     af
+lr_cont:
         ld      de,CH_TOTAL
         add     ix,de
         pop     bc
@@ -411,6 +420,7 @@ lr_next:
         pop     hl
         pop     de
         pop     bc
+        or      a                       ; Z = 復帰チャンネルなし
         ret
 
 ; ============================================================================
@@ -1803,10 +1813,8 @@ pf2_exit:
 ; ---- スイープ / ディチューン / PENV を音源レジスタへ反映 (IX = チャンネル)
 ;      pitchUp = detune + pval + スイープ累積 (C# ApplyPitchFrame と同一。+ = 音程上昇)
 pitch_frame:
-        ; ノート発音中のみ (C# _noteOn 相当: len > 0 かつ gate > 0)
-        ld      a,(ix+CH_LEN)
-        or      (ix+CH_LEN+1)
-        ret     z
+        ; ノート発音中のみ (C# _noteOn 相当: ゲート残りあり。
+        ;  len はノート最終フレームで 0 になるが発音 (ピッチ適用) はゲート終端まで継続する)
         ld      a,(ix+CH_GATE)
         or      (ix+CH_GATE+1)
         ret     z

@@ -133,6 +133,19 @@ describe('Z80DriverMachine', () => {
     expect(machine.getTrackOffset(0)).toBeLessThanOrEqual(noteOffset + 6);
   });
 
+  it('L 未定義曲はループ要求があっても演奏を終了する', () => {
+    // LOOP ビット ON でも全体ループ (loopOffset) が無い場合は停止する
+    // (MzsdSequencer の hasWholeLoop ガード相当)
+    const builder = new SongBuilder();
+    builder.addTrack(0, SongBuilder.note(69, 4, 4), SongBuilder.trackEnd());
+    const { machine } = create(builder, true);
+
+    runFrames(machine, 30);
+
+    expect(machine.isFinished).toBe(true);
+    expect(machine.status & 0x01).toBe(0); // 演奏中ビット OFF
+  });
+
   it('ネストループを抜けて終了する', () => {
     // NOTE(3f) [NOTE(2f) LOOP_END 2] REST(2) TRACK_END
     const builder = new SongBuilder();

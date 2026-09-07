@@ -33,10 +33,46 @@ describe('MzsdSequencer', () => {
     const chips = new ChipBank();
     const sequencer = new MzsdSequencer(MzsdSong.parse(builder.build()), chips, false);
 
-    sequencer.tick(); // NOTE 開始
+    sequencer.tick(); // NOTE 開始 (開始フレーム自体が 1 発音フレーム)
+    expect(chips.psg1.attenuationRegister(0)).toBe(0);
     sequencer.tick();
     expect(chips.psg1.attenuationRegister(0)).toBe(0);
-    sequencer.tick(); // 3 フレーム目 → ゲート終端でキーオフ
+    sequencer.tick(); // 3 フレーム目 = ゲート指定の最終発音フレーム
+    expect(chips.psg1.attenuationRegister(0)).toBe(0);
+    sequencer.tick(); // 4 フレーム目 → ゲート終端でキーオフ
+    expect(chips.psg1.attenuationRegister(0)).toBe(15);
+  });
+
+  it('sounds a gate=1 note for exactly one frame', () => {
+    const builder = new SongBuilder();
+    builder.addTrack(0, SongBuilder.note(69, 10, 1), SongBuilder.trackEnd());
+    const chips = new ChipBank();
+    const sequencer = new MzsdSequencer(MzsdSong.parse(builder.build()), chips, false);
+
+    sequencer.tick(); // NOTE 開始フレームが唯一の発音フレーム
+    expect(chips.psg1.attenuationRegister(0)).toBe(0);
+    sequencer.tick(); // ゲート終端でキーオフ
+    expect(chips.psg1.attenuationRegister(0)).toBe(15);
+  });
+
+  it('keeps sounding across consecutive notes when the gate equals the length', () => {
+    const builder = new SongBuilder();
+    builder.addTrack(
+      0,
+      SongBuilder.note(69, 15, 15),
+      SongBuilder.note(69, 15, 15),
+      SongBuilder.trackEnd(),
+    );
+    const chips = new ChipBank();
+    const sequencer = new MzsdSequencer(MzsdSong.parse(builder.build()), chips, false);
+
+    // q8 相当 (gate == len): 音符境界に無音フレームが入ってはならない
+    for (let frame = 1; frame <= 30; frame++) {
+      sequencer.tick();
+      expect(chips.psg1.attenuationRegister(0), `frame ${frame}`).toBe(0);
+    }
+
+    sequencer.tick(); // 31 フレーム目: トラック終了でキーオフ
     expect(chips.psg1.attenuationRegister(0)).toBe(15);
   });
 
@@ -78,7 +114,9 @@ describe('MzsdSequencer', () => {
       sequencer.tick();
     }
 
-    // NOTE の len/gate 8 フレーム経過 → キーオフ
+    // NOTE の 8 フレーム目 (gate == len) まで発音が継続する (無音フレームなし)
+    expect(chips.psg1.attenuationRegister(0)).toBe(0);
+    sequencer.tick(); // 9 フレーム目 → REST 開始でキーオフ
     expect(chips.psg1.attenuationRegister(0)).toBe(15);
   });
 
@@ -146,11 +184,13 @@ describe('FM sequencer', () => {
     const chips = new ChipBank();
     const sequencer = new MzsdSequencer(MzsdSong.parse(builder.build()), chips, false);
 
-    sequencer.tick();
+    sequencer.tick(); // NOTE (キーオン)
     expect(chips.fm.tryGetRegister(0x08)?.value).toBe(0x78);
 
-    sequencer.tick();
-    sequencer.tick(); // len/gate 2 フレーム → キーオフ
+    sequencer.tick(); // 2 フレーム目 (ゲート指定の最終発音フレーム) は発音持続
+    expect(chips.fm.tryGetRegister(0x08)?.value).toBe(0x78);
+
+    sequencer.tick(); // 3 フレーム目 → ゲート終端でキーオフ
     expect(chips.fm.tryGetRegister(0x08)?.value).toBe(0x00);
   });
 

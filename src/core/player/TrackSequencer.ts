@@ -165,6 +165,15 @@ export class TrackSequencer {
       return;
     }
 
+    // ゲート処理をイベント実行より先に行う (ノート開始フレーム自体を 1 発音フレームとして数える。
+    // gate == len のときキーオフと次ノート開始が同フレームになり、音符境界に無音フレームが入らない)
+    if (this.noteOn && this.gateRemaining > 0) {
+      this.gateRemaining--;
+      if (this.gateRemaining === 0) {
+        this.keyOff();
+      }
+    }
+
     // 残り時間が無ければ、次の NOTE/REST に到達するまで制御命令を実行する
     if (this.lenRemaining <= 0) {
       while (this.lenRemaining <= 0 && !this.ended) {
@@ -177,13 +186,6 @@ export class TrackSequencer {
     }
 
     this.lenRemaining--;
-
-    if (this.noteOn && this.gateRemaining > 0) {
-      this.gateRemaining--;
-      if (this.gateRemaining === 0) {
-        this.keyOff();
-      }
-    }
 
     this.applyVolumeFrame();
     this.applyPitchEnvFrame();

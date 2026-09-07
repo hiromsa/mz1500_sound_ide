@@ -6,8 +6,8 @@
 ---
 
 ## 1. 現在のステータス概要
-- **バージョン**: `v0.0.1-beta.72`（コミット通番＋短縮ハッシュ ハイブリッド方式）
-- **テスト通過状況**: 全 31 テストファイル / 429 件パス（`npm test` / Vitest）
+- **バージョン**: `v0.0.1-beta.75`（コミット通番＋短縮ハッシュ ハイブリッド方式）
+- **テスト通過状況**: 全 32 テストファイル / 434 件パス（`npm test` / Vitest）
 - **型検査状況**: エラー 0 件（`npx tsc -b`）
 - **主要機能の稼働状況**:
   - Web ネイティブ MML コンパイラ（9ch / 17ch / ワークトラック W1〜W99 対応）
@@ -53,6 +53,21 @@
 ---
 
 ## 3. 直近の完了作業（最新）
+
+- **`q` ゲートタイミングのオフバイワン修正 & 演奏自然終了が UI へ反映されない問題の修正 (`src/core/player/TrackSequencer.ts`, `src/core/player/AudioEngine.ts`, `driver/mzsd_driver.asm`, `src/core/player/__tests__/MzsdSequencer.test.ts` / `Z80DriverMachine.test.ts` / `AudioEngine.test.ts` (新規), [`docs/specification/mml_reference.md`](./specification/mml_reference.md))** (2026-09-07):
+  - **背景・ユーザー指摘**:
+    - 「`P1 t240 o4 l4 q8 cccc` — q8 なのに繋がって聞こえません。q1 だとまったく聞こえません。」
+    - 「再生が終わって MML が最後まで到達しても 曲が終了状態 PLAY ボタン表示 になりません。」
+  - **原因調査結果 (フレーム単位のレジスタダンプで実証)**:
+    1. **ゲートのオフバイワン**: 両演奏エンジン (SourceInterpreter / Z80 ドライバ) ともノート開始フレームでゲートを減算しており、`gate == len` (q8) でも音符境界に毎回 1 フレーム (16.7ms) の無音が挿入されていた。また `q1` (gate=1) は開始フレーム内で即キーオフされ **0 フレームしか発音しない** (完全無音)。
+    2. **演奏終了コールバック断線**: `AudioEngine` が `AudioFrameMixer.onSequencerFinished` を `AudioEngine.sequencerFinished` (→ `Player.onPlaybackFinished` → UI) へ中継しておらず、自然終了しても `isPlaying` が false にならなかった。
+    3. **Z80 ドライバのループガード欠落**: `🔁 LOOP` ON (既定) + `L` コマンドなしの曲で、Z80 ドライバが `loop_rewind` を永久に繰り返して HALT せず、既定エンジン (Z80 DRIVER) では終了検知が発生しなかった。
+  - **対応内容**:
+    1. **ゲートタイミング仕様の確定**: 「ノート開始フレームを含む `gate` フレーム分発音」に統一。`TrackSequencer.tick()` はゲート処理をイベント実行より先に行い、`mzsd_driver.asm` も `gate_tick` を `run_events` / len 減算より前に移動。`gate == len` ではキーオフと次ノート開始が同フレームになり無音フレームが消失 (q8 = スラー / q1 = 1 フレーム発音)。
+    2. **`pitch_frame` (asm) の発音中判定を `len > 0 && gate > 0` から `gate > 0` へ修正**: len はノート最終フレームで 0 になるため、新タイミングではスイープ / PENV / ディチューンのピッチ適用が最終フレームで欠落する (Z80DriverEquivalence テストで発覚 → 両エンジン全フレーム一致を回復)。
+    3. **`AudioEngine` コンストラクタで `mixer.onSequencerFinished` を中継** (終了時に pump も停止)。`mzsd_driver.asm` の `loop_rewind` は復帰チャンネルが 1 つも無い場合 Z を返し、呼び出し側は演奏停止へ分岐 (MzsdSequencer の `hasWholeLoop` ガード相当・実機 QDF プレイヤーにも同じ恩恵)。
+  - **テスト**: 既存 3 件 (ゲート終端 / REST キーオフ / FM キーオフ) を新仕様に更新 +「gate=1 で 1 フレーム発音」「gate == len 連続ノートで無音フレームなし」回帰テスト 2 件 +「L 未定義曲はループ要求でも停止」(Z80) 1 件 + `AudioEngine` 終了中継テスト (新規ファイル) 2 件を追加。
+  - **検証**: `npx tsc -b` エラーゼロ / `npm test` 全 32 ファイル 434 件合格 (+5) / `npm run lint` エラーゼロ (既存 UI 警告 11 のみ) / ユーザー報告 MML `P1 t240 o4 l4 q8 cccc` を Z80 ドライバで実行し **q8 = 無音フレーム 0 (完全スラー) / q1 = 各音符 1 フレーム発音** を確認。
 
 - **MML エディタの不自然な補完候補 (Monaco 既定ワードベースサジェスト) を無効化 (`src/view/MmlEditor.tsx`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-07):
   - **背景・ユーザー指摘**: 「MMLエディタとしては不自然なコードアシスト出てきます。」

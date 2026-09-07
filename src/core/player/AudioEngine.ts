@@ -82,6 +82,11 @@ export class AudioEngine {
 
   constructor(sampleRate: number = DefaultSampleRate) {
     this.mixer = new AudioFrameMixer(sampleRate);
+    // ミキサー (合成ループ) での演奏終了検知を UI 側コールバック (Player 経由) へ中継する
+    this.mixer.onSequencerFinished = () => {
+      this.stopPump();
+      this.sequencerFinished?.();
+    };
   }
 
   /** 現在の駆動方式 (停止中は null)。 */
@@ -186,13 +191,16 @@ export class AudioEngine {
   private stopInternal(): void {
     this.driver = null;
     this.mixer.attachDriver(null);
+    this.stopPump();
+    this.bufferedFrames = 0;
+    this.workletNode?.port.postMessage({ type: 'clear' });
+  }
+
+  private stopPump(): void {
     if (this.pumpTimer !== null) {
       clearInterval(this.pumpTimer);
       this.pumpTimer = null;
     }
-
-    this.bufferedFrames = 0;
-    this.workletNode?.port.postMessage({ type: 'clear' });
   }
 
   private async ensureOutput(): Promise<void> {
