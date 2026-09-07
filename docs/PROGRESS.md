@@ -5,6 +5,19 @@
 ---
 
 ## 1. 直近の完了作業（最新）
+- **GM 試聴の停止不具合を修正 & 全パート試聴 (`PREVIEW ALL`) を追加 (`src/core/midi/midiPreview.ts`, `src/core/midi/__tests__/midiPreview.test.ts` +3, `src/view/MidiRouterModal.tsx`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-07):
+  - **背景・ユーザー報告**:
+    - 「停止ボタンおしても停止しないみたい」「全パートのプレビューもあるといいですね」
+  - **停止不具合の原因**:
+    - smplr の `start()` はノートを内部 scheduler に登録し、時刻到来時に voice を生成する。一方 `stop()` (引数なし) は `voices.stopAll()` — すなわち**発音中 / 発音済みの voice しか止めず、scheduler に積まれた未来のノートはキャンセルされない**。全ノートをプリスケジュールする本実装では、途中停止しても残りのノートが鳴り続けていた。
+  - **対応内容**:
+    1. **確実な停止**: smplr `start()` の戻り値 (StopFn = スケジュールキャンセル + voice 停止) を全ノート分保持し、`stop()` 時に一括呼び出し。加えて**世代カウンタ**を導入し、SoundFont ロード待ち (`await`) の間に `stop()` された古い再生要求を無効化 (レースコンディション解消)。
+    2. **`buildMultiPartSchedule` (新規)**: 複数パートのノート列を旋律 (`acoustic_grand_piano`) / パーカッション (`synth_drum`) の 2 系統に分離したスケジュールへ展開 (総時間つき)。
+    3. **`PREVIEW ALL` ボタン (Column 1 ヘッダー新設)**: 全トラックを同時試聴。**ミュート / ソロの状態を反映** (ソロ有効時はソロトラックのみ)。再生中は `STOP ALL` に切替。
+    4. 単一トラック試聴も `playParts` (複数パート API) に統一。再生状態は `playingTarget` (`'all'` = 全パート / トラック id / null) で管理し、全停止を `stopPreview` に集約。
+    5. **テスト (+3)**: `buildMultiPartSchedule` の旋律 / パーカッション分離、BPM クランプ時の総時間、空パート。
+  - **検証**: `npx tsc -b` エラーゼロ / **`npm test` 全 422 件合格** (+3) / `npm run lint` エラーゼロ (既存 UI 警告 9 のみ) / `npm run build` 成功。
+
 - **MIDI トラックのテスト再生 (GM SoundFont) を本実装 (`src/core/midi/midiPreview.ts` / `src/core/midi/__tests__/midiPreview.test.ts` 新設, `src/view/MidiRouterModal.tsx`, `package.json` に `smplr` 追加, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-07):
   - **背景・ユーザー確定方針**:
     - MIDI ROUTING STUDIO Column 1 の `Preview Track` ボタン (モック時点で見た目のみだった) を本実装。音源は **smplr の GM SoundFont** を採用 (ユーザー確定)。**SoundFont 取得失敗時はエラー表示**する仕様 (オフラインで再生できないことは許容)。

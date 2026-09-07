@@ -687,12 +687,14 @@ FlexboxおよびCSS Gridを活用し、解像度変化に追従するペイン�
   - **テスト**: `src/core/midi/__tests__/midiToMmlConverter.test.ts` (19 件)。デモ MIDI の解析 (BPM・mono/poly・パーカッション判定)、ボイス抽出、音長量子化、MML ボディ変換 (休符・オクターブ・オフグリッドスナップ)、出力構成 (実機→W 順・テンポ 1 回)、自動ルーティング、および **生成 MML の `MmlCompiler` エラーゼロ検証**。
 
 - **5. トラックテスト再生 (GM SoundFont / `midiPreview.ts` / 2026-09-07 追加)**:
-  Column 1 の各 MIDI トラック行の `Preview Track` ボタン (▶ / ■ トグル) で、そのトラックのノート列を **smplr の General MIDI SoundFont** で試聴再生する。
+  Column 1 の各 MIDI トラック行の `Preview Track` ボタン (▶ / ■ トグル) で、そのトラックのノート列を **smplr の General MIDI SoundFont** で試聴再生する。さらに Column 1 ヘッダーの `PREVIEW ALL` ボタンで**全パートの同時試聴**が可能。
 
   - **音源**: `acoustic_grand_piano` (旋律トラック) / `synth_drum` (パーカッション ch10 トラック)。SoundFont データはネットワーク (CDN) から取得しブラウザ Cache API でキャッシュ。**取得に失敗した場合 (オフライン等) はモーダルヘッダー下に赤色エラーバッジを表示**し、再生状態を解除する。
   - **再生方式**: `buildPreviewSchedule` でノート列 (拍単位) を秒単位のスケジュールへ変換 (BPM 30-255 クランプ / ノート番号 12-131 クランプ / ベロシティ 0-1 → 1-127) し、AudioContext 時間基準でプリスケジューリング。トラック末尾まで再生すると自動で再生状態が解除 (ループなし)。再生中に同じボタンで即停止。
+  - **全パート試聴 (`PREVIEW ALL`)**: Column 1 ヘッダーのボタンで全トラックを同時再生。旋律 / パーカッションを `buildMultiPartSchedule` で 2 系統に分離してそれぞれの GM 楽器で鳴らす。**ミュート / ソロの状態を反映** (ソロ有効時はソロトラックのみ)。
+  - **確実な停止**: smplr の `stop()` は発音中の voice しか止めないため、`start()` の戻り値 (スケジュールキャンセル + voice 停止) を全ノート分保持し、`stop()` 時に一括呼び出しする。さらに世代カウンタにより、SoundFont ロード待ち (`await`) 中に停止された古い再生要求を無効化する。
   - **停止タイミング**: 再ルーティング / プリセット変更 / `Clear` / モーダルを閉じる (`X` / `Close` / `APPLY TO MML`) のいずれでも停止。モーダルの閉鎖は `handleClose` 経由で統一。
-  - **テスト**: `src/core/midi/__tests__/midiPreview.test.ts` (7 件)。スケジュール生成 (`buildPreviewSchedule`) の純粋関数を検証 (BPM / ノート番号クランプ、ソート、ベロシティ変換、最小音長)。AudioContext 依存の再生部分は実機 (ブラウザ) でのみ確認可能。
+  - **テスト**: `src/core/midi/__tests__/midiPreview.test.ts` (10 件)。スケジュール生成 (`buildPreviewSchedule` / `buildMultiPartSchedule`) の純粋関数を検証 (BPM / ノート番号クランプ、ソート、ベロシティ変換、最小音長、旋律 / パーカッション分離、総時間)。AudioContext 依存の再生部分は実機 (ブラウザ) でのみ確認可能。
 
 ---
 

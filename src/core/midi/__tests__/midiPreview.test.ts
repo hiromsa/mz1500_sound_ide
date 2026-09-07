@@ -4,7 +4,10 @@
  *  純粋関数 `buildPreviewSchedule` のみを検証する)
  */
 import { describe, expect, it } from 'vitest';
-import { buildPreviewSchedule } from '../midiPreview';
+import {
+  buildMultiPartSchedule,
+  buildPreviewSchedule,
+} from '../midiPreview';
 import type { MidiNoteEvent } from '../midiToMmlConverter';
 
 const note = (midi: number, startBeat: number, durationBeats = 1, velocity = 0.8): MidiNoteEvent => ({
@@ -58,5 +61,38 @@ describe('buildPreviewSchedule', () => {
 
   it('returns an empty schedule for empty notes', () => {
     expect(buildPreviewSchedule([], 120)).toEqual([]);
+  });
+});
+
+describe('buildMultiPartSchedule', () => {
+  it('splits parts into melody and percussion schedules', () => {
+    const schedule = buildMultiPartSchedule(
+      [
+        { notes: [note(60, 0, 1), note(62, 1, 1)], isPercussion: false },
+        { notes: [note(36, 0, 0.5)], isPercussion: true },
+      ],
+      120,
+    );
+
+    expect(schedule.melody.map((event) => event.note)).toEqual([60, 62]);
+    expect(schedule.percussion.map((event) => event.note)).toEqual([36]);
+    // 末尾ノート (62, 1 拍目から 0.5 秒) の終了時刻
+    expect(schedule.totalDurationSec).toBeCloseTo(1.0, 6);
+  });
+
+  it('clamps bpm and reports total duration across all parts', () => {
+    // 30 BPM = 2 秒 / 拍 → 1 拍のノートは 2 秒で終わる
+    const schedule = buildMultiPartSchedule(
+      [{ notes: [note(60, 0, 1)], isPercussion: false }],
+      10,
+    );
+    expect(schedule.totalDurationSec).toBeCloseTo(2, 6);
+  });
+
+  it('returns empty schedules for empty parts', () => {
+    const schedule = buildMultiPartSchedule([], 120);
+    expect(schedule.melody).toEqual([]);
+    expect(schedule.percussion).toEqual([]);
+    expect(schedule.totalDurationSec).toBe(0);
   });
 });

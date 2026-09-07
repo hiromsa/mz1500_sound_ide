@@ -18,6 +18,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { MidiPreviewPlayer } from '../core/midi/midiPreview';
+import type { MidiPreviewCallbacks, MidiPreviewPart } from '../core/midi/midiPreview';
 import {
   autoAssignRouting,
   extractVoice,
@@ -120,7 +121,7 @@ export const MidiRouterModal: React.FC<MidiRouterModalProps> = ({
   const [selectedTrackId, setSelectedTrackId] = useState<string>('');
   const [filterType, setFilterType] = useState<'all' | 'mono' | 'poly'>('all');
   const [preset, setPreset] = useState<string>('standard');
-  const [playingTrackId, setPlayingTrackId] = useState<string | null>(null);
+  const [playingTarget, setPlayingTarget] = useState<string | null>(null);
 
   // FM音源が無効化された場合の自動フォールバック
   useEffect(() => {
@@ -166,11 +167,16 @@ export const MidiRouterModal: React.FC<MidiRouterModalProps> = ({
     previewPlayerRef.current?.dispose();
   }, []);
 
+  // GM 試聴を停止する (再生状態表示も解除する)
+  const stopPreview = () => {
+    previewPlayerRef.current?.stop();
+    setPlayingTarget(null);
+  };
+
   // 解析済み MIDI へスロットを自動割り当ててトラックリストを再構築する
   const applyRouting = (summary: MidiParseSummary, presetValue: string) => {
     // 再ルーティング時は GM 試聴を停止する
-    previewPlayerRef.current?.stop();
-    setPlayingTrackId(null);
+    stopPreview();
 
     const fmActive = presetValue === 'fm_full' && enableYM2151;
     const slots = autoAssignRouting(summary.tracks, fmActive, fmActive);
@@ -259,13 +265,32 @@ export const MidiRouterModal: React.FC<MidiRouterModalProps> = ({
     );
   };
 
-  // GM SoundFont でトラックを試聴再生する (再生中に押すと停止)
+  // プレイヤーを遅延生成して取得する
+  const getPreviewPlayer = (): MidiPreviewPlayer => {
+    if (previewPlayerRef.current === null) {
+      previewPlayerRef.current = new MidiPreviewPlayer();
+    }
+
+    return previewPlayerRef.current;
+  };
+
+  // 試聴のコールバック (エラー時 / 完了時に再生状態表示を解除する)
+  const createPreviewCallbacks = (target: string): MidiPreviewCallbacks => ({
+    onError: (message) => {
+      setPreviewError(message);
+      setPlayingTarget((prev) => (prev === target ? null : prev));
+    },
+    onFinished: () => {
+      setPlayingTarget((prev) => (prev === target ? null : prev));
+    },
+  });
+
+  // GM SoundFont で単一トラックを試聴再生する (再生中に押すと停止)
   const togglePlay = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
 
-    if (playingTrackId === id) {
-      previewPlayerRef.current?.stop();
-      setPlayingTrackId(null);
+    if (playingTarget === id) {
+      stopPreview();
       return;
     }
 
@@ -274,26 +299,47 @@ export const MidiRouterModal: React.FC<MidiRouterModalProps> = ({
       return;
     }
 
-    if (previewPlayerRef.current === null) {
-      previewPlayerRef.current = new MidiPreviewPlayer();
+    setPreviewError(null);
+    setPlayingTarget(id);
+    void getPreviewPlayer().playParts(
+      [{ notes: track.source.notes, isPercussion: track.source.isPercussion }],
+      loadedFile.summary.bpm,
+      createPreviewCallbacks(id),
+    );
+  };
+
+  // 全パートを同時に試聴再生する (ミュート / ソロの状態を反映)
+  const togglePlayAll = () => {
+    if (playingTarget === 'all') {
+      stopPreview();
+      return;
+    }
+
+    if (!loadedFile) {
+      return;
+    }
+
+    const soloActive = tracks.some((track) => track.isSolo);
+    const parts: MidiPreviewPart[] = [];
+    for (const track of tracks) {
+      if (!track.source || track.isMuted) {
+        continue;
+      }
+
+      if (soloActive && !track.isSolo) {
+        continue;
+      }
+
+      parts.push({ notes: track.source.notes, isPercussion: track.source.isPercussion });
+    }
+
+    if (parts.length === 0) {
+      return;
     }
 
     setPreviewError(null);
-    setPlayingTrackId(id);
-    void previewPlayerRef.current.play(
-      track.source.notes,
-      loadedFile.summary.bpm,
-      track.source.isPercussion,
-      {
-        onError: (message) => {
-          setPreviewError(message);
-          setPlayingTrackId((prev) => (prev === id ? null : prev));
-        },
-        onFinished: () => {
-          setPlayingTrackId((prev) => (prev === id ? null : prev));
-        },
-      },
-    );
+    setPlayingTarget('all');
+    void getPreviewPlayer().playParts(parts, loadedFile.summary.bpm, createPreviewCallbacks('all'));
   };
 
   const filteredTracks = tracks.filter((t) => {
@@ -395,7 +441,7 @@ export const MidiRouterModal: React.FC<MidiRouterModalProps> = ({
   // モーダルを閉じる (GM 試聴を停止してから onClose を呼ぶ)
   const handleClose = () => {
     previewPlayerRef.current?.stop();
-    setPlayingTrackId(null);
+    setPlayingTarget(null);
     onClose();
   };
 
@@ -487,7 +533,7 @@ export const MidiRouterModal: React.FC<MidiRouterModalProps> = ({
               <button
                 onClick={() => {
                   previewPlayerRef.current?.stop();
-                  setPlayingTrackId(null);
+                  setPlayingTarget(null);
                   setPreviewError(null);
                   setLoadedFile(null);
                   setTracks([]);
@@ -610,9 +656,28 @@ export const MidiRouterModal: React.FC<MidiRouterModalProps> = ({
                     Source / Work Tracks (W1〜W99)
                   </span>
                 </div>
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#1E1E1E] text-zinc-400 border border-[#383838]">
-                  {filteredTracks.length} tracks
-                </span>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={togglePlayAll}
+                    disabled={!loadedFile || tracks.length === 0}
+                    className={`flex items-center gap-1 px-2 h-6 rounded text-[10px] font-bold border transition-colors ${
+                      playingTarget === 'all'
+                        ? 'bg-[#00A8FF] text-black border-[#00A8FF] shadow-[0_0_8px_rgba(0,168,255,0.4)]'
+                        : !loadedFile || tracks.length === 0
+                          ? 'bg-[#2A2A2A] text-zinc-600 border-[#3C3C3C] cursor-not-allowed'
+                          : 'bg-[#2A2A2A] text-zinc-300 border-[#3C3C3C] hover:text-white hover:border-[#00A8FF]/50 cursor-pointer'
+                    }`}
+                    title={playingTarget === 'all' ? '全パートの試聴を停止' : '全パートを GM SoundFont で同時試聴'}
+                  >
+                    {playingTarget === 'all'
+                      ? <Square className="w-2.5 h-2.5 fill-current" />
+                      : <Play className="w-2.5 h-2.5 fill-current" />}
+                    <span>{playingTarget === 'all' ? 'STOP ALL' : 'PREVIEW ALL'}</span>
+                  </button>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#1E1E1E] text-zinc-400 border border-[#383838]">
+                    {filteredTracks.length} tracks
+                  </span>
+                </div>
               </div>
 
               {/* Filter Tabs */}
@@ -636,7 +701,7 @@ export const MidiRouterModal: React.FC<MidiRouterModalProps> = ({
               <div className="flex-1 overflow-y-auto p-2 space-y-2">
                 {filteredTracks.map((track) => {
                   const isSelected = track.id === selectedTrackId;
-                  const isPlaying = playingTrackId === track.id;
+                  const isPlaying = playingTarget === track.id;
 
                   return (
                     <div
