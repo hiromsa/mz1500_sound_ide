@@ -57,11 +57,10 @@ graph TD
        - `W# ➔ P# (作業トラックを実機へ)`
        - `W# ➔ F# (作業トラックをFMへ)`
   2. **OCTAVE SHIFT (オクターブ一括シフト)**: `o+2`, `o+1`, `o-1`, `o-2`。
-  3. **VOLUME SCALE (音量スケーリング)**:
-     - `+2`, `+1`, `-1`, `-2`、および `%` スケール（`50%`, `75%`, `125%`, `150%`）。
-     - PSG (0-15) と FM (0-127) の値域に応じたクランプ処理。
-  4. **QUANTIZE / NOTE ALIGN**: 音長・タイの正規化、最小単位クオンタイズ。
-  5. **TEMPO SCALE**: `t * 2`, `t / 2`。
+  3. **VOLUME SCALE (音量スケーリング)** (UI 追加実装済み・2026-09-07):
+     - 加減算 (`+2`, `+1`, `-1`, `-2`) と割合 (`50%`, `75%`, `100%`, `125%`, `150%`) を選択して `音量のみ反映` ボタンで適用。
+     - 適用式: `round(v × percent / 100) + add`。PSG `v` (0-15) と FM `@v` (0-127、FM トラック `F1`-`F8` の行のみ) にクランプ。
+     - ~~QUANTIZE / NOTE ALIGN~~ および ~~TEMPO SCALE~~ は 2026-09-07 ユーザー確定により**仕様から削除 (不採用)**。
 
 ### 2.3 MIDI ROUTING STUDIO (`src/view/MidiRouterModal.tsx`)
 - **起動**: ヘッダーの `[MIDI IMPORT]` ボタンからモーダル起動。
@@ -85,8 +84,8 @@ graph TD
 
 | ファイルパス | 役割・状態 | 後続AIの作業 |
 | :--- | :--- | :--- |
-| `src/core/transform/mmlTransformEngine.ts` / `mmlTrackScope.ts` | **MML TRANSFORM 実テキスト変換エンジン (Step 1 完了・2026-09-07)**。リマップ/オクターブシフト/半音移調/音量スケーリングを実装。テスト 30 件 (`src/core/transform/__tests__/mmlTransformEngine.test.ts`) | 現状のままで可。VOLUME/QUANTIZE/TEMPO の UI 追加時に operation 型を拡張 |
-| `src/view/MmlTransformPanel.tsx` | MML TRANSFORM パネル (**本実装済み・Monaco Editor へ `MmlTransformRequest` 経由で反映**) | Step 1 完了。UI 追加 (VOLUME/QUANTIZE/TEMPO) の場合は操作組み立てを追加 |
+| `src/core/transform/mmlTransformEngine.ts` / `mmlTrackScope.ts` | **MML TRANSFORM 実テキスト変換エンジン (Step 1 完了・2026-09-07)**。リマップ/オクターブシフト/半音移調/音量スケーリングを実装。テスト 30 件 (`src/core/transform/__tests__/mmlTransformEngine.test.ts`) | 現状のままで可。QUANTIZE / TEMPO SCALE は不採用 (2026-09-07 ユーザー確定) |
+| `src/view/MmlTransformPanel.tsx` | MML TRANSFORM パネル (**本実装済み・Monaco Editor へ `MmlTransformRequest` 経由で反映**)。VOLUME SCALE UI 追加済み (2026-09-07) | QUANTIZE / TEMPO SCALE は不採用 (ユーザー確定) |
 | `src/core/midi/midiToMmlConverter.ts` / `demoMidi.ts` | **MIDI → MML 変換エンジン (Step 2 完了・2026-09-07)**。`@tonejs/midi` で解析し、ボイス分解・音長量子化・自動ルーティング・MML 生成を実装。テスト 19 件 (`src/core/midi/__tests__/midiToMmlConverter.test.ts`) | 現状のままで可。テスト再生 (Web Audio) 実装時にプレビュー連携を追加 |
 | `src/view/MidiRouterModal.tsx` | MIDI ROUTING STUDIO (**本実装済み**・実 `.mid` 解析 → 自動ルーティング → `APPLY TO MML` でエディタ先頭へ挿入) | Step 2 完了。Column 2/3 の個別アサイン UI とエンジン接続の微調整は必要に応じて |
 | `src/core/mml/parser/MmlParser.ts` | MMLコンパイラ本体（`W\d+` スキップ実装済み） | 現状のままで実機バイナリ生成から安全に除外される（完了） |

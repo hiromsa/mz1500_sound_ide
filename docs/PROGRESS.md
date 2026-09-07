@@ -5,6 +5,17 @@
 ---
 
 ## 1. 直近の完了作業（最新）
+- **MML TRANSFORM に VOLUME SCALE (音量スケーリング) UI を追加 & QUANTIZE / TEMPO SCALE を不採用化 (`src/view/MmlTransformPanel.tsx`, [`docs/specification/ui.md`](./specification/ui.md), [`docs/specification/work_tracks_and_transform_handoff.md`](./specification/work_tracks_and_transform_handoff.md))** (2026-09-07):
+  - **背景・ユーザー確定方針**:
+    - 引継ぎ仕様 §2.2 の変換ツール群のうち VOLUME SCALE の UI を追加。**QUANTIZE / NOTE ALIGN と TEMPO SCALE は仕様として不要 (不採用)** とユーザー確定。
+  - **対応内容**:
+    1. **VOLUME SCALE セクション** (`PITCH & OCTAVE` カードを `PITCH & VOLUME` に改題し追加): 加減算 `-2` / `-1` / `0` / `+1` / `+2` と割合 `50%` / `75%` / `100%` / `125%` / `150%` の選択ボタン群。選択状態は既存ピッチボタンと同一のアクセントスタイル。
+    2. **`音量のみ反映` ボタン**: `scaleVolume` エンジン操作 (`round(v × percent/100) + add`、`v` 0-15 / `@v` 0-127 (FM のみ) クランプ) を `音量のみ反映 ({対象トラック})` の説明文で送出。選択が `0 / 100%` (no-op) の場合は disabled。`ピッチのみ反映` ボタンとの縦 2 ボタン構成。
+    3. カードヘッダー `RESET` をピッチ + 音量の一括リセットに拡張 (title: `Reset Pitch & Volume`)。
+    4. エンジン (`scaleVolume`) は Step 1 で実装・テスト済みのため今回の変更は UI のみ。
+    5. 仕様書: handoff md §2.2 から QUANTIZE / TEMPO SCALE を削除 (不採用記録)、ui.md §3.9 に VOLUME SCALE 仕様を追記。
+  - **検証**: `npx tsc -b` エラーゼロ / `npm test` 全合格 / `npm run lint` エラーゼロ / `npm run build` 成功。
+
 - **Step 3 検証完了: W トラックのプレビュー除外を担保するテストを追加 (`src/core/mml/__tests__/MmlCompiler.test.ts` +3, [`docs/specification/work_tracks_and_transform_handoff.md`](./specification/work_tracks_and_transform_handoff.md))** (2026-09-07):
   - **対応内容**: 引継ぎ仕様 Step 3 (W トラックの Web Audio プレビュー除外) の検証。プレビュー再生 (Z80 DRIVER / SOURCE INTERPRETER) はコンパイル結果ベースのため、`MmlParser` の W 行スキップで W データ自体がバイナリ / MmlMap に存在せず無音になることを、下記テストで担保:
     1. W の音符が実機トラック (P1) のデータへ混線しない (MmlMap の note イベント数 = 宣言行の音数のみ)。

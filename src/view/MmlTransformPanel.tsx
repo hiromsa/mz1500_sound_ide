@@ -84,6 +84,10 @@ export const MmlTransformPanel: React.FC<MmlTransformPanelProps> = ({
   const [octaveShift, setOctaveShift] = useState<number>(0);
   const [semitoneShift, setSemitoneShift] = useState<number>(0);
 
+  // 音量スケーリングステート (加減算と割合: scaleVolume エンジン操作に対応)
+  const [volumeAdd, setVolumeAdd] = useState<number>(0);
+  const [volumePercent, setVolumePercent] = useState<number>(100);
+
   // チャンネル操作タブ (一括 remap / 単一置換 & スワップ)
   const [channelOpTab, setChannelOpTab] = useState<'batch' | 'single'>('batch');
 
@@ -251,6 +255,17 @@ export const MmlTransformPanel: React.FC<MmlTransformPanelProps> = ({
 
     if (operations.length === 0) return;
     requestTransform(`Pitch Shift (${octaveShift} oct, ${semitoneShift} semi)`, operations);
+  };
+
+  // 音量スケーリングのみ反映 (加減算 + 割合を scaleVolume として適用)
+  const handleApplyVolume = () => {
+    if (selectedTracks.length === 0) return;
+    if (volumeAdd === 0 && volumePercent === 100) return;
+
+    requestTransform(
+      `Volume Scale (${volumeAdd > 0 ? `+${volumeAdd}` : volumeAdd} / ${volumePercent}%)`,
+      [{ kind: 'scaleVolume', targetTracks: selectedTracks, add: volumeAdd, percent: volumePercent }],
+    );
   };
 
   const handleApplyBatchRemap = () => {
@@ -529,15 +544,17 @@ export const MmlTransformPanel: React.FC<MmlTransformPanelProps> = ({
           <div className="flex items-center justify-between text-xs text-zinc-300 font-medium tracking-wide border-b border-[#3C3C3C] pb-2">
             <div className="flex items-center gap-2">
               <ArrowUpDown className="w-3.5 h-3.5 text-[#00A8FF]" />
-              <span className="font-semibold text-zinc-100">PITCH & OCTAVE</span>
+              <span className="font-semibold text-zinc-100">PITCH & VOLUME</span>
             </div>
             <button
               onClick={() => {
                 setOctaveShift(0);
                 setSemitoneShift(0);
+                setVolumeAdd(0);
+                setVolumePercent(100);
               }}
               className="h-5 px-1.5 text-[10px] font-medium bg-[#383838] hover:bg-[#444444] text-zinc-400 hover:text-zinc-200 rounded border border-[#484848] transition-colors cursor-pointer flex items-center gap-1"
-              title="Reset Pitch"
+              title="Reset Pitch & Volume"
             >
               <RotateCcw className="w-2.5 h-2.5" />
               <span>RESET</span>
@@ -594,7 +611,50 @@ export const MmlTransformPanel: React.FC<MmlTransformPanelProps> = ({
             </div>
           </div>
 
-          <div className="pt-1 mt-auto">
+          {/* 音量スケーリング */}
+          <div className="flex flex-col gap-1 pt-1 border-t border-[#3C3C3C]">
+            <div className="flex justify-between text-[10px] text-zinc-400 font-medium">
+              <span>VOLUME SCALE:</span>
+              <span className="text-[#00A8FF] font-bold">
+                {volumeAdd > 0 ? `+${volumeAdd}` : volumeAdd} / {volumePercent}%
+              </span>
+            </div>
+            <div className="flex items-center gap-1">
+              {[-2, -1, 0, 1, 2].map((add) => (
+                <button
+                  key={add}
+                  onClick={() => setVolumeAdd(add)}
+                  className={`flex-1 h-6 rounded text-[10px] font-bold border transition-colors cursor-pointer ${
+                    volumeAdd === add
+                      ? 'bg-[#00A8FF] text-black border-[#00A8FF]'
+                      : 'bg-[#222222] text-zinc-400 border-[#3C3C3C] hover:text-zinc-200 hover:bg-[#333333]'
+                  }`}
+                >
+                  {add > 0 ? `+${add}` : add}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-1">
+              {[50, 75, 100, 125, 150].map((pct) => (
+                <button
+                  key={pct}
+                  onClick={() => setVolumePercent(pct)}
+                  className={`flex-1 h-6 rounded text-[10px] font-bold border transition-colors cursor-pointer ${
+                    volumePercent === pct
+                      ? 'bg-[#00A8FF] text-black border-[#00A8FF]'
+                      : 'bg-[#222222] text-zinc-400 border-[#3C3C3C] hover:text-zinc-200 hover:bg-[#333333]'
+                  }`}
+                >
+                  {pct}%
+                </button>
+              ))}
+            </div>
+            <div className="text-[9px] text-zinc-500">
+              ※ v (0-15) / @v (0-127, FMのみ) を `半分にして +1` の順で適用
+            </div>
+          </div>
+
+          <div className="pt-1 mt-auto flex flex-col gap-1">
             <button
               disabled={selectedTracks.length === 0}
               onClick={handleApplyPitch}
@@ -605,6 +665,17 @@ export const MmlTransformPanel: React.FC<MmlTransformPanelProps> = ({
               }`}
             >
               ピッチのみ反映 ({targetSummaryText})
+            </button>
+            <button
+              disabled={selectedTracks.length === 0 || (volumeAdd === 0 && volumePercent === 100)}
+              onClick={handleApplyVolume}
+              className={`w-full h-6 rounded text-[10px] font-medium transition-colors cursor-pointer border ${
+                selectedTracks.length === 0 || (volumeAdd === 0 && volumePercent === 100)
+                  ? 'bg-[#2E2E2E] text-zinc-500 border-[#3C3C3C] cursor-not-allowed'
+                  : 'bg-[#383838] hover:bg-[#444444] text-zinc-200 border-[#484848]'
+              }`}
+            >
+              音量のみ反映 ({targetSummaryText})
             </button>
           </div>
         </div>
