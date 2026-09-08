@@ -7,8 +7,8 @@
  */
 
 export const APP_VERSION_BASE = '0.0.1-beta';
-export const APP_BUILD_NUMBER = 87;
-export const APP_COMMIT_HASH = '5df2842';
+export const APP_BUILD_NUMBER = 88;
+export const APP_COMMIT_HASH = '59a3eb8';
 
 /** SemVer 準拠のフルバージョン表記 (例: 0.0.1-beta.69+18a7f84) */
 export const APP_VERSION = `${APP_VERSION_BASE}.${APP_BUILD_NUMBER}+${APP_COMMIT_HASH}`;

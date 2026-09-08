@@ -226,13 +226,9 @@ export function VirtualKeyboard({
       const p = definedPitchEnvs.find((env) => env.id === id);
       if (p) return { data: p.data, loop: p.loop };
     }
-    // MMLキャレットに@PE指定がある場合
-    if (activeTabContext === 'mml' && selectedPitchEnv === 'none' && mmlContext?.pitchEnvId) {
-      const p = definedPitchEnvs.find((env) => env.id === mmlContext.pitchEnvId);
-      if (p) return { data: p.data, loop: p.loop };
-    }
+    // ユーザーが @PE OFF を明示選択した場合は、MML キャレットの @PE 指定より手動選択を最優先する
     return { data: undefined, loop: undefined };
-  }, [activeTabContext, selectedPitchEnv, activePitchEnv, activePitchEnvLoop, mmlContext, definedPitchEnvs]);
+  }, [activeTabContext, selectedPitchEnv, activePitchEnv, activePitchEnvLoop, definedPitchEnvs]);
 
   // 4. ボリュームエンベロープ (@VE) の実効データ判定
   const effectiveVolEnvData = useMemo(() => {
