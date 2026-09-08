@@ -105,7 +105,12 @@ describe('DcsgChip', () => {
     expect(samples).toEqual(loadReference().dcsgSamples);
   });
 
-  it('renders the same noise samples as the C# reference', () => {
+  // C# オリジナルの LFSR は AND フィードバック実装のため、白噪開始から数標本で
+  // LFSR が 0x0000 (bit0 固定) に落ちて DC 出力 (-0.25 定常) となり無音化する
+  // (reference.json の dcsgNoiseSamples が全標本 -0.25 固定であることが証拠)。
+  // 本移植は実機準拠の XOR フィードバック (bit0 ^ bit3) へ修正したため、
+  // C# 標本との一致検証は意図的な差分としてスキップする (web_core_port.md §3.1)。
+  it.skip('renders the same noise samples as the C# reference (intentional difference: LFSR XOR feedback)', () => {
     const chip = new DcsgChip();
     chip.setAttenuation(0, 15);
     chip.setAttenuation(1, 15);
@@ -114,5 +119,46 @@ describe('DcsgChip', () => {
 
     const samples = Array.from({ length: 100 }, () => chip.renderSample(48000.0));
     expect(samples).toEqual(loadReference().dcsgNoiseSamples);
+  });
+
+  it('keeps the white noise LFSR running without the zero attractor', () => {
+    // XOR フィードバック (bit0 ^ bit3) では LFSR が 0x0000 に落ちないため、
+    // 白噪は長時間にわたり正負が変動する出力を保つ (実機準拠)
+    const chip = new DcsgChip();
+    chip.setAttenuation(0, 15);
+    chip.setAttenuation(1, 15);
+    chip.setAttenuation(2, 15);
+    chip.setNoiseControl(true, 0);
+
+    let min = Infinity;
+    let max = -Infinity;
+    for (let i = 0; i < 48000; i++) {
+      const sample = chip.renderSample(48000.0); // 1 秒分
+      if (sample < min) min = sample;
+      if (sample > max) max = sample;
+    }
+
+    expect(max).toBeGreaterThan(0.2);
+    expect(min).toBeLessThan(-0.2);
+  });
+
+  it('keeps the periodic noise running through the feedback bit', () => {
+    // 周期ノイズ (bit0 パススルー) も 15bit 循環で鳴り続ける
+    const chip = new DcsgChip();
+    chip.setAttenuation(0, 15);
+    chip.setAttenuation(1, 15);
+    chip.setAttenuation(2, 15);
+    chip.setNoiseControl(false, 2);
+
+    let min = Infinity;
+    let max = -Infinity;
+    for (let i = 0; i < 48000; i++) {
+      const sample = chip.renderSample(48000.0); // 1 秒分
+      if (sample < min) min = sample;
+      if (sample > max) max = sample;
+    }
+
+    expect(max).toBeGreaterThan(0.2);
+    expect(min).toBeLessThan(-0.2);
   });
 });

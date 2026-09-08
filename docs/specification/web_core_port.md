@@ -90,7 +90,7 @@ mz1500_sound_ide/
 | `src/MzSound.DriverAssembler/*` | `src/core/assembler/*` | ✅ 移植済 |
 | `src/MzSound.MmlCompiler/*` | `src/core/mml/*` | ✅ 移植済 |
 | `driver/mzsd_driver.asm` | `driver/mzsd_driver.asm` | ✅ 取り込み済 (アセンブル検証済み) |
-| `src/MzSound.Player/Chips/DcsgChip.cs` | `src/core/chips/DcsgChip.ts` | ✅ 移植済 (標本レベルで C# 一致) |
+| `src/MzSound.Player/Chips/DcsgChip.cs` | `src/core/chips/DcsgChip.ts` | ✅ 移植済 (トーンは標本レベルで C# 一致。ノイズ LFSR は C# バグ修正のため意図的差分 → §3.1) |
 | `src/MzSound.Player/Chips/BeepChip.cs` | `src/core/chips/BeepChip.ts` | ✅ 移植済 (標本レベルで C# 一致) |
 | `src/MzSound.Player/Chips/ChipBank.cs` | `src/core/chips/ChipBank.ts` | ✅ 移植済 |
 | `src/MzSound.Player/Chips/Fm/*` (fmgen 由来) | `src/core/chips/fm/*` | ✅ 移植済 (FM 出力をビット単位で C# 一致検証済み) |
@@ -135,6 +135,15 @@ C# の partial class (1 クラス複数ファイル) は、TS では 1 ファイ
   また TRACK_END / 不明命令時はリリース再始動 (`do_keyoff`) ではなく無音固定
   (TS `TrackSequencer.silence()` / asm `end_silence`) とする。終了後に演奏フレームが
   進まないため、リリース再始動すると音量が復帰したまま持ち越されるため。
+- **意図的な C# からの差分 (2026-09-08): DCSG ノイズ LFSR のフィードバックを XOR に修正**。
+  C# 版は white ノイズのフィードバックを `bit0 AND bit3` で実装しており、15bit LFSR が
+  白噪開始から数ステップで `0x0000` (吸引点) に落ちて bit0 固定の DC 出力
+  (reference.json の `dcsgNoiseSamples` が全標本 -0.25 定常であることが証拠) となり、
+  実際の音は約 0.3ms で無音化する。実機 SN76489AN の正仕様は `bit0 XOR bit3`
+  (TMS 系 15bit LFSR、periodic = bit0 パススルー) であるため、TS 版は XOR へ修正した
+  (`DcsgChip.shiftLfsr`)。C# 標本との一致検証テスト (`renders the same noise samples
+  as the C# reference`) は意図的差分として `it.skip` (理由コメント付き)。C# 本体側も
+  同バグのため将来修正する際は reference.json 再生成 + 本テストの skip 解除で再照合可能。
 
 ## 4. 検証方針
 

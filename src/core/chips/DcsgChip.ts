@@ -137,8 +137,12 @@ export class DcsgChip {
 
   private shiftLfsr(): void {
     // TMS 系 15bit LFSR: white = bit0 XOR bit3、periodic = bit0 をフィードバック
-    const bit = (this.lfsr & 1) !== 0 && (this.noiseWhite ? (this.lfsr & 8) !== 0 : true);
-    this.lfsr = (this.lfsr >> 1) | (bit ? 0x4000 : 0);
+    // (AND フィードバックで実装すると LFSR が 0x0000 へ吸引され、
+    //  白噪が数ミリ秒で永久無音化するため XOR が正仕様。
+    //  C# オリジナルは AND 実装のため意図的な差分 — web_core_port.md §3.1 参照)
+    const bit0 = this.lfsr & 1;
+    const bit = this.noiseWhite ? bit0 ^ ((this.lfsr >> 3) & 1) : bit0;
+    this.lfsr = (this.lfsr >> 1) | (bit << 14);
   }
 }
 

@@ -6,8 +6,8 @@
 ---
 
 ## 1. 現在のステータス概要
-- **バージョン**: `v0.0.1-beta.92`（コミット通番＋短縮ハッシュ ハイブリッド方式）
-- **テスト通過状況**: 全 34 テストファイル / 450 件パス（`npm test` / Vitest）
+- **バージョン**: `v0.0.1-beta.93`（コミット通番＋短縮ハッシュ ハイブリッド方式）
+- **テスト通過状況**: 全 34 テストファイル / 451 件パス + 1 skip（`npm test` / Vitest）
 - **型検査状況**: エラー 0 件（`npx tsc -b`）
 - **主要機能の稼働状況**:
   - Web ネイティブ MML コンパイラ（9ch / 17ch / ワークトラック W1〜W99 対応）
@@ -53,6 +53,19 @@
 ---
 
 ## 3. 直近の完了作業（最新）
+
+- **ノイズが PLAY で鳴らない根本原因を修正 — DCSG ノイズ LFSR のフィードバック誤り (AND → XOR) (`src/core/chips/DcsgChip.ts`, `src/core/chips/__tests__/DcsgChip.test.ts`, `src/core/player/__tests__/NoiseTrackPlayback.test.ts`, [`docs/specification/web_core_port.md`](./specification/web_core_port.md))** (2026-09-08):
+  - **背景・ユーザー指摘**: 「PLAYボタンではなりませんでした。仮想キーボードではなります。」(前回の TrackId 並び順修正後も PLAY でのノイズ発音が聞こえない)
+  - **原因**:
+    - `DcsgChip.shiftLfsr` の white ノイズ・フィードバックがコメント (bit0 XOR bit3) に反して **`bit0 && bit3` (AND)** で実装されていた。AND では 15bit LFSR が白噪開始から数ステップ (55.9kHz クロックで約 0.3ms) で `0x0000` (吸引点) に落ちて bit0 固定の DC 出力となり、**以後 `@WN0` (周期ノイズ) に切り替えても復活せず全曲無音**になる。
+    - **C# オリジナルも同じ AND 実装のバグ** (`tools/cs-probe/out/reference.json` の `dcsgNoiseSamples` が全 100 標本 `-0.25` 定常 = bit0 固定であることが証拠)。前回の両エンジン検証テストが「最初の 0.3ms のピーク値」を拾う偽陽性だったため検出できなかった。
+    - 仮想キーボードが鳴る理由: `virtualSynth.ts` は Web Audio 直結の独自ノイズ合成のためエミュレーションを経由しない。
+  - **対応内容**:
+    1. `shiftLfsr` を実機準拠の XOR フィードバック (`bit0 ^ bit3`、periodic = bit0 パススルー) へ修正。**C# からの意図的な差分**として `web_core_port.md` §3.1 に記録 (C# 本体修正時は reference.json 再生成 + skip テスト解除で再照合)。
+    2. `DcsgChip.test.ts`: C# ノイズ標本照合テストを `it.skip` 化 (差分理由コメント付き) + 「白噪 / 周期ノイズが 1 秒間正負に振動し続ける (吸引点に落ちない)」テスト 2 件追加。
+    3. `NoiseTrackPlayback.test.ts`: 観察ロジックを共通化し、**「発音フレーム (att < 15) のすべてで出力が正負に振れている (AC 振幅 > 0.04)」**ことを検証する方式へ強化 (DC 定常化を検出できず過去テストを通してしまう問題の再発防止)。AND 実装へ戻すと 4 テストが失敗することを確認済み。
+  - **テスト**: `npx tsc -b` エラーゼロ / `npm test` 全 34 ファイル・451 件合格 + 1 skip (意図的差分) / `npm run build` 成功 / `npm run lint` エラーゼロ (既存警告 10 は変更なし)。
+  - **備考**: `samples/mml_reference/psg/volume2.mml` にユーザー側の編集とみられる未コミット差分 (@q0-@q7 行の削除) が残っているため本コミットには含めていない。
 
 - **ノイズトラック (N1) が PLAY で鳴らない問題を修正 — TrackId の並び順を演奏系と統一 (`src/core/mml/TrackId.ts`, `src/core/player/__tests__/NoiseTrackPlayback.test.ts` 新設)** (2026-09-08):
   - **背景・ユーザー指摘**: 「ノイズ PLAYボタンでなりません。普通に音がなってます。」(psg_noise_basic.mml サンプルで N1 のノイズだけ鳴らない)

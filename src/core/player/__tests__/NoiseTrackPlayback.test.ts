@@ -10,6 +10,7 @@
 import { describe, expect, it } from 'vitest';
 import { MmlCompiler } from '../../mml/MmlCompiler';
 import { ChipBank } from '../../chips/ChipBank';
+import type { FrameDriver } from '../FrameDriver';
 import { MzsdSong } from '../MzsdSong';
 import { MzsdSequencer } from '../MzsdSequencer';
 import { Z80DriverPlayback } from '../Z80DriverPlayback';
@@ -38,61 +39,74 @@ interface NoiseObservation {
   /** ノイズチャンネル減衰レジスタの最小値 (< 15 なら何らかの音量で発音)。 */
   minAttenuation: number;
 
-  /** 再生中の波形出力の最大絶対値。 */
-  maxAbsSample: number;
+  /** 発音フレーム (減衰 < 15) の総数。 */
+  activeFrames: number;
+
+  /**
+   * 発音フレームのうち、出力が正負に振れている (AC 振幅 > 0.04) フレーム数。
+   * LFSR が 0x0000 (bit0 固定) に落ちた状態は DC 出力で振れがなく無音に聞こえるため、
+   * 単なる非ゼロ判定ではなく振れ幅で判定する。
+   */
+  soundingFrames: number;
 }
 
-function observeSourceInterpreter(data: Uint8Array, chip: 'psg1' | 'psg2', frames: number): NoiseObservation {
+/** 両エンジン共通のノイズ発音観察。1 フレーム = 800 標本 (@48kHz)。 */
+function observeNoise(
+  data: Uint8Array,
+  chip: 'psg1' | 'psg2',
+  useDriver: boolean,
+  maxFrames: number,
+): NoiseObservation {
   const chips = new ChipBank();
-  const sequencer = new MzsdSequencer(MzsdSong.parse(data), chips, false);
   const channel = 3; // DCSG ノイズチャンネル
 
-  let minAttenuation = 15;
-  let maxAbsSample = 0;
-  for (let frame = 0; frame < frames && !sequencer.isFinished; frame++) {
-    sequencer.tick();
+  let driver: FrameDriver;
+  if (useDriver) {
+    const playback = new Z80DriverPlayback(chips);
+    playback.play(data, false);
+    driver = playback;
+  } else {
+    driver = new MzsdSequencer(MzsdSong.parse(data), chips, false);
+  }
+
+  const observation: NoiseObservation = {
+    minAttenuation: 15,
+    activeFrames: 0,
+    soundingFrames: 0,
+  };
+
+  for (let frame = 0; frame < maxFrames && !driver.isFinished; frame++) {
+    driver.tick();
 
     const att = chips[chip].attenuationRegister(channel);
-    if (att < minAttenuation) {
-      minAttenuation = att;
+    if (att < observation.minAttenuation) {
+      observation.minAttenuation = att;
     }
 
+    if (att >= 15) {
+      continue;
+    }
+
+    observation.activeFrames++;
+
+    let frameMin = Infinity;
+    let frameMax = -Infinity;
     for (let i = 0; i < 800; i++) {
-      const sample = Math.abs(chips[chip].renderSample(48000));
-      if (sample > maxAbsSample) {
-        maxAbsSample = sample;
+      const sample = chips[chip].renderSample(48000);
+      if (sample < frameMin) {
+        frameMin = sample;
       }
+      if (sample > frameMax) {
+        frameMax = sample;
+      }
+    }
+
+    if (frameMax - frameMin > 0.04) {
+      observation.soundingFrames++;
     }
   }
 
-  return { minAttenuation, maxAbsSample };
-}
-
-function observeZ80Driver(data: Uint8Array, chip: 'psg1' | 'psg2', frames: number): NoiseObservation {
-  const chips = new ChipBank();
-  const playback = new Z80DriverPlayback(chips);
-  playback.play(data, false);
-  const channel = 3;
-
-  let minAttenuation = 15;
-  let maxAbsSample = 0;
-  for (let frame = 0; frame < frames && !playback.isFinished; frame++) {
-    playback.tick();
-
-    const att = chips[chip].attenuationRegister(channel);
-    if (att < minAttenuation) {
-      minAttenuation = att;
-    }
-
-    for (let i = 0; i < 800; i++) {
-      const sample = Math.abs(chips[chip].renderSample(48000));
-      if (sample > maxAbsSample) {
-        maxAbsSample = sample;
-      }
-    }
-  }
-
-  return { minAttenuation, maxAbsSample };
+  return observation;
 }
 
 describe('noise track playback (N1 / N2)', () => {
@@ -116,29 +130,33 @@ describe('noise track playback (N1 / N2)', () => {
 
   it('sounds the N1 noise channel with the SourceInterpreter engine', () => {
     const data = compileToSong(noiseBasicSource);
-    const observation = observeSourceInterpreter(data, 'psg1', 480);
+    const observation = observeNoise(data, 'psg1', false, 480);
 
+    // white / periodic 両セクションを含む曲全体で、発音フレームはすべて持続して鳴る
+    // (LFSR が 0x0000 へ吸引される AND フィードバック実装だと DC 出力で無音化する)
     expect(observation.minAttenuation).toBeLessThan(15);
-    expect(observation.maxAbsSample).toBeGreaterThan(0.01);
+    expect(observation.activeFrames).toBeGreaterThan(50);
+    expect(observation.soundingFrames).toBe(observation.activeFrames);
   });
 
   it('sounds the N1 noise channel with the Z80Driver engine', () => {
     const data = compileToSong(noiseBasicSource);
-    const observation = observeZ80Driver(data, 'psg1', 480);
+    const observation = observeNoise(data, 'psg1', true, 480);
 
     expect(observation.minAttenuation).toBeLessThan(15);
-    expect(observation.maxAbsSample).toBeGreaterThan(0.01);
+    expect(observation.activeFrames).toBeGreaterThan(50);
+    expect(observation.soundingFrames).toBe(observation.activeFrames);
   });
 
   it('sounds the N2 noise channel on PSG2 in both engines', () => {
     const data = compileToSong('N2 t120 v15 l4 @WN1 o4 cccc');
 
-    const sourceObservation = observeSourceInterpreter(data, 'psg2', 240);
+    const sourceObservation = observeNoise(data, 'psg2', false, 240);
     expect(sourceObservation.minAttenuation).toBeLessThan(15);
-    expect(sourceObservation.maxAbsSample).toBeGreaterThan(0.01);
+    expect(sourceObservation.soundingFrames).toBe(sourceObservation.activeFrames);
 
-    const driverObservation = observeZ80Driver(data, 'psg2', 240);
+    const driverObservation = observeNoise(data, 'psg2', true, 240);
     expect(driverObservation.minAttenuation).toBeLessThan(15);
-    expect(driverObservation.maxAbsSample).toBeGreaterThan(0.01);
+    expect(driverObservation.soundingFrames).toBe(driverObservation.activeFrames);
   });
 });
