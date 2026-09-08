@@ -161,4 +161,43 @@ describe('DcsgChip', () => {
     expect(max).toBeGreaterThan(0.2);
     expect(min).toBeLessThan(-0.2);
   });
+
+  it('attenuates the alias high band of the noise output', () => {
+    // シフトクロック (55.9〜223.7kHz) は音声ナイキスト (24kHz) を大きく超えるため、
+    // そのまま出力すると標本化エイリアスが金属的な高音として聞こえる。
+    // 出力段のローパス (8kHz 2 段) により隣接標本差 (高周波エネルギーの代理) を抑制する。
+    // (フィルタ無しの白噪 ±1 ランダム列では隣接差の平均が約 1.0 になる)
+    const chip = new DcsgChip();
+    chip.setAttenuation(0, 15);
+    chip.setAttenuation(1, 15);
+    chip.setAttenuation(2, 15);
+    chip.setNoiseControl(true, 0); // 最悪ケース: 223.7kHz
+
+    let diffSum = 0;
+    let prev = chip.renderSample(48000.0);
+    for (let i = 0; i < 48000; i++) {
+      const sample = chip.renderSample(48000.0);
+      diffSum += Math.abs(sample - prev);
+      prev = sample;
+    }
+
+    expect(diffSum / 48000).toBeLessThan(0.3);
+  });
+
+  it('blocks the DC component of the periodic noise', () => {
+    // 周期ノイズ (bit0 循環) は初期位相により大きな DC 成分を持つため、
+    // 出力コンデンサ相当の DC ブロックで平均値を 0 に保つ
+    const chip = new DcsgChip();
+    chip.setAttenuation(0, 15);
+    chip.setAttenuation(1, 15);
+    chip.setAttenuation(2, 15);
+    chip.setNoiseControl(false, 2);
+
+    let sum = 0;
+    for (let i = 0; i < 48000; i++) {
+      sum += chip.renderSample(48000.0);
+    }
+
+    expect(Math.abs(sum / 48000)).toBeLessThan(0.05);
+  });
 });

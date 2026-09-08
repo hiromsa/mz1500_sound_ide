@@ -144,6 +144,13 @@ C# の partial class (1 クラス複数ファイル) は、TS では 1 ファイ
   (`DcsgChip.shiftLfsr`)。C# 標本との一致検証テスト (`renders the same noise samples
   as the C# reference`) は意図的差分として `it.skip` (理由コメント付き)。C# 本体側も
   同バグのため将来修正する際は reference.json 再生成 + 本テストの skip 解除で再照合可能。
+- **意図的な C# からの差分 (2026-09-08): DCSG ノイズ出力への帯域制限フィルタ追加**。
+  ノイズシフトクロック (55.9〜223.7kHz) は音声ナイキスト (24kHz) を大きく超えるため、
+  ビット列をそのまま標本化すると折り返し雑音 (エイリアス) が金属的な高音として聞こえる。
+  実機はアナログ出力段で高域が減衰するため、TS 版は `DcsgChip.renderSample` のノイズ出力に
+  **2 段 1-pole LPF (8kHz) + RMS 補正ゲイン + DC ブロック (30Hz / 出力コンデンサ相当)** を追加した
+  (仮想キーボード `virtualSynth.ts` の白噪 lowpass 8kHz と同一基準)。
+  効果は隣接標本差平均で検証 (無フィルタ ≈ 1.0 → 0.12、テスト `attenuates the alias high band`)。
 
 ## 4. 検証方針
 

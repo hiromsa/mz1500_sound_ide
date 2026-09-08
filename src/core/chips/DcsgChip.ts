@@ -26,6 +26,27 @@ export class DcsgChip {
 
   private lfsrTimer = 0;
 
+  /** ノイズ出力の 2 段 1-pole LPF 状態 (エイリアス抑制)。 */
+  private noiseFilter1 = 0;
+
+  /** ノイズ出力の 2 段目 LPF 状態。 */
+  private noiseFilter2 = 0;
+
+  /** ノイズ出力の DC ブロック状態 (実機の出力コンデンサ相当)。 */
+  private noiseDcBlock = 0;
+
+  /** フィルタ係数を計算したときの sampleRate (キャッシュ無効化用)。 */
+  private noiseFilterRate = 0;
+
+  /** 1-pole LPF の 1 標本あたり係数。 */
+  private noiseFilterK = 0;
+
+  /** LPF による RMS 減衰を補正するゲイン。 */
+  private noiseFilterGain = 1;
+
+  /** DC ブロックの 1 標本あたり係数。 */
+  private noiseDcBlockK = 0;
+
   /** トーン周期レジスタ (0-1023) を設定する。 */
   setTonePeriod(channel: number, period: number): void {
     this.tonePeriod[channel] = clampInt(period, 0, 1023);
@@ -120,7 +141,24 @@ export class DcsgChip {
           this.shiftLfsr();
         }
 
-        mix += ((this.lfsr & 1) !== 0 ? 1 : -1) * noiseGain;
+        // 実機のアナログ出力段を近似し、シフトクロック (55.9〜223.7kHz) が
+        // 音声帯域を大きく超えることによるエイリアス高音 (折り返し雑音) を減衰する。
+        // 2 段 1-pole LPF (8kHz) + RMS 補正 + DC ブロック (出力コンデンサ相当)。
+        if (this.noiseFilterRate !== sampleRate) {
+          this.noiseFilterRate = sampleRate;
+          this.noiseFilterK = 1 - Math.exp((-2 * Math.PI * NoiseFilterCutoffHz) / sampleRate);
+          // 2 段 1-pole の白色入力に対する RMS 減衰 (= k / (2 - k)) を補正する
+          this.noiseFilterGain = (2 - this.noiseFilterK) / this.noiseFilterK;
+          this.noiseDcBlockK = 1 - Math.exp((-2 * Math.PI * NoiseDcBlockCutoffHz) / sampleRate);
+        }
+
+        const level = (this.lfsr & 1) !== 0 ? 1 : -1;
+        this.noiseFilter1 += (level - this.noiseFilter1) * this.noiseFilterK;
+        this.noiseFilter2 += (this.noiseFilter1 - this.noiseFilter2) * this.noiseFilterK;
+
+        // DC ブロック: 周期ノイズ (bit0 循環) の DC 成分を実機の出力コンデンサ相当で除去する
+        this.noiseDcBlock += (this.noiseFilter2 - this.noiseDcBlock) * this.noiseDcBlockK;
+        mix += (this.noiseFilter2 - this.noiseDcBlock) * this.noiseFilterGain * noiseGain;
       }
     } else {
       this.lfsrTimer = 0;
@@ -148,6 +186,20 @@ export class DcsgChip {
 
 /** 減衰量 1 ステップあたりの dB (2dB/step)。 */
 const AttenuationStepDb = 2.0;
+
+/**
+ * ノイズ出力のローパスカットオフ (Hz)。
+ * 実機のアナログ出力段 (RC LPF) を近似し、ノイズシフトクロック (55.9〜223.7kHz) が
+ * 音声帯域 (ナイキスト 24kHz) を大きく超えることによるエイリアス高音 (折り返し雑音) を
+ * 減衰する。仮想キーボード (virtualSynth.ts) の白噪 lowpass 8kHz と同一基準。
+ */
+const NoiseFilterCutoffHz = 8000;
+
+/**
+ * ノイズ出力の DC ブロックカットオフ (Hz)。
+ * 周期ノイズ (bit0 循環) が持つ DC 成分を実機の出力コンデンサ相当で除去する。
+ */
+const NoiseDcBlockCutoffHz = 30;
 
 /** 減衰量 → 線形音量 (2dB/step の対数近似)。 */
 function volumeGain(attenuation: number): number {
