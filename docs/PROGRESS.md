@@ -6,7 +6,7 @@
 ---
 
 ## 1. 現在のステータス概要
-- **バージョン**: `v0.0.1-beta.83`（コミット通番＋短縮ハッシュ ハイブリッド方式）
+- **バージョン**: `v0.0.1-beta.84`（コミット通番＋短縮ハッシュ ハイブリッド方式）
 - **テスト通過状況**: 全 32 テストファイル / 435 件パス（`npm test` / Vitest）
 - **型検査状況**: エラー 0 件（`npx tsc -b`）
 - **主要機能の稼働状況**:
@@ -53,6 +53,14 @@
 ---
 
 ## 3. 直近の完了作業（最新）
+
+- **FM TONE の未定義 ID 入力時に NAME へプリセット名が入る問題を修正 (`src/view/FmToneEditor.tsx`)** (2026-09-08):
+  - **背景・ユーザー指摘**: 「FM TONE で IDのところに 未使用の番号 を入力すると、NAME に E.PIANO 1 入ってしまいます。」
+  - **原因**: 未定義 ID 用フォールバック `createDefaultToneData(id)` が既定プリセット (`PRESET_TONES[0]` / E.PIANO 1) を **name 含め** そのまま複製していた。
+  - **対応内容**:
+    - `createDefaultToneData` に `name: ''` を追加し、未定義 ID 入力時・右クリック「編集」ロード時 (`loadToneId` useEffect) ともに NAME は空文字で開始するよう統一。
+    - これにより FM TONE の NAME 自動入力経路 (初期 state / 未定義 ID フォールバック / プリセット適用) がすべて「NAME は空を維持」に統一完了。
+  - **検証**: `npx tsc -b` エラーゼロ / `npm test` 全 32 ファイル・437 件合格。
 
 - **FM TONE 初期 NAME の空化 & 未設定名の UNNAMED 統一 (`src/view/FmToneEditor.tsx`, `src/view/VolEnvelopeEditor.tsx`, `src/view/PitchEnvelopeEditor.tsx`, `src/utils/mmlDefinitionLoader.ts`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-08):
   - **背景・ユーザー指摘**: 「FM TONEのNAME初期値が E.PIANO とか入ります。」「また、タブ間で未設定の名前が違います UNNAMED 、DEFAULT → UNNAMEDに統一してください。」

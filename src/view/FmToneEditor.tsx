@@ -1132,9 +1132,9 @@ function OperatorPanel({
   );
 }
 
-/** 未定義 ID 用の初期音色 (既定プリセットの複製に ID を設定したもの) を生成する。 */
+/** 未定義 ID 用の初期音色 (既定プリセットの複製に ID を設定したもの、NAME は未設定の空文字) を生成する。 */
 function createDefaultToneData(id: number): FmToneData {
-  return { ...JSON.parse(JSON.stringify(PRESET_TONES[0])), id };
+  return { ...JSON.parse(JSON.stringify(PRESET_TONES[0])), id, name: '' };
 }
 
 // ==========================================
