@@ -65,7 +65,7 @@ const createInitialEnvData = (): number[] => {
 };
 
 export interface VolEnvelopeEditorProps {
-  onChangeEnvData?: (data: number[], loopPoint: number) => void;
+  onChangeEnvData?: (data: number[], loopPoint: number, releasePoint: number) => void;
   /** MML右クリックメニューから指定されたロードリクエスト。変化したら該当 ID の定義をロードする。 */
   loadEnvId?: { id: number; requestNo: number } | null;
   /** アクティブ MML 全文。定義済み判定と定義内容のロードに使用する。 */
@@ -92,13 +92,13 @@ export function VolEnvelopeEditor({
   // 繰り返しポイント (Loop Point): -1 はループなし
   const [loopPoint, setLoopPoint] = useState<number>(8);
 
-  // エンベロープデータ・ループ変更時に外部通知
-  useEffect(() => {
-    onChangeEnvData?.(envData, loopPoint);
-  }, [envData, loopPoint, onChangeEnvData]);
-
   // KEYOFF時リリースポイント (Release Point): -1 はなし
   const [releasePoint, setReleasePoint] = useState<number>(20);
+
+  // エンベロープデータ・ループ・リリース変更時に外部通知
+  useEffect(() => {
+    onChangeEnvData?.(envData, loopPoint, releasePoint);
+  }, [envData, loopPoint, releasePoint, onChangeEnvData]);
 
   // エンベロープ定義番号 (例: @VE1)
   const [envNumber, setEnvNumber] = useState<number>(1);

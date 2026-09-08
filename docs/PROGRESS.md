@@ -6,8 +6,8 @@
 ---
 
 ## 1. 現在のステータス概要
-- **バージョン**: `v0.0.1-beta.89`（コミット通番＋短縮ハッシュ ハイブリッド方式）
-- **テスト通過状況**: 全 32 テストファイル / 439 件パス（`npm test` / Vitest）
+- **バージョン**: `v0.0.1-beta.90`（コミット通番＋短縮ハッシュ ハイブリッド方式）
+- **テスト通過状況**: 全 33 テストファイル / 445 件パス（`npm test` / Vitest）
 - **型検査状況**: エラー 0 件（`npx tsc -b`）
 - **主要機能の稼働状況**:
   - Web ネイティブ MML コンパイラ（9ch / 17ch / ワークトラック W1〜W99 対応）
@@ -53,6 +53,17 @@
 ---
 
 ## 3. 直近の完了作業（最新）
+
+- **TRACK_END 時のリリース巻き戻し防止 & 仮想キーボード押下音の @VE リリース対応 (`src/core/player/TrackSequencer.ts`, `driver/mzsd_driver.asm`, `src/utils/virtualSynth.ts`, `src/view/VirtualKeyboard.tsx`, `src/view/MmlEditor.tsx`, `src/view/VolEnvelopeEditor.tsx`, `src/app/App.tsx`, [`docs/specification/ui.md`](./specification/ui.md), [`docs/specification/web_core_port.md`](./specification/web_core_port.md))** (2026-09-08):
+  - **背景・ユーザー指摘**:
+    - 「TRACK_END 時の do_keyoff が既にリリース再生済み (無音) の場合もリリース先頭へ巻き戻すため、曲自然終了の瞬間に僅かに音量が復帰して停止する」対応依頼。
+    - 「仮想キーボードの押下時の音は先ほどと同じ不具合 (リリースに遷移) が残っている」。
+  - **対応内容**:
+    1. **TRACK_END / 不明命令時の無音固定**: TS `TrackSequencer` に `silence()` を新設し `TrackEnd` / `default` で `keyOff()` の代わりに呼ぶよう変更。asm も `end_silence` ルーチンを新設し `ev_end` から呼ぶよう変更 (既存 `do_stop` = 全消音停止ルーチンとのラベル衝突に注意)。**asm 側は同一フレーム内で `ev_end` 後も `venv_frame` が走り無音固定を上書きするため、`run_events` 後に ended フラグを検査してエンベロープ進行をスキップするよう修正** (TS の tick は TrackEnd 後 `applyVolumeFrame` をスキップするため)。これにより曲自然終了時の音量復帰、および venv + BEEP トラックで曲終了後にゲートが ON のまま持ち越される問題も解消。**C# オリジナル (TrackEnd → KeyOff) からの意図的な差分**として `web_core_port.md` §3.1 に記録。
+    2. **仮想キーボードの @VE リリース対応** (`virtualSynth.ts`): `SynthPlayOptions.volEnvRelease` を新設。`VolumeEnvelopePlayback` クラス (KEY ON 中は `[loop, release)` サステイン区間をループ / リリース未指定はリリース直前ホールド、KEY OFF でリリース区間を 1 回再生して自動停止) と純粋関数 `sustainEnvelopeIndex` を実装し PSG / NOISE 両エンジンに適用。`noteOff` はリリース定義ありの場合 KEY OFF でリリースフェーズへ遷移、リトリガー時は `stopVoice` で即時停止。
+    3. **リリース位置の配線**: V-ENV エディタ `onChangeEnvData(data, loop, release)` 第3引数追加 → App `activeVolEnvRelease` state 新設 → `MmlEditor` / `VirtualKeyboard` へ props 追加 → `effectiveVolEnvData` が release を返却 → `options.volEnvRelease` へ設定。MML 定義からの取得は既存 `loadVolEnvDefinition().releasePoint` を使用。
+  - **テスト**: `MzsdSequencer.test.ts` の @VE 回帰テストを TRACK_END (51 フレーム目) を含む 54 フレーム検証に拡張 (終端で無音固定)。`virtualSynth.test.ts` (新規) に `sustainEnvelopeIndex` のセマンティクス固定テスト 6 ケース追加。
+  - **検証**: `npx tsc -b` エラーゼロ / `npm test` 全 33 ファイル・445 件合格 (+6) / `npm run build` 成功 / `npm run lint` エラーゼロ (既存警告 10 は変更なし)。
 
 - **@VE (音量エンベロープ) の KEY ON 中にリリース区間が再生される問題を修正 (`src/core/player/TrackSequencer.ts`, `driver/mzsd_driver.asm`, `src/view/VolEnvelopeEditor.tsx`, [`docs/specification/mml_reference.md`](./specification/mml_reference.md))** (2026-09-08):
   - **背景・ユーザー指摘**: 「`@VE1 = { 15, 14, 13, |, 12, 11, >, 8, 5, 2, 0 }` を演奏すると KEYON 途中でも @VE のリリースに遷移してしまいます。8,5,2,0 が繰り返し鳴っている」

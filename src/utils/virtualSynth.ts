@@ -23,8 +23,99 @@ export interface SynthPlayOptions {
   pitchEnvLoop?: number; // -1: ループなし
   volEnv?: number[]; // フレームごとの音量 (0〜15)
   volEnvLoop?: number; // -1: ループなし
+  volEnvRelease?: number; // リリース開始インデックス (KEY OFF 後に再生する区間。undefined / -1: なし)
   detune?: number; // デチューン値 (MML Dコマンド相当, ±cents)
   noiseType?: 'periodic' | 'white'; // ノイズ種別
+}
+
+/**
+ * KEY ON 中の音量エンベロープインデックスを算出する。
+ * リリース位置がある場合はその直前まで (サステイン区間) でループ / ホールドし、
+ * リリース区間には決して入らない (MZSD 演奏エンジンと同一挙動)。
+ */
+export function sustainEnvelopeIndex(
+  frame: number,
+  length: number,
+  loop: number | undefined,
+  release: number | undefined,
+): number {
+  const sustainEnd = release !== undefined && release >= 0 && release < length ? release : length;
+  if (frame < sustainEnd) return frame;
+  if (loop !== undefined && loop >= 0 && loop < sustainEnd) {
+    return loop + ((frame - sustainEnd) % (sustainEnd - loop));
+  }
+  return sustainEnd - 1;
+}
+
+/**
+ * 音量エンベロープ 1 発音分の進行状態。
+ * KEY ON 中はサステイン区間 (`[loop, release)` / リリースなしは末尾) を進み、
+ * beginRelease() 以降はリリース区間を末尾まで 1 回だけ再生する。
+ */
+class VolumeEnvelopePlayback {
+  private readonly values: readonly number[];
+
+  private readonly loop: number | undefined;
+
+  private readonly release: number | undefined;
+
+  private frame = 0;
+
+  private releaseFrame = 0;
+
+  private releasing = false;
+
+  constructor(values: readonly number[], loop: number | undefined, release: number | undefined) {
+    this.values = values;
+    this.loop = loop;
+    this.release = release;
+  }
+
+  /** リリース定義 (`>` マーカー) を持つかどうか。 */
+  get hasRelease(): boolean {
+    return this.validRelease() !== null;
+  }
+
+  /** リリース区間のフレーム数 (hasRelease 時のみ意味を持つ)。 */
+  get releaseLengthFrames(): number {
+    const start = this.validRelease();
+    return start === null ? 0 : this.values.length - start;
+  }
+
+  /** 現在フレームの音量インデックス (進行はしない)。 */
+  currentIndex(): number {
+    const len = this.values.length;
+    if (this.releasing) {
+      const start = this.validRelease();
+      if (start !== null) {
+        return Math.min(start + this.releaseFrame, len - 1); // リリース末尾でホールド
+      }
+    }
+
+    return sustainEnvelopeIndex(this.frame, len, this.loop, this.release);
+  }
+
+  /** 1 フレーム進める。 */
+  advance(): void {
+    this.frame++;
+    if (this.releasing) {
+      this.releaseFrame++;
+    }
+  }
+
+  /** KEY OFF: リリースフェーズへ遷移する (未定義 / 遷移済みの場合は false)。 */
+  beginRelease(): boolean {
+    if (this.releasing || !this.hasRelease) return false;
+    this.releasing = true;
+    this.releaseFrame = 0;
+    return true;
+  }
+
+  private validRelease(): number | null {
+    return this.release !== undefined && this.release >= 0 && this.release < this.values.length
+      ? this.release
+      : null;
+  }
 }
 
 // 発音中インスタンス管理
@@ -32,6 +123,8 @@ interface ActiveVoice {
   midiNote: number;
   engine: SoundEngineType;
   stop: () => void;
+  /** @VE リリース定義がある場合のキーオフ遷移 (false = リリースなしで即停止)。 */
+  triggerRelease?: () => boolean;
 }
 
 export class VirtualSynthEngine {
@@ -67,7 +160,7 @@ export class VirtualSynthEngine {
   // ノートON
   public noteOn(midiNote: number, options: SynthPlayOptions) {
     const ctx = this.getAudioContext();
-    this.noteOff(midiNote); // 既存の同音を停止
+    this.stopVoice(midiNote); // 既存の同音を停止 (リトリガー時はリリースさせず即時停止)
 
     const baseFreq = midiNoteToFrequency(midiNote, options.detune || 0);
     const masterGain = ctx.createGain();
@@ -79,6 +172,8 @@ export class VirtualSynthEngine {
 
     const stopCallbacks: Array<() => void> = [];
     const timers: number[] = [];
+    let triggerRelease: (() => boolean) | undefined;
+    let releaseStopTimer: number | null = null;
 
     // --- 1. PSG (DCSG 矩形波) ---
     if (options.engine === 'psg') {
@@ -95,23 +190,20 @@ export class VirtualSynthEngine {
 
       // エンベロープ処理 (60fps)
       let currentFrame = 0;
-      const hasVolEnv = options.volEnv && options.volEnv.length > 0;
+      const volEnv = options.volEnv && options.volEnv.length > 0 ? options.volEnv : null;
+      const volEnvState = volEnv
+        ? new VolumeEnvelopePlayback(volEnv, options.volEnvLoop, options.volEnvRelease)
+        : null;
       const hasPitchEnv = options.pitchEnv && options.pitchEnv.length > 0;
 
-      if (hasVolEnv || hasPitchEnv) {
+      if (volEnvState || hasPitchEnv) {
         const interval = window.setInterval(() => {
           if (!this.ctx) return;
           const now = this.ctx.currentTime;
 
-          // 音量エンベロープ
-          if (hasVolEnv && options.volEnv) {
-            const vLen = options.volEnv.length;
-            let vIdx = currentFrame;
-            if (vIdx >= vLen) {
-              const vLoop = options.volEnvLoop ?? 0;
-              vIdx = vLoop >= 0 && vLoop < vLen ? vLoop + ((vIdx - vLen) % (vLen - vLoop)) : vLen - 1;
-            }
-            const vVal = options.volEnv[vIdx] ?? 15;
+          // 音量エンベロープ (KEY ON 中はサステイン区間をループ / キーオフ後はリリース区間を再生)
+          if (volEnvState && volEnv) {
+            const vVal = volEnv[volEnvState.currentIndex()] ?? 15;
             const currentGain = (vVal / 15) * peakGain;
             gain.gain.setValueAtTime(Math.max(0.0001, currentGain), now);
           }
@@ -130,8 +222,25 @@ export class VirtualSynthEngine {
           }
 
           currentFrame++;
+          volEnvState?.advance();
         }, 1000 / 60);
         timers.push(interval);
+      }
+
+      // キーオフで @VE リリース区間 (> 以降) へ遷移するトリガー (演奏エンジンと同一挙動)
+      if (volEnvState?.hasRelease) {
+        const releaseMs = volEnvState.releaseLengthFrames * (1000 / 60);
+        triggerRelease = () => {
+          if (!volEnvState.beginRelease()) return false;
+          releaseStopTimer = window.setTimeout(() => {
+            const voice = this.activeVoices.get(midiNote);
+            if (voice) {
+              voice.stop();
+              this.activeVoices.delete(midiNote);
+            }
+          }, releaseMs + 120); // リリース再生後、フェード分を見て自動停止
+          return true;
+        };
       }
 
       stopCallbacks.push(() => {
@@ -212,24 +321,37 @@ export class VirtualSynthEngine {
       gain.connect(masterGain);
       noiseSrc.start();
 
-      // ボリュームエンベロープ
-      if (options.volEnv && options.volEnv.length > 0) {
-        let currentFrame = 0;
+      // ボリュームエンベロープ (KEY ON 中はサステイン区間をループ / キーオフ後はリリース区間を再生)
+      const noiseVolEnv = options.volEnv && options.volEnv.length > 0 ? options.volEnv : null;
+      const noiseVolEnvState = noiseVolEnv
+        ? new VolumeEnvelopePlayback(noiseVolEnv, options.volEnvLoop, options.volEnvRelease)
+        : null;
+      if (noiseVolEnvState && noiseVolEnv) {
         const interval = window.setInterval(() => {
           if (!this.ctx) return;
           const now = this.ctx.currentTime;
-          const vLen = options.volEnv!.length;
-          let vIdx = currentFrame;
-          if (vIdx >= vLen) {
-            const vLoop = options.volEnvLoop ?? 0;
-            vIdx = vLoop >= 0 && vLoop < vLen ? vLoop + ((vIdx - vLen) % (vLen - vLoop)) : vLen - 1;
-          }
-          const vVal = options.volEnv![vIdx] ?? 15;
+          const vVal = noiseVolEnv[noiseVolEnvState.currentIndex()] ?? 15;
           const currentGain = (vVal / 15) * peakGain;
           gain.gain.setValueAtTime(Math.max(0.0001, currentGain), now);
-          currentFrame++;
+          noiseVolEnvState.advance();
         }, 1000 / 60);
         timers.push(interval);
+
+        // キーオフで @VE リリース区間 (> 以降) へ遷移するトリガー (演奏エンジンと同一挙動)
+        if (noiseVolEnvState.hasRelease) {
+          const releaseMs = noiseVolEnvState.releaseLengthFrames * (1000 / 60);
+          triggerRelease = () => {
+            if (!noiseVolEnvState.beginRelease()) return false;
+            releaseStopTimer = window.setTimeout(() => {
+              const voice = this.activeVoices.get(midiNote);
+              if (voice) {
+                voice.stop();
+                this.activeVoices.delete(midiNote);
+              }
+            }, releaseMs + 120); // リリース再生後、フェード分を見て自動停止
+            return true;
+          };
+        }
       }
 
       stopCallbacks.push(() => {
@@ -344,7 +466,12 @@ export class VirtualSynthEngine {
     this.activeVoices.set(midiNote, {
       midiNote,
       engine: options.engine,
+      triggerRelease,
       stop: () => {
+        if (releaseStopTimer !== null) {
+          clearTimeout(releaseStopTimer);
+          releaseStopTimer = null;
+        }
         timers.forEach(t => clearInterval(t));
         stopCallbacks.forEach(cb => cb());
         masterGain.disconnect();
@@ -355,16 +482,29 @@ export class VirtualSynthEngine {
   // ノートOFF
   public noteOff(midiNote: number) {
     const voice = this.activeVoices.get(midiNote);
-    if (voice) {
-      voice.stop();
-      this.activeVoices.delete(midiNote);
+    if (!voice) return;
+
+    // @VE リリース定義がある場合はキーオフでリリースフェーズへ遷移する (演奏エンジンと同一挙動)
+    if (voice.triggerRelease && voice.triggerRelease()) {
+      return;
     }
+
+    this.stopVoice(midiNote);
   }
 
   // 全ノート停止
   public allNotesOff() {
     this.activeVoices.forEach(voice => voice.stop());
     this.activeVoices.clear();
+  }
+
+  /** 指定ノートの発音を即時停止する (リリースは行わない)。 */
+  private stopVoice(midiNote: number) {
+    const voice = this.activeVoices.get(midiNote);
+    if (voice) {
+      voice.stop();
+      this.activeVoices.delete(midiNote);
+    }
   }
 }
 

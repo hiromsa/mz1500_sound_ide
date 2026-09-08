@@ -116,6 +116,7 @@ interface VirtualKeyboardProps {
   activePitchEnvLoop?: number;
   activeVolEnv?: number[];
   activeVolEnvLoop?: number;
+  activeVolEnvRelease?: number;
   testMidiNote?: number;
   onChangeTestMidiNote?: (note: number) => void;
 }
@@ -129,6 +130,7 @@ export function VirtualKeyboard({
   activePitchEnvLoop,
   activeVolEnv,
   activeVolEnvLoop,
+  activeVolEnvRelease,
   testMidiNote,
   onChangeTestMidiNote,
 }: VirtualKeyboardProps) {
@@ -177,7 +179,9 @@ export function VirtualKeyboard({
       .filter((b) => b.kind === 'volEnv')
       .flatMap((b) => {
         const env = loadVolEnvDefinition(mmlSource, b.id);
-        return env ? [{ id: b.id, name: env.name, data: env.data, loop: env.loopPoint }] : [];
+        return env
+          ? [{ id: b.id, name: env.name, data: env.data, loop: env.loopPoint, release: env.releasePoint }]
+          : [];
       })
       .sort((a, b) => a.id - b.id);
   }, [mmlSource]);
@@ -234,19 +238,19 @@ export function VirtualKeyboard({
   const effectiveVolEnvData = useMemo(() => {
     if (activeTabContext === 'vol_envelope') {
       // VOL ENVエディタ時はエディタで編集中のデータを常に適用
-      return { data: activeVolEnv, loop: activeVolEnvLoop };
+      return { data: activeVolEnv, loop: activeVolEnvLoop, release: activeVolEnvRelease };
     }
     // ユーザーが DIRECT を明示選択した場合は、MML キャレットの @VE 指定より手動選択を最優先する
     if (psgVolumeMode === 'env') {
       if (selectedVolEnv === 'editor' && activeVolEnv) {
-        return { data: activeVolEnv, loop: activeVolEnvLoop };
+        return { data: activeVolEnv, loop: activeVolEnvLoop, release: activeVolEnvRelease };
       }
       const id = parseInt(selectedVolEnv, 10) || mmlContext?.volEnvId || 1;
       const v = definedVolEnvs.find((env) => env.id === id);
-      if (v) return { data: v.data, loop: v.loop };
+      if (v) return { data: v.data, loop: v.loop, release: v.release };
     }
-    return { data: undefined, loop: undefined };
-  }, [activeTabContext, psgVolumeMode, selectedVolEnv, activeVolEnv, activeVolEnvLoop, mmlContext, definedVolEnvs]);
+    return { data: undefined, loop: undefined, release: undefined };
+  }, [activeTabContext, psgVolumeMode, selectedVolEnv, activeVolEnv, activeVolEnvLoop, activeVolEnvRelease, mmlContext, definedVolEnvs]);
 
   // 初期スクロール: C4 (中央C) 付近にスクロール
   useEffect(() => {
@@ -375,6 +379,7 @@ export function VirtualKeyboard({
     if (effectiveVolEnvData.data) {
       options.volEnv = effectiveVolEnvData.data;
       options.volEnvLoop = effectiveVolEnvData.loop;
+      options.volEnvRelease = effectiveVolEnvData.release;
     }
 
     virtualSynth.noteOn(midiNote, options);

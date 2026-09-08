@@ -322,8 +322,8 @@ describe('FM sequencer', () => {
     const sequencer = new MzsdSequencer(MzsdSong.parse(builder.build()), chips, false);
 
     const attenuations: number[] = [];
-    // 50 フレーム分を検証 (51 フレーム目以降は TRACK_END キーオフ = C# 準拠のリリース再始動となるため対象外)
-    for (let frame = 0; frame < 50; frame++) {
+    // TRACK_END (51 フレーム目) を含む 54 フレーム分を検証
+    for (let frame = 0; frame < 54; frame++) {
       sequencer.tick();
       attenuations.push(chips.psg1.attenuationRegister(0));
     }
@@ -337,6 +337,7 @@ describe('FM sequencer', () => {
 
     // キーオフ後: リリース 8,5,2,0 (att 7,10,13,15) を再生して末尾 (0) でホールド
     // (41 フレーム目にゲート終端キーオフと REST キーオフが同時発生)
-    expect(attenuations.slice(40)).toEqual([7, 10, 13, 15, 15, 15, 15, 15, 15, 15]);
+    // 51 フレーム目の TRACK_END ではリリースを巻き戻さず無音のまま固定される
+    expect(attenuations.slice(40)).toEqual([7, 10, 13, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15]);
   });
 });

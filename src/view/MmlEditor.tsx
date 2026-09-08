@@ -150,6 +150,7 @@ interface MmlEditorProps {
   activePitchEnvLoop?: number;
   activeVolEnv?: number[];
   activeVolEnvLoop?: number;
+  activeVolEnvRelease?: number;
   testMidiNote?: number;
   onChangeTestMidiNote?: (note: number) => void;
   // 右クリックコンテキストメニューから各エディタへの遷移コールバック
@@ -202,6 +203,7 @@ export function MmlEditor({
   activePitchEnvLoop,
   activeVolEnv,
   activeVolEnvLoop,
+  activeVolEnvRelease,
   testMidiNote,
   onChangeTestMidiNote,
   onRequestEditTone,
@@ -1330,6 +1332,7 @@ export function MmlEditor({
                 activePitchEnvLoop={activePitchEnvLoop}
                 activeVolEnv={activeVolEnv}
                 activeVolEnvLoop={activeVolEnvLoop}
+                activeVolEnvRelease={activeVolEnvRelease}
                 testMidiNote={testMidiNote}
                 onChangeTestMidiNote={onChangeTestMidiNote}
               />

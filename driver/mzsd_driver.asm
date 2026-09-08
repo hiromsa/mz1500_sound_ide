@@ -252,7 +252,9 @@ pf_active:
         or      l
         jr      nz,pf_tick
         call    run_events              ; len > 0 になるまで命令を実行
-        jr      pf_after
+        bit     0,(ix+CH_FLAGS)
+        jr      nz,pf_next              ; このフレームで終了した場合はエンベロープ進行を
+        jr      pf_after                ; スキップ (TS tick の終了時と同一挙動)
 pf_tick:
         dec     hl
         ld      a,l
@@ -830,7 +832,7 @@ ele_cont:
 ; ---- TRACK_END / 不明命令: トラック終了
 ev_end:
         set     0,(ix+CH_FLAGS)
-        call    do_keyoff               ; キーオフ (C# TrackEnd -> KeyOff 相当)
+        call    end_silence             ; 無音へ固定 (リリース再始動は行わない)
         ret
 
 ; ---- 現在の hl (絶対) を ix+CH_PTR へ相対で保存
@@ -1984,6 +1986,38 @@ dk_flat:
         ld      (ix+CH_ATT),a
         call    write_att
 dk_exit:
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        ret
+
+
+; ---- トラック終了 / 停止処理 (IX = チャンネル)
+;      リリース再始動は行わず無音へ固定する。
+;      (終了後は演奏フレームが進まないため do_keyoff を使うと
+;       リリース先頭の音量へ巻き戻り、曲終了直後に音量が復帰して持ち越される)
+;      ※ do_stop (全チャンネル消音して演奏停止) とは別処理
+end_silence:
+        push    af
+        push    bc
+        push    de
+        push    hl
+        xor     a
+        ld      (ix+CH_PITCH),a         ; スイープ累積リセット
+        ld      (ix+CH_PITCH+1),a
+        ld      a,(ix+CH_FLAGS)
+        bit     3,a                     ; FM?
+        jr      z,es_nofm
+        ; Key Off: slot bits を 0 にしたチャンネル指定
+        ld      a,(ix+CH_PORT)
+        ld      c,a
+        ld      a,0x08
+        call    write_fm
+es_nofm:
+        ld      a,15
+        ld      (ix+CH_ATT),a
+        call    write_att
         pop     hl
         pop     de
         pop     bc

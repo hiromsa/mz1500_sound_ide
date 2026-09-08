@@ -348,13 +348,13 @@ export class TrackSequencer {
 
       case MzsdOp.TrackEnd:
         this.ended = true;
-        this.keyOff();
+        this.silence();
         break;
 
       default:
         // 不明命令はデータ破損の可能性が高いためトラックを停止する
         this.ended = true;
-        this.keyOff();
+        this.silence();
         break;
     }
   }
@@ -564,6 +564,25 @@ export class TrackSequencer {
       this.attenuation = 15;
     }
 
+    this.writeAttenuation();
+  }
+
+  /**
+   * トラック終了 / 停止時の消音。
+   * リリースの再始動は行わない (終了後に演奏フレームが進まないため、
+   * リリース先頭へ巻き戻すと音量が復帰したまま持ち越される)。
+   */
+  private silence(): void {
+    this.noteOn = false;
+    this.sweepElapsed = 0;
+    this.venvReleasing = false;
+
+    if (this.isFm) {
+      // Key Off: slot bits を 0 にしたチャンネル指定
+      this.chips.fm.setReg(0x08, this.fmChannel);
+    }
+
+    this.attenuation = 15;
     this.writeAttenuation();
   }
 

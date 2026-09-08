@@ -93,6 +93,7 @@ function App() {
   const [activePitchEnvLoop, setActivePitchEnvLoop] = useState<number | undefined>(undefined);
   const [activeVolEnv, setActiveVolEnv] = useState<number[] | undefined>(undefined);
   const [activeVolEnvLoop, setActiveVolEnvLoop] = useState<number | undefined>(undefined);
+  const [activeVolEnvRelease, setActiveVolEnvRelease] = useState<number | undefined>(undefined);
 
   // MML右クリックメニューから各エディタに渡す「ロードリクエスト」
   // (null = リセット / requestNo は同一 ID の再ロード要求を判定するための連番)
@@ -720,6 +721,7 @@ function App() {
             activePitchEnvLoop={activePitchEnvLoop}
             activeVolEnv={activeVolEnv}
             activeVolEnvLoop={activeVolEnvLoop}
+            activeVolEnvRelease={activeVolEnvRelease}
             testMidiNote={testMidiNote}
             onChangeTestMidiNote={setTestMidiNote}
             onRequestEditTone={handleRequestEditTone}
@@ -931,9 +933,10 @@ function App() {
 
               {activeRightTab === 'vol_envelope' && (
                 <VolEnvelopeEditor
-                  onChangeEnvData={(data, loop) => {
+                  onChangeEnvData={(data, loop, release) => {
                     setActiveVolEnv(data);
                     setActiveVolEnvLoop(loop);
+                    setActiveVolEnvRelease(release);
                   }}
                   loadEnvId={loadVolEnvId}
                   mmlSource={activeMmlSource}

@@ -130,6 +130,11 @@ C# の partial class (1 クラス複数ファイル) は、TS では 1 ファイ
 - NAudio `MixerProvider` の合成部 (60Hz フレーム駆動 / ミックス / VU) は
   `player/AudioFrameMixer.ts` (Web Audio 非依存) として切り出し。`AudioEngine.ts` は
   AudioWorklet への標本供給 (20ms pump + リングバッファ) と ScriptProcessor フォールバックのみを担う。
+- **意図的な C# からの差分 (2026-09-08)**: `@VE` のノート ON 中ループ区間は
+  `[loopIndex, releaseIndex)` に限定 (C# は全要素末尾でループしリリース区間を演奏してしまう)。
+  また TRACK_END / 不明命令時はリリース再始動 (`do_keyoff`) ではなく無音固定
+  (TS `TrackSequencer.silence()` / asm `end_silence`) とする。終了後に演奏フレームが
+  進まないため、リリース再始動すると音量が復帰したまま持ち越されるため。
 
 ## 4. 検証方針
 
