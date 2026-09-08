@@ -6,7 +6,7 @@
 ---
 
 ## 1. 現在のステータス概要
-- **バージョン**: `v0.0.1-beta.76`（コミット通番＋短縮ハッシュ ハイブリッド方式）
+- **バージョン**: `v0.0.1-beta.80`（コミット通番＋短縮ハッシュ ハイブリッド方式）
 - **テスト通過状況**: 全 32 テストファイル / 435 件パス（`npm test` / Vitest）
 - **型検査状況**: エラー 0 件（`npx tsc -b`）
 - **主要機能の稼働状況**:
@@ -53,6 +53,16 @@
 ---
 
 ## 3. 直近の完了作業（最新）
+
+- **「エクスプローラーで表示」(Reveal in File Explorer) 機能の Web 制約調査 & 見送り判断の仕様書明記 ([`docs/specification/ui.md`](./specification/ui.md))** (2026-09-08):
+  - **背景・ユーザー要望**: 「EXPLORER の部分、右クリックでファイルエクスプローラーで表示 が欲しいです。VSCodeみたいの。」
+  - **調査結果 (技術的制約)**:
+    - VS Code は Electron デスクトップアプリのため `shell.showItemInFolder()` で実現可能だが、本 IDE はブラウザサンドボックス内で動作する Web アプリであり、Web 標準 API (File System Access API 含む) には OS ネイティブのエクスプローラーウィンドウを開く手段が存在しない。
+    - `window.open('file:///...')` 等による file スキーム起動もブラウザセキュリティポリシーによりブロックされる。
+  - **ユーザー確定判断 (2026-09-08)**: 選択肢 (A: フォルダ選択ダイアログ代替 / B: 見送り・仕様書明記 / C: Electron 化) のうち **案 B「見送り (仕様書に制約を明記するのみ)」** を選択。
+    - `showDirectoryPicker({ startIn })` によるダイアログ代替は「表示中のページ操作ブロック」「純粋な表示ではない」ため不採用。
+    - Web ネイティブ完結方針を維持し、制約と技術的理由・代替案検討結果・将来再検討トリガーを `docs/specification/ui.md` §3.13-9 に明記。
+  - **ソースコード変更**: なし (ドキュメントのみの対応)。
 
 - **LOCAL FOLDER の新規作成ファイルのリネーム・実ディスク同期 & エディタ連動の修正、F2キーリネーム & 右クリックコンテキストメニュー新設 (`src/view/FileExplorer.tsx`, `src/view/MmlEditor.tsx`, `src/data/__tests__/sampleMmlSongs.test.ts`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-08):
   - **背景・ユーザー指摘**:
