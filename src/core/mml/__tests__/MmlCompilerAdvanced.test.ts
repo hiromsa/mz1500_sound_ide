@@ -186,6 +186,22 @@ describe('MML reference compliance (mml_reference.md 4章)', () => {
     expect((result.musicData as Uint8Array)[20]).toBe(1); // FM 音色数
   });
 
+  it('FM tone @1 = { } definition with new editor label format (/* ALG, FB */ / OP common labels only)', () => {
+    const tone46WithLabels = [
+      '  /* NAME: E.PIANO 1 */',
+      '  /* ALG, FB */',
+      '  4, 6,',
+      '  /* AR, D1R, D2R, RR, D1L, TL, KS, MUL, DT1, DT2, AME */',
+      '  31, 12, 0, 15, 3, 24, 0, 1, 0, 0, 0,',
+      '  31, 18, 0, 12, 5, 18, 0, 2, 3, 0, 0,',
+      '  31, 10, 0, 15, 2, 30, 0, 1, 0, 0, 0,',
+      '  31,  8, 0,  8, 4,  0, 0, 1, 0, 0, 0',
+    ].join('\n');
+    const result = compile(`@1 = {\n${tone46WithLabels}\n}\nF1 @1 c`);
+    expect(result.success).toBe(true);
+    expect((result.musicData as Uint8Array)[20]).toBe(1); // FM 音色数
+  });
+
   it('FM tone @FM1 = { } definition and @FM1 apply', () => {
     const result = compile(`@FM1 = { ${tone46Inline} }\nF1 @FM1 c`);
     expect(result.success).toBe(true);

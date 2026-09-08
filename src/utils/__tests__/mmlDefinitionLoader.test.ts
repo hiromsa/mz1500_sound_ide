@@ -108,6 +108,32 @@ describe('loadFmToneDefinition', () => {
     expect(loaded?.ops[3].ame).toBe(true);
   });
 
+  it('エディタ新出力書式 (/* ALG, FB */ ラベル・OP個別ラベルなし) からも復元できる', () => {
+    const mml = [
+      '@2 = {',
+      '  /* NAME: E.PIANO 1 */',
+      '  /* ALG, FB */',
+      '  4, 6,',
+      '  /* AR, D1R, D2R, RR, D1L, TL, KS, MUL, DT1, DT2, AME */',
+      '  31, 12, 4, 10, 3, 45, 1, 1, 0, 0, 0,',
+      '  31, 18, 2, 8, 6, 24, 1, 1, 3, 0, 0,',
+      '  31, 14, 3, 9, 4, 32, 2, 14, 0, 0, 0,',
+      '  31, 8, 1, 7, 2, 0, 1, 1, 0, 0, 0',
+      '}',
+    ].join('\n');
+    const loaded = loadFmToneDefinition(mml, 2);
+    expect(loaded).not.toBeNull();
+    expect(loaded?.name).toBe('E.PIANO 1');
+    expect(loaded?.alg).toBe(4);
+    expect(loaded?.fb).toBe(6);
+    expect(loaded?.ops[0]).toEqual({
+      ar: 31, d1r: 12, d2r: 4, rr: 10, d1l: 3, tl: 45, ks: 1, mul: 1, dt1: 0, dt2: 0, ame: false,
+    });
+    expect(loaded?.ops[1]).toEqual({
+      ar: 31, d1r: 18, d2r: 2, rr: 8, d1l: 6, tl: 24, ks: 1, mul: 1, dt1: 3, dt2: 0, ame: false,
+    });
+  });
+
   it('パラメータ数が不足している定義は null を返す', () => {
     const shortMml = '@5 = { 4, 3, 31, 10, 5 }';
     expect(loadFmToneDefinition(shortMml, 5)).toBeNull();

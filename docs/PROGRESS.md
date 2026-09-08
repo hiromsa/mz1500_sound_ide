@@ -6,7 +6,7 @@
 ---
 
 ## 1. 現在のステータス概要
-- **バージョン**: `v0.0.1-beta.80`（コミット通番＋短縮ハッシュ ハイブリッド方式）
+- **バージョン**: `v0.0.1-beta.81`（コミット通番＋短縮ハッシュ ハイブリッド方式）
 - **テスト通過状況**: 全 32 テストファイル / 435 件パス（`npm test` / Vitest）
 - **型検査状況**: エラー 0 件（`npx tsc -b`）
 - **主要機能の稼働状況**:
@@ -53,6 +53,14 @@
 ---
 
 ## 3. 直近の完了作業（最新）
+
+- **FM TONE の「MMLに反映」出力書式を簡素化 (`src/view/FmToneEditor.tsx`, `src/utils/__tests__/mmlDefinitionLoader.test.ts`, `src/core/mml/__tests__/MmlCompilerAdvanced.test.ts`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-08):
+  - **背景・ユーザー要望**: 「FM TONE で INSERTするMML はこんな書式にしたいです。」(例示: `/* ALG, FB */` ラベル + OP 共通パラメータ順ラベルのみの 46 値列)「OP1 とか Carrier とか、 ALG FBの数値不要」
+  - **対応内容**:
+    - `FmToneEditor.generateMmlSnippet` の出力を `/* ALG, FB */` (数値なし) + `/* AR, D1R, D2R, RR, D1L, TL, KS, MUL, DT1, DT2, AME */` (OP1〜OP4 共通の順序説明、1 回のみ) のシンプル書式へ変更。
+    - 従来付与していた OP 個別ラベル (`/* OP1: ... */` 〜 `/* OP4 (Carrier) */`) と行末の `; Carrier` コメントを廃止。
+    - コンパイラ (`splitMacroTokens`) とローダー (`splitDefinitionTokens`) はコメント除去後に数値列をパースするため、既存 MML (旧書式) のコンパイル・ロードは後方互換で変化なし。名称フォールバック抽出 (`extractDefinitionName`) も `ALG` / `AR` 始まりのラベルコメントは予約キーワードとして自動除外されるため影響なし。
+  - **テスト**: `mmlDefinitionLoader.test.ts` に新書式ロードケース追加、`MmlCompilerAdvanced.test.ts` に新書式コンパイルケース追加。
 
 - **「エクスプローラーで表示」(Reveal in File Explorer) 機能の Web 制約調査 & 見送り判断の仕様書明記 ([`docs/specification/ui.md`](./specification/ui.md))** (2026-09-08):
   - **背景・ユーザー要望**: 「EXPLORER の部分、右クリックでファイルエクスプローラーで表示 が欲しいです。VSCodeみたいの。」
