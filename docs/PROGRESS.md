@@ -54,6 +54,13 @@
 
 ## 3. 直近の完了作業（最新）
 
+- **ノイズチャンネル総合仕様ドキュメントを新設 ([`docs/specification/noise_channel.md`](./specification/noise_channel.md), `docs/specification/README.md`, [`docs/specification/mml_reference.md`](./specification/mml_reference.md))** (2026-09-08):
+  - **背景・ユーザー要望**: 「今一度ノイズのモードや3chとの同期、本ドライバの実装 mmlとの関係について教えてください。いつも忘れてしまうので、どこかに.mdとして仕様をまとめてください。」
+  - **対応内容**: ハードウェア (SN76489AN / LFSR / rate 0-3) → MML (`@WN`/`@IN` flags) → ドライバ実装 (SourceInterpreter / mzsd_driver.asm) → Web エミュレーション (DcsgChip 差分) を貫く総合仕様書 `noise_channel.md` を新設。
+    - §1 やりたいこと逆引き早見表 (ドラム / 金属音 / 音程追従)、§2 ハードウェア構成 (MZ-1500 の PSG×2 / LFSR / シフトクロック rate / SN76489 レジスタ一覧)、§3 MML コマンド (flags ビット構成 / `@IN1` と `@IN2` は実装上どちらも同期 ON で波形は `@WN` 側で決まる / 有効・無効コマンド一覧 / P3・P6 との tone2 共有の注意)、§4 ドライバ実装 (NOISECTL 命令と両エンジンの処理フロー)、§5 Web 固有実装、§6 MML 記述例、§7 FAQ 6 項。
+    - `README.md` 索引へ追加、`mml_reference.md` §3.6 の `@WN`/`@IN` 行を実装実態に合わせて更新 (単体では高さ固定 / `@IN` は N1・N2 に記述) + 相互リンク追記。
+  - **テスト**: コード変更なし (`npm test` 全 34 ファイル・457 件合格 + 1 skip を再確認)。
+
 - **周期ノイズの音程追従仕様を明確化 & サンプルを @IN1 併用に修正 (`samples/mml_reference/psg/psg_noise_basic.mml`, `src/core/player/__tests__/NoiseTrackPlayback.test.ts`)** (2026-09-08):
   - **背景・ユーザー指摘**: 「@WN1 はOKです。@WN0 は高い周波数のままキーンとなっていて、音程かわりません。」
   - **仕様の確認・結論**:
