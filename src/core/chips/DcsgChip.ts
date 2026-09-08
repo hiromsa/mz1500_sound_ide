@@ -22,7 +22,7 @@ export class DcsgChip {
 
   private noiseRate = 0; // 0-2 = 分周 1/2/4、3 = tone2 連動
 
-  private lfsr = 0x4000;
+  private lfsr = 0x8000;
 
   private lfsrTimer = 0;
 
@@ -81,6 +81,16 @@ export class DcsgChip {
   /** 検証 / デバッグ用: ノイズ波形 (true = white)。 */
   get isNoiseWhite(): boolean {
     return this.noiseWhite;
+  }
+
+  /** 検証 / デバッグ用: ノイズ LFSR の現在状態。 */
+  get lfsrState(): number {
+    return this.lfsr;
+  }
+
+  /** 検証 / デバッグ用: ノイズ LFSR を現在の波形モードで 1 ステップ進める。 */
+  advanceLfsrForTest(): void {
+    this.shiftLfsr();
   }
 
   /** 検証 / デバッグ用: ノイズ分周モード (0-2 = 分周、3 = tone2 連動)。 */
@@ -174,13 +184,15 @@ export class DcsgChip {
   }
 
   private shiftLfsr(): void {
-    // TMS 系 15bit LFSR: white = bit0 XOR bit3、periodic = bit0 をフィードバック
+    // SN76489AN 相当の 16bit LFSR: white = bit0 XOR bit3、periodic = bit0 を bit15 へフィードバック。
     // (AND フィードバックで実装すると LFSR が 0x0000 へ吸引され、
     //  白噪が数ミリ秒で永久無音化するため XOR が正仕様。
+    //  また 15bit レジスタ + bit14 挿入ではタップ (0,3) が最大長から外れて
+    //  63 ステップの短い循環 (= 約 890Hz のブザー音) になるため、実機と同じ 16bit とする。
     //  C# オリジナルは AND 実装のため意図的な差分 — web_core_port.md §3.1 参照)
     const bit0 = this.lfsr & 1;
     const bit = this.noiseWhite ? bit0 ^ ((this.lfsr >> 3) & 1) : bit0;
-    this.lfsr = (this.lfsr >> 1) | (bit << 14);
+    this.lfsr = (this.lfsr >> 1) | (bit << 15);
   }
 }
 

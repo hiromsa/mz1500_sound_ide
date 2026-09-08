@@ -162,6 +162,38 @@ describe('DcsgChip', () => {
     expect(min).toBeLessThan(-0.2);
   });
 
+  it('runs the white noise LFSR at a long cycle length (16-bit register)', () => {
+    // 実機 SN76489AN は 16bit シフトレジスタ (bit15 挿入)。
+    // 15bit + bit14 挿入ではタップ (0,3) が 63 ステップの短循環になり、
+    // 白噪が「キーン」というトーン (約 890Hz) として聞こえるバグがあった。
+    const chip = new DcsgChip();
+    chip.setNoiseControl(true, 2);
+
+    const first = chip.lfsrState;
+    let steps = 0;
+    do {
+      chip.advanceLfsrForTest();
+      steps++;
+    } while (chip.lfsrState !== first && steps <= 70000);
+
+    expect(steps).toBeGreaterThan(30000);
+  });
+
+  it('cycles the periodic noise in 16 steps (16-bit register)', () => {
+    // 周期ノイズ (bit0 パススルー) は 16bit 循環で 16 ステップ周期 (実機準拠)
+    const chip = new DcsgChip();
+    chip.setNoiseControl(false, 2);
+
+    const first = chip.lfsrState;
+    let steps = 0;
+    do {
+      chip.advanceLfsrForTest();
+      steps++;
+    } while (chip.lfsrState !== first && steps <= 70000);
+
+    expect(steps).toBe(16);
+  });
+
   it('attenuates the alias high band of the noise output', () => {
     // シフトクロック (55.9〜223.7kHz) は音声ナイキスト (24kHz) を大きく超えるため、
     // そのまま出力すると標本化エイリアスが金属的な高音として聞こえる。

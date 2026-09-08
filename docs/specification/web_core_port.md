@@ -141,7 +141,17 @@ C# の partial class (1 クラス複数ファイル) は、TS では 1 ファイ
   (reference.json の `dcsgNoiseSamples` が全標本 -0.25 定常であることが証拠) となり、
   実際の音は約 0.3ms で無音化する。実機 SN76489AN の正仕様は `bit0 XOR bit3`
   (TMS 系 15bit LFSR、periodic = bit0 パススルー) であるため、TS 版は XOR へ修正した
-  (`DcsgChip.shiftLfsr`)。C# 標本との一致検証テスト (`renders the same noise samples
+- **意図的な C# からの差分 (2026-09-08): DCSG ノイズ LFSR のフィードバックを XOR かつ 16bit 化**。
+  C# 版は white ノイズのフィードバックを `bit0 AND bit3` で実装しており、15bit LFSR が
+  白噪開始から数ステップで `0x0000` (吸引点) に落ちて bit0 固定の DC 出力
+  (reference.json の `dcsgNoiseSamples` が全標本 -0.25 定常であることが証拠) となり、
+  実際の音は約 0.3ms で無音化する。実機 SN76489AN の正仕様は
+  **16bit シフトレジスタ (bit15 挿入) で white = `bit0 XOR bit3` / periodic = `bit0`**
+  であるため、TS 版は XOR かつ 16bit へ修正した (`DcsgChip.shiftLfsr`、初期値 0x8000)。
+  なお 15bit (bit14 挿入) のまま XOR にした場合もタップ (0,3) が最大長から外れ
+  **63 ステップの短循環 (約 890Hz のブザー音)** となるため、16bit 化は必須
+  (周期検証テスト: white > 30000 ステップ / periodic = 16 ステップ)。
+  C# 標本との一致検証テスト (`renders the same noise samples
   as the C# reference`) は意図的差分として `it.skip` (理由コメント付き)。C# 本体側も
   同バグのため将来修正する際は reference.json 再生成 + 本テストの skip 解除で再照合可能。
 - **意図的な C# からの差分 (2026-09-08): DCSG ノイズ出力への帯域制限フィルタ追加**。
