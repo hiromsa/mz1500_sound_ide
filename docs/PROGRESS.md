@@ -6,8 +6,8 @@
 ---
 
 ## 1. 現在のステータス概要
-- **バージョン**: `v0.0.1-beta.91`（コミット通番＋短縮ハッシュ ハイブリッド方式）
-- **テスト通過状況**: 全 33 テストファイル / 445 件パス（`npm test` / Vitest）
+- **バージョン**: `v0.0.1-beta.92`（コミット通番＋短縮ハッシュ ハイブリッド方式）
+- **テスト通過状況**: 全 34 テストファイル / 450 件パス（`npm test` / Vitest）
 - **型検査状況**: エラー 0 件（`npx tsc -b`）
 - **主要機能の稼働状況**:
   - Web ネイティブ MML コンパイラ（9ch / 17ch / ワークトラック W1〜W99 対応）
@@ -53,6 +53,18 @@
 ---
 
 ## 3. 直近の完了作業（最新）
+
+- **ノイズトラック (N1) が PLAY で鳴らない問題を修正 — TrackId の並び順を演奏系と統一 (`src/core/mml/TrackId.ts`, `src/core/player/__tests__/NoiseTrackPlayback.test.ts` 新設)** (2026-09-08):
+  - **背景・ユーザー指摘**: 「ノイズ PLAYボタンでなりません。普通に音がなってます。」(psg_noise_basic.mml サンプルで N1 のノイズだけ鳴らない)
+  - **原因**:
+    - MML コンパイラ側の `TrackId.buildAllTracks` だけが `P1..P6, N1(6), N2(7), B1(8), F1-F8` の並び (N1 = trackIndex 6) で、演奏側 (TS `TrackSequencer.resolveDcsg` / `isNoise` / `AudioFrameMixer.setTrackGain` / `driver/mzsd_driver.asm` の `init_ch_regs`) が期待する MZ-1500 音源構成順 `P1,P2,P3,N1(3),P4,P5,P6,N2(7),B1(8),F1-F8` と不一致していた。
+    - このため N1 のトラックデータがトラックテーブル slot 6 (**P6 = psg2 ch2 矩形波**) へ書かれ、N1 (slot 3) は「データなし」扱いでノイズチャンネル (psg1 ch3) が一切発音しなかった。N2 (7) は偶然一致していたため N1 だけが破綻する形。
+    - Z80DriverEquivalence テストで検出できなかった理由: TS シーケンサと asm ドライバがどちらも「slot 6 = P6」と同一解釈するため両エンジンは等価のまま (コンパイラ ↔ 演奏系の断絶はこのテストでは見えない)。
+  - **対応内容**:
+    1. `TrackId.buildAllTracks` を正しい並び順に修正 (`P1-P3 → N1 → P4-P6 → N2 → B1 → F1-F8`、N1=3 / N2=7)。仕様準拠 (`mml_reference.md` §1: DCSG1 = P1,P2,P3,N1 / DCSG2 = P4,P5,P6,N2)。
+    2. 回帰テスト `NoiseTrackPlayback.test.ts` (新設 5 ケース): N1 データが slot 3 へ書かれ slot 6 (P6) が空であること / N2 は slot 7 / **実サンプル (psg_noise_basic.mml 相当) を両エンジン (SourceInterpreter / Z80Driver) で駆動し、ノイズチャンネル減衰レジスタ < 15 かつ波形出力 > 0.01 で発音を検証** (PSG1 = N1 / PSG2 = N2)。
+  - **テスト**: `npx tsc -b` エラーゼロ / `npm test` 全 34 ファイル・450 件合格 (+5) / `npm run build` 成功 / `npm run lint` エラーゼロ (既存警告 10 は変更なし)。
+  - **補足 (仕様メモ)**: 非連動ノイズ (`@WN0`/`@WN1` のみ) では SN76489 ハードウェア仕様上、音符の音程はノイズ分周 3 段階 (低中高) の自動ヒントにのみ反映され、音程どおりの高さ変化はしない。音程に連動させたい場合は `@IN1` / `@IN2` (P3 / P6 との同期連動) を使用する (psg_noise_interlock.mml 参照)。
 
 - **mml_reference へ音源別 (fm / psg / beep) コマンド学習サンプルを整備 (`samples/mml_reference/fm|psg|beep/` 新設 14 ファイル追加・既存 2 ファイル移動, `samples/mml_reference/README.md`)** (2026-09-08):
   - **背景・ユーザー要望**: 「mml_referenceフォルダに色々なサンプルの.mmlを置いていきたいです。コマンド毎の動作が確認でき、書き方がわかるようにする意図があります。考えられるものをいくつか作ってみてください。fm音源とPSG、BEEPは分けたいです。」

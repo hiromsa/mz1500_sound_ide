@@ -17,11 +17,18 @@ export interface TrackId {
 
 function buildAllTracks(): TrackId[] {
   const list: TrackId[] = [];
-  for (let i = 1; i <= 6; i++) {
+  // MZ-1500 の音源構成順 (DCSG1 = P1-P3 + N1 / DCSG2 = P4-P6 + N2)。
+  // この番号は MZSD トラックテーブルの slot 番号と一致し、
+  // TrackSequencer / mzsd_driver.asm / AudioFrameMixer が期待する並びと統一されている。
+  for (let i = 1; i <= 3; i++) {
     list.push({ id: `P${i}`, index: list.length, isNoise: false, isBeep: false, isFm: false, fmChannel: -1 });
   }
 
   list.push({ id: 'N1', index: list.length, isNoise: true, isBeep: false, isFm: false, fmChannel: -1 });
+  for (let i = 4; i <= 6; i++) {
+    list.push({ id: `P${i}`, index: list.length, isNoise: false, isBeep: false, isFm: false, fmChannel: -1 });
+  }
+
   list.push({ id: 'N2', index: list.length, isNoise: true, isBeep: false, isFm: false, fmChannel: -1 });
   list.push({ id: 'B1', index: list.length, isNoise: false, isBeep: true, isFm: false, fmChannel: -1 });
   for (let i = 1; i <= 8; i++) {
@@ -30,6 +37,7 @@ function buildAllTracks(): TrackId[] {
 
   return list;
 }
+
 
 /** 全トラック ID (仕様書 §2 の並び順)。 */
 export const allTracks: readonly TrackId[] = buildAllTracks();
