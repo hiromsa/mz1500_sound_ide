@@ -1,0 +1,30 @@
+/* 音量 v のサンプルです (FM / PSG / ノイズ共通・BEEP は不可) */
+; v<n> = 音量指定 (0-15。15 = 最大音量 / 0 = 無音)。
+;       指定した音量は次の音符から適用され、変更するまで維持されます。
+; ・FM トラックでは @v (0-127) による高分解能の音量指定も可能。
+; ・BEEP トラックでは音量指定が使えません (常時最大音量で鳴ります)。
+
+#TITLE "PSG Volume Basic"
+#COMPOSER "Hotate"
+#OPM OFF
+#OCTAVE NORMAL
+
+P1 t120 o4 l8 q7        ; v15 → v0 へ 1 段階ずつ、音階を上げながら聞き比べ
+P1 v15 cccc             ; v15 = 最大音量
+P1 v14 dddd
+P1 v13 eeee
+P1 v12 ffff
+P1 v11 gggg
+P1 v10 aaaa
+P1 v9  bbbb
+P1 v8  >cccc
+P1 v7  dddd
+P1 v6  eeee
+P1 v5  ffff
+P1 v4  gggg
+P1 v3  aaaa
+P1 v2  bbbb
+P1 v1  >cccc            ; v1 = ごく小さい音
+P1 v0  dddd             ; v0 = 無音
+
+

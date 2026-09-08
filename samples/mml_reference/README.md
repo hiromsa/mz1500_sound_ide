@@ -28,8 +28,8 @@
 | `psg/psg_loop_flow.mml` | `[ ]` / `L` (永久ループ) |
 | `psg/psg_noise_basic.mml` | `N1` / `@WN` / `v` (ノイズ) |
 | `psg/psg_noise_interlock.mml` | `@IN` (ノイズ連動) |
-| `psg/quantize.mml` | `q` / `@q` (ゲート時間) |
-| `psg/volume2.mml` | `v` (0-15 の音量) |
+| `psg/psg_quantize_gate.mml` | `q` / `@q` (ゲート時間) |
+| `psg/psg_volume_basic.mml` | `v` (0-15 の音量) |
 | `beep/beep_basic_scale.mml` | `B1` 音階演奏 |
 | `beep/beep_pitch_effect.mml` | `@SW` / `@PE` / `D` (BEEP) |
 

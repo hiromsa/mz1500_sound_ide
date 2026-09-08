@@ -6,7 +6,7 @@
 ---
 
 ## 1. 現在のステータス概要
-- **バージョン**: `v0.0.1-beta.99`（コミット通番＋短縮ハッシュ ハイブリッド方式）
+- **バージョン**: `v0.0.1-beta.100`（コミット通番＋短縮ハッシュ ハイブリッド方式）
 - **テスト通過状況**: 全 35 テストファイル / 476 件パス + 1 skip（`npm test` / Vitest）
 - **型検査状況**: エラー 0 件（`npx tsc -b`）
 - **主要機能の稼働状況**:
@@ -53,6 +53,17 @@
 ---
 
 ## 3. 直近の完了作業（最新）
+
+- **PSG サンプル 2 ファイルの命名統一 & コメント整備 (`samples/mml_reference/psg/psg_volume_basic.mml`, `samples/mml_reference/psg/psg_quantize_gate.mml` ※リネーム, `samples/mml_reference/README.md`)** (2026-09-09):
+  - **背景・ユーザー要望**: 「psg フォルダの volume2.mml と quantize.mml について他のファイルと同様に、コメントを入れたり、ファイル名を変更して統一させてください。」
+  - **対応内容**:
+    - ファイル名を `psg_<テーマ>.mml` 命名規則へ統一 (`git mv` で履歴保持):
+      - `psg/volume2.mml` → `psg/psg_volume_basic.mml` (`v` コマンド基本音量サンプル。`psg_volume_envelope` と対になる命名)
+      - `psg/quantize.mml` → `psg/psg_quantize_gate.mml` (`q` / `@q` どちらもゲート関連のため)
+    - 既存サンプルと同様のコメント構成へ整備: 冒頭 `/* */` 概要 + `;` 書式説明 (`v` は 0-15・FM/PSG/ノイズ共通・BEEP 不可・FM は `@v` (0-127) 利用可 / `q` は 1-8 のゲートタイム比率・標準 7 / `@q` はフレーム単位ゲートカット・指定中は `q` より優先)、行末の解説コメント、`#TITLE` を "PSG XXX" 形式へ変更 ("PSG Volume Basic" / "PSG Quantize Gate")。
+    - `samples/mml_reference/README.md` の「ファイル × 確認できるコマンド」対応表を新ファイル名へ更新。
+    - ※ `volume2.mml` に残っていたユーザー編集分の未コミット差分 (`@q0-@q7` 行の削除) は意図を尊重し、`v` 専用サンプルとして本内容を取り込んだ。
+  - **検証**: `npm test` 全 35 ファイル・476 件合格 + 1 skip (samples 全 .mml のエラー・警告ゼロコンパイル確認を含む)。
 
 - **`@IN` を P3/P6 トーン 3 統合トラック専用コマンドへ変更 — ノイズ仕様の 2 系統化 (`src/core/mml/TrackId.ts`, `src/core/mml/parser/MmlParser.ts`, `src/core/mml/parser/MmlParserTypes.ts`, `src/core/player/TrackSequencer.ts`, `driver/mzsd_driver.asm`, `src/utils/mmlCaretParser.ts`, テスト 5 件・サンプル 2 件・仕様書 2 件更新)** (2026-09-08):
   - **背景・ユーザー指摘**: 「`@IN` が N1 (Noise) チャンネル用として処理されているのは SN76489 (DCSG) の仕様上明確な誤り。専用ノイズトラック (N1/N2 = `@WN`) と Tone 3 連動トラック (P3/P6 = `@IN`) の 2 系統の仕様と意図に基づいてパーサーおよびコンパイラのルーティングを修正してほしい」
