@@ -1729,13 +1729,26 @@ vf_pos:
         ld      a,(ix+CH_GATE)
         or      (ix+CH_GATE+1)
         jr      z,vf_exit
+        ; ノート中のループ終端 = リリース位置 (有効時) / 末尾
+        ; リリース区間 (> 以降) はノートオフ後のみ再生する
+        push    bc
+        ld      e,(ix+CH_VENV)
+        call    venv_addr               ; hl = entry (a, b, c, e 破壊)
+        inc     hl
+        inc     hl                      ; entry+2 = release
+        ld      a,(hl)
+        pop     bc
+        cp      c
+        jr      nc,vf_le                ; release >= len (255 含む) -> 終端 = len
+        ld      c,a                     ; 終端 = release
+vf_le:
         ld      a,(ix+CH_VPOS)
         inc     a
         cp      c
-        jr      c,vf_set                ; pos < len-1 -> 前進
-        ld      a,b                     ; pos >= len-1 -> ループ判定
+        jr      c,vf_set                ; pos < 終端-1 -> 前進
+        ld      a,b                     ; pos >= 終端-1 -> ループ判定
         cp      c
-        jr      nc,vf_exit              ; loop >= len (255 含む) -> ループなし
+        jr      nc,vf_exit              ; loop >= 終端 (255 含む) -> ホールド
 vf_set:
         ld      (ix+CH_VPOS),a
         jr      vf_exit

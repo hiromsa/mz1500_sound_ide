@@ -305,4 +305,38 @@ describe('FM sequencer', () => {
     sequencer.tick();
     expect(chips.fm.tryGetRegister(0x60)?.value).toBe(27);
   });
+
+  it('loops the key-on envelope before the release section and plays the release after key off', () => {
+    // ユーザー報告の @VE1 = { 15, 14, 13, |, 12, 11, >, 8, 5, 2, 0 }
+    // KEY ON 中は 12,11 をループし、リリース区間 (8,5,2,0) はキーオフ後に 1 回だけ再生する
+    const builder = new SongBuilder();
+    const venv = builder.addVolumeEnvelope([15, 14, 13, 12, 11, 8, 5, 2, 0], 3, 5);
+    builder.addTrack(
+      0,
+      SongBuilder.venv(venv),
+      SongBuilder.note(69, 40, 40),
+      SongBuilder.rest(10),
+      SongBuilder.trackEnd(),
+    );
+    const chips = new ChipBank();
+    const sequencer = new MzsdSequencer(MzsdSong.parse(builder.build()), chips, false);
+
+    const attenuations: number[] = [];
+    // 50 フレーム分を検証 (51 フレーム目以降は TRACK_END キーオフ = C# 準拠のリリース再始動となるため対象外)
+    for (let frame = 0; frame < 50; frame++) {
+      sequencer.tick();
+      attenuations.push(chips.psg1.attenuationRegister(0));
+    }
+
+    // KEY ON 中 (1..5 フレーム目): 15,14,13,12,11 (att 0,1,2,3,4)
+    expect(attenuations.slice(0, 5)).toEqual([0, 1, 2, 3, 4]);
+    // 6 フレーム目以降は 12 <-> 11 をループ (att 3,4,3,4...) し、リリース区間 (att 7 以上) に入らない
+    for (let frame = 5; frame < 40; frame++) {
+      expect(attenuations[frame], `frame ${frame + 1}`).toBe(3 + ((frame - 5) % 2));
+    }
+
+    // キーオフ後: リリース 8,5,2,0 (att 7,10,13,15) を再生して末尾 (0) でホールド
+    // (41 フレーム目にゲート終端キーオフと REST キーオフが同時発生)
+    expect(attenuations.slice(40)).toEqual([7, 10, 13, 15, 15, 15, 15, 15, 15, 15]);
+  });
 });

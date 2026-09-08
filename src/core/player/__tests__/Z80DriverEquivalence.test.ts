@@ -161,7 +161,7 @@ describe('Z80Driver 等価性 (SourceInterpreter vs Z80Driver)', () => {
 
   it('音量エンベロープ (ループ/リリース) がリファレンスと一致する', () => {
     const builder = new SongBuilder();
-    // サステインループ (2..7) + リリース (5 から)
+    // サステインループ (2..4: リリース直前まで) + リリース (5 から)
     builder.addVolumeEnvelope([0, 3, 6, 8, 10, 12, 14, 15], 2, 5);
     builder.addVolumeEnvelope([15, 12, 9, 6, 3, 0]); // ループ / リリースなし
     builder.addTrack(
@@ -190,6 +190,21 @@ describe('Z80Driver 等価性 (SourceInterpreter vs Z80Driver)', () => {
     );
 
     runBoth(builder, 50, false, '音量エンベロープ (ループ/リリース)');
+  });
+
+  it('キーオン中の @VE ループはリリース区間に入らない (ユーザー報告の @VE1 回帰)', () => {
+    const builder = new SongBuilder();
+    // ユーザー報告と同一: @VE1 = { 15, 14, 13, |, 12, 11, >, 8, 5, 2, 0 }
+    builder.addVolumeEnvelope([15, 14, 13, 12, 11, 8, 5, 2, 0], 3, 5);
+    builder.addTrack(
+      0,
+      SongBuilder.venv(0),
+      SongBuilder.note(69, 40, 40), // KEY ON 中は 12,11 をループ (8,5,2,0 は再生されない)
+      SongBuilder.rest(10), // KEY OFF -> リリース区間を 1 回だけ再生
+      SongBuilder.trackEnd(),
+    );
+
+    runBoth(builder, 54, false, '@VE キーオン中ループはリリース直前まで');
   });
 
   it('ピッチエンベロープ / スイープ / ディチューンがリファレンスと一致する', () => {

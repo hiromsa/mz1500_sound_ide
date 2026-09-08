@@ -661,6 +661,9 @@ export function VolEnvelopeEditor({
       } else if (!isKeyOffRef.current && loopPoint >= 0 && step >= envData.length - 1) {
         // ループ指定があるがリリース未指定の場合は末尾からループ
         nextStep = loopPoint;
+      } else if (!isKeyOffRef.current && loopPoint < 0 && step === releasePoint - 1) {
+        // ループ未指定でリリースありの場合はリリース直前でホールド (演奏エンジンと同一挙動)
+        nextStep = step;
       } else if (nextStep >= envData.length) {
         // 末尾に達したら再生終了
         stopAudio();

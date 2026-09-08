@@ -501,8 +501,11 @@ export class TrackSequencer {
         this.venvPos++;
       }
     } else if (this.noteOn) {
-      if (this.venvPos >= env.values.length - 1) {
-        if (env.loopIndex < env.values.length) {
+      // ノート中はリリース区間 (releaseIndex 以降) に入らず、ループ位置へ戻る
+      // (ループ未指定でリリースありの場合はリリース直前でホールド = サステイン)
+      const sustainEnd = env.releaseIndex < env.values.length ? env.releaseIndex : env.values.length;
+      if (this.venvPos >= sustainEnd - 1) {
+        if (env.loopIndex < sustainEnd) {
           this.venvPos = env.loopIndex;
         }
       } else {
