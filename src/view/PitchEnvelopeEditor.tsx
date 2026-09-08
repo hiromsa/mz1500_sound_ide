@@ -152,8 +152,8 @@ export function PitchEnvelopeEditor({
   // エンベロープ定義番号 (例: @p1)
   const [envNumber, setEnvNumber] = useState<number>(1);
 
-  // エンベロープ名 (例: Slow Vibrato)
-  const [envName, setEnvName] = useState<string>('DEFAULT');
+  // エンベロープ名 (例: Slow Vibrato) - 未設定時は空文字、MML 出力時に UNNAMED へフォールバック
+  const [envName, setEnvName] = useState<string>('');
 
   // アクティブ MML 全文の最新値 (ロードリクエスト処理内で参照するため ref でも保持)
   const mmlSourceRef = useRef(mmlSource);
@@ -170,11 +170,11 @@ export function PitchEnvelopeEditor({
     if (loaded) {
       setEnvData(loaded.data);
       setLoopPoint(loaded.loopPoint);
-      setEnvName(loaded.name || 'DEFAULT');
+      setEnvName(loaded.name || '');
     } else {
       setEnvData(createInitialPitchData());
       setLoopPoint(0);
-      setEnvName('DEFAULT');
+      setEnvName('');
     }
     setEnvNumber(id);
   }, [loadEnvId]);
@@ -192,11 +192,11 @@ export function PitchEnvelopeEditor({
     if (loaded) {
       setEnvData(loaded.data);
       setLoopPoint(loaded.loopPoint);
-      setEnvName(loaded.name || 'DEFAULT');
+      setEnvName(loaded.name || '');
     } else {
       setEnvData(createInitialPitchData());
       setLoopPoint(0);
-      setEnvName('DEFAULT');
+      setEnvName('');
     }
   };
 
@@ -720,7 +720,7 @@ export function PitchEnvelopeEditor({
     }
     return [
       `@PE${envNumber} = {`,
-      `  /* NAME: ${envName || 'DEFAULT'} */`,
+      `  /* NAME: ${envName || 'UNNAMED'} */`,
       `  ${parts.join(', ')}`,
       `}`,
     ].join('\n');

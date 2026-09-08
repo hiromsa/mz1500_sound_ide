@@ -160,7 +160,8 @@ export function loadFmToneDefinition(content: string, id: number): FmToneData | 
   if (body === null) return null;
 
   // 音色名: /* NAME: xxx */ を最優先、フォールバックで既存コメントを復元
-  const name = extractDefinitionName(body) ?? 'UNNAMED';
+  // 未設定時は空文字とし、MML 出力側 (各エディタ generateMmlSnippet) の UNNAMED フォールバックへ一任する
+  const name = extractDefinitionName(body) ?? '';
 
   const numbers = extractNumberTokens(body);
   // ALG, FB + OP1〜OP4 各 11 値 = 46

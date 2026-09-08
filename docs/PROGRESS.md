@@ -6,7 +6,7 @@
 ---
 
 ## 1. 現在のステータス概要
-- **バージョン**: `v0.0.1-beta.82`（コミット通番＋短縮ハッシュ ハイブリッド方式）
+- **バージョン**: `v0.0.1-beta.83`（コミット通番＋短縮ハッシュ ハイブリッド方式）
 - **テスト通過状況**: 全 32 テストファイル / 435 件パス（`npm test` / Vitest）
 - **型検査状況**: エラー 0 件（`npx tsc -b`）
 - **主要機能の稼働状況**:
@@ -53,6 +53,15 @@
 ---
 
 ## 3. 直近の完了作業（最新）
+
+- **FM TONE 初期 NAME の空化 & 未設定名の UNNAMED 統一 (`src/view/FmToneEditor.tsx`, `src/view/VolEnvelopeEditor.tsx`, `src/view/PitchEnvelopeEditor.tsx`, `src/utils/mmlDefinitionLoader.ts`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-08):
+  - **背景・ユーザー指摘**: 「FM TONEのNAME初期値が E.PIANO とか入ります。」「また、タブ間で未設定の名前が違います UNNAMED 、DEFAULT → UNNAMEDに統一してください。」
+  - **対応内容**:
+    - FM TONE: 初期 `toneData` を `PRESET_TONES[0]` そのままから `{ ...PRESET_TONES[0], name: '' }` へ変更し、パラメータは初期プリセットのまま NAME のみ空で開始。
+    - V-ENV / P-ENV: `envName` 初期値 (`useState`)、ID 変更時 (`handleIdChange`)・ロードリクエスト時 (useEffect) のフォールバックを `'DEFAULT'` → `''` (空) へ変更。
+    - MML スニペット出力: 未設定時フォールバックを V-ENV / P-ENV の `'DEFAULT'` → `'UNNAMED'` へ変更し FM TONE と統一 (全エディタで `/* NAME: UNNAMED */` に統一)。
+    - `mmlDefinitionLoader.loadFmToneDefinition`: 定義コメントに名称が無い場合のロード結果を `'UNNAMED'` → `''` (空) へ変更 (入力欄へ勝手に名前を入れない方針に統一、MML 出力時のみ UNNAMED フォールバック)。
+  - **検証**: `npx tsc -b` エラーゼロ / `npm test` 全 32 ファイル・437 件合格。
 
 - **プリセット選択時の NAME 自動反映を廃止 (`src/view/FmToneEditor.tsx`, `src/view/VolEnvelopeEditor.tsx`, `src/view/PitchEnvelopeEditor.tsx`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-08):
   - **背景・ユーザー要望**: 「FM TONEやV-ENV、P-ENV で プリセットを選択したときに、NAMEには何もはいらないようにしたいです。あくまでもプリセットで参考値として使いたいだけなので。」

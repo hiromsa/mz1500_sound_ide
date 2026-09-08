@@ -1162,8 +1162,8 @@ export function FmToneEditor({
   testMidiNote,
   onChangeTestMidiNote,
 }: FmToneEditorProps = {}) {
-  // 現在編集中の音色データ
-  const [toneData, setToneData] = useState<FmToneData>(PRESET_TONES[0]);
+  // 現在編集中の音色データ (NAME は未設定の空文字で開始: プリセットは参考値としてのみ使用する)
+  const [toneData, setToneData] = useState<FmToneData>({ ...PRESET_TONES[0], name: '' });
 
   // 音色データ変更時に外部通知
   useEffect(() => {
