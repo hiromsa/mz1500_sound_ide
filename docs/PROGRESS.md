@@ -6,7 +6,7 @@
 ---
 
 ## 1. 現在のステータス概要
-- **バージョン**: `v0.0.1-beta.100`（コミット通番＋短縮ハッシュ ハイブリッド方式）
+- **バージョン**: `v0.0.1-beta.102`（コミット通番＋短縮ハッシュ ハイブリッド方式）
 - **テスト通過状況**: 全 35 テストファイル / 476 件パス + 1 skip（`npm test` / Vitest）
 - **型検査状況**: エラー 0 件（`npx tsc -b`）
 - **主要機能の稼働状況**:
@@ -53,6 +53,15 @@
 ---
 
 ## 3. 直近の完了作業（最新）
+
+- **ノイズ統合サンプルを Integrate 系の名称へ変更 & 干渉注記の削除 (`samples/mml_reference/psg/psg_noise_integrate.mml` ※リネーム, `samples/mml_reference/README.md`, [`docs/specification/noise_channel.md`](./specification/noise_channel.md))** (2026-09-09):
+  - **背景・ユーザー要望**: 「psg フォルダ配下の psg_noise_interlock.mml について interlock ではなく Integrate としたい。ファイル名およびコメントなど。mml_reference.md の @in の説明として N1 / N2 と干渉する…等の説明が無いようにしてほしい」
+  - **対応内容**:
+    - `git mv` で履歴保持のままリネーム: `psg_noise_interlock.mml` → `psg_noise_integrate.mml` (`@IN` = Integrate with Noise の由来に合わせた名称)。
+    - `#TITLE` を `"PSG Noise Integrate"` へ変更。コメントから「統合中は同一 PSG のノイズチャンネル (N1 / N2) と音量レジスタを共有するため、同時に N1 / N2 を鳴らすと干渉します」の注意書きを削除。
+    - 参照パス更新: `samples/mml_reference/README.md` 対応表 (「ノイズ連動」→「ノイズ統合」表記へ)、`noise_channel.md` §6 実サンプル列挙。
+    - `mml_reference.md` の `@IN` 行は干渉に関する記述が無いことを確認 (対応不要)。
+  - **検証**: `npm test` 全 35 ファイル・476 件合格 + 1 skip (samples 全 .mml のエラー・警告ゼロコンパイル確認を含む)。
 
 - **PSG サンプル 2 ファイルの命名統一 & コメント整備 (`samples/mml_reference/psg/psg_volume_basic.mml`, `samples/mml_reference/psg/psg_quantize_gate.mml` ※リネーム, `samples/mml_reference/README.md`)** (2026-09-09):
   - **背景・ユーザー要望**: 「psg フォルダの volume2.mml と quantize.mml について他のファイルと同様に、コメントを入れたり、ファイル名を変更して統一させてください。」

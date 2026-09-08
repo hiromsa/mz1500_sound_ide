@@ -221,7 +221,7 @@ P3 @IN0 v10 l4 c d e f
 
 実サンプル:
 - `samples/mml_reference/psg/psg_noise_basic.mml` — @WN / v の基本
-- `samples/mml_reference/psg/psg_noise_interlock.mml` — @IN 統合モードの応用
+- `samples/mml_reference/psg/psg_noise_integrate.mml` — @IN 統合モードの応用
 
 ---
 

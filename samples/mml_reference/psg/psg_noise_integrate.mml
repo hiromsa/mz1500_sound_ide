@@ -4,10 +4,8 @@
 ; 音高は cdefgab の通常の音符で自由に指定できます。
 ; @IN1 = 周期ノイズ連動 (硬いパルス波) / @IN2 = ホワイトノイズ連動 (音階に追従するノイズ) /
 ; @IN0 = 統合解除 (通常の矩形波に戻り、ノイズチャンネルを解放)。
-; ※ 統合中は同一 PSG のノイズチャンネル (N1 / N2) と音量レジスタを共有するため、
-;   同時に N1 / N2 を鳴らすと干渉します。
 
-#TITLE "PSG Noise Interlock"
+#TITLE "PSG Noise Integrate"
 #COMPOSER "Hotate"
 #OPM OFF
 #OCTAVE NORMAL

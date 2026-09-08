@@ -27,7 +27,7 @@
 | `psg/psg_pitch_effect.mml` | `@PE` / `@SW` / `D` (PSG) |
 | `psg/psg_loop_flow.mml` | `[ ]` / `L` (永久ループ) |
 | `psg/psg_noise_basic.mml` | `N1` / `@WN` / `v` (ノイズ) |
-| `psg/psg_noise_interlock.mml` | `@IN` (ノイズ連動) |
+| `psg/psg_noise_integrate.mml` | `@IN` (ノイズ統合) |
 | `psg/psg_quantize_gate.mml` | `q` / `@q` (ゲート時間) |
 | `psg/psg_volume_basic.mml` | `v` (0-15 の音量) |
 | `beep/beep_basic_scale.mml` | `B1` 音階演奏 |
