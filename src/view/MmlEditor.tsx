@@ -1324,6 +1324,7 @@ export function MmlEditor({
               <VirtualKeyboard
                 activeTabContext={activeTabContext}
                 mmlContext={mmlCaretContext}
+                mmlSource={activeFile?.content}
                 activeFmTone={activeFmTone}
                 activePitchEnv={activePitchEnv}
                 activePitchEnvLoop={activePitchEnvLoop}

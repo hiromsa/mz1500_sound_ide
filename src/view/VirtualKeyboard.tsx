@@ -2,15 +2,9 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Volume2, VolumeX } from 'lucide-react';
 import { virtualSynth, type SoundEngineType, type SynthPlayOptions } from '../utils/virtualSynth';
 import type { MmlCaretContext } from '../utils/mmlCaretParser';
+import { findDefinitionBlocks } from '../utils/mmlContextParser';
+import { loadFmToneDefinition } from '../utils/mmlDefinitionLoader';
 import type { FmToneData } from '../core/fm/FmTone';
-
-// プリセットFM音色
-const DEFAULT_PRESET_FM_TONES: Record<number, string> = {
-  1: 'E.PIANO 1',
-  2: 'SLAP BASS',
-  3: 'BRASS ENS',
-  4: 'CRYSTAL BELL',
-};
 
 // プリセットピッチエンベロープ (@PE)
 const PRESET_PITCH_ENVS: Record<number, { name: string; data: number[]; loop: number }> = {
@@ -129,6 +123,8 @@ export type ActiveTabContext = 'mml' | 'tone' | 'vol_envelope' | 'pitch_envelope
 interface VirtualKeyboardProps {
   activeTabContext: ActiveTabContext;
   mmlContext?: MmlCaretContext;
+  /** アクティブ MML 全文。MML 上で定義済みの FM 音色 (@N) リストの構築に使用する。 */
+  mmlSource?: string;
   activeFmTone?: FmToneData;
   activePitchEnv?: number[];
   activePitchEnvLoop?: number;
@@ -141,6 +137,7 @@ interface VirtualKeyboardProps {
 export function VirtualKeyboard({
   activeTabContext,
   mmlContext,
+  mmlSource,
   activeFmTone,
   activePitchEnv,
   activePitchEnvLoop,
@@ -156,6 +153,24 @@ export function VirtualKeyboard({
   const [selectedVolEnv, setSelectedVolEnv] = useState<string>('editor'); // 'editor' | '1' | '2' | '3'
   const [selectedPitchEnv, setSelectedPitchEnv] = useState<string>('none'); // 'none' | 'editor' | '1' | '2' | '3'
   const [selectedFmToneId, setSelectedFmToneId] = useState<number>(1);
+
+  // MML 上で定義済みの FM 音色 (@N) リスト (ID 昇順)
+  const definedFmTones = useMemo<FmToneData[]>(() => {
+    if (!mmlSource) return [];
+    return findDefinitionBlocks(mmlSource)
+      .filter((b) => b.kind === 'tone')
+      .map((b) => loadFmToneDefinition(mmlSource, b.id))
+      .filter((tone): tone is FmToneData => tone !== null)
+      .sort((a, b) => a.id - b.id);
+  }, [mmlSource]);
+
+  // プルダウン & 発音の実効選択 ID (選択中の ID が MML 上に存在しない場合は先頭の定義へフォールバック)
+  const effectiveSelectedFmToneId = useMemo(() => {
+    if (definedFmTones.length === 0) return selectedFmToneId;
+    return definedFmTones.some((tone) => tone.id === selectedFmToneId)
+      ? selectedFmToneId
+      : definedFmTones[0].id;
+  }, [definedFmTones, selectedFmToneId]);
 
   // 押下中のMIDIノート一覧
   const [pressedNotes, setPressedNotes] = useState<Set<number>>(new Set());
@@ -334,9 +349,13 @@ export function VirtualKeyboard({
       detune: mmlContext?.detune || 0,
     };
 
-    // FM音色設定 (TONEエディタ編集中の音色、またはキーボード共有の音色)
-    if (effectiveEngine === 'fm' && activeFmTone) {
-      options.fmTone = activeFmTone;
+    // FM音色設定: TONEエディタ編集中はエディタの音色、それ以外はプルダウンで選択中の MML 定義音色
+    if (effectiveEngine === 'fm') {
+      const selectedDefinedTone = definedFmTones.find((tone) => tone.id === effectiveSelectedFmToneId);
+      const toneForPlay = activeTabContext === 'tone' ? activeFmTone : (selectedDefinedTone ?? activeFmTone);
+      if (toneForPlay) {
+        options.fmTone = toneForPlay;
+      }
     }
 
     // ピッチエンベロープ設定
@@ -357,6 +376,9 @@ export function VirtualKeyboard({
     effectiveVolume,
     mmlContext,
     activeFmTone,
+    definedFmTones,
+    effectiveSelectedFmToneId,
+    activeTabContext,
     effectivePitchEnvData,
     effectiveVolEnvData,
     onChangeTestMidiNote,
@@ -544,19 +566,20 @@ export function VirtualKeyboard({
               <span className="text-[10px] text-zinc-500">VOICE:</span>
               {activeTabContext === 'tone' ? (
                 <span className="h-5 px-1.5 rounded bg-[#0c0d12] border border-white/[0.08] text-cyan-300 text-[10px] flex items-center font-bold" title="TONEエディタで編集中の音色">
-                  @{activeFmTone?.id ?? 1}: {activeFmTone?.name ?? 'TONE'}
+                  @{activeFmTone?.id ?? 1}: {activeFmTone?.name || 'UNNAMED'}
                 </span>
               ) : (
                 <select
-                  value={selectedFmToneId}
+                  value={effectiveSelectedFmToneId}
                   onChange={(e) => setSelectedFmToneId(parseInt(e.target.value, 10))}
                   className="h-5 px-1.5 rounded bg-[#0c0d12] border border-white/[0.1] text-zinc-200 text-[10px] focus:outline-none focus:border-cyan-400 cursor-pointer"
+                  title="MML で定義済みの FM 音色 (@N) を選択"
                 >
-                  {activeFmTone && (
-                    <option value="current">@{activeFmTone.id}: {activeFmTone.name} (EDITOR)</option>
+                  {definedFmTones.length === 0 && (
+                    <option value={activeFmTone?.id ?? 1}>@{activeFmTone?.id ?? 1}: {activeFmTone?.name || 'UNNAMED'} (EDITOR)</option>
                   )}
-                  {Object.entries(DEFAULT_PRESET_FM_TONES).map(([id, name]) => (
-                    <option key={id} value={id}>@{id}: {name}</option>
+                  {definedFmTones.map((tone) => (
+                    <option key={tone.id} value={tone.id}>@{tone.id}: {tone.name || 'UNNAMED'}</option>
                   ))}
                 </select>
               )}

@@ -6,7 +6,7 @@
 ---
 
 ## 1. 現在のステータス概要
-- **バージョン**: `v0.0.1-beta.84`（コミット通番＋短縮ハッシュ ハイブリッド方式）
+- **バージョン**: `v0.0.1-beta.85`（コミット通番＋短縮ハッシュ ハイブリッド方式）
 - **テスト通過状況**: 全 32 テストファイル / 435 件パス（`npm test` / Vitest）
 - **型検査状況**: エラー 0 件（`npx tsc -b`）
 - **主要機能の稼働状況**:
@@ -53,6 +53,17 @@
 ---
 
 ## 3. 直近の完了作業（最新）
+
+- **仮想キーボードの FM VOICE プルダウンを MML 定義済み音色の実表示に刷新 (`src/view/VirtualKeyboard.tsx`, `src/view/MmlEditor.tsx`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-08):
+  - **背景・ユーザー指摘**: 「仮想キーボードのFM 音色選択プルダウンで、正しいNAMEが表示されていません。モック？」
+  - **原因**: プルダウン選択肢がハードコードのモック (`DEFAULT_PRESET_FM_TONES`: `E.PIANO 1` / `SLAP BASS` / `BRASS ENS` / `CRYSTAL BELL`) で、MML 上の定義と無関係。また選択値は発音にも使用されていなかった。
+  - **対応内容**:
+    - `VirtualKeyboard` に `mmlSource` props を新設 (`MmlEditor` からアクティブタブの MML 全文 `activeFile.content` を供給)。
+    - `findDefinitionBlocks` + `loadFmToneDefinition` により、**MML 上で定義済みの FM 音色 (@N) を ID 昇順で動的リスト化** (`definedFmTones` useMemo)。プルダウンは `@ID: NAME` 形式で表示 (NAME 未設定時は `UNNAMED`)。
+    - 選択中 ID が MML から消えた場合は先頭の定義へ自動フォールバック (`effectiveSelectedFmToneId` useMemo / render 派生値のため set-state-in-effect 警告なし)。
+    - **発音連動**: FM 時のテスト発音は、TONE タブ表示中は従来どおりエディタ編集中の音色を優先し、それ以外はプルダウンで選択中の MML 定義音色 (`options.fmTone`) を使用するよう修正。
+    - モック `DEFAULT_PRESET_FM_TONES` を完全削除。TONE タブの表示バッジも `name ?? 'TONE'` → `name || 'UNNAMED'` に統一。
+  - **検証**: `npx tsc -b` エラーゼロ / `npm run lint` 警告増加なし・エラーゼロ / `npm test` 全 32 ファイル・437 件合格。
 
 - **FM TONE の未定義 ID 入力時に NAME へプリセット名が入る問題を修正 (`src/view/FmToneEditor.tsx`)** (2026-09-08):
   - **背景・ユーザー指摘**: 「FM TONE で IDのところに 未使用の番号 を入力すると、NAME に E.PIANO 1 入ってしまいます。」
