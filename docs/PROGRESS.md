@@ -6,7 +6,7 @@
 ---
 
 ## 1. 現在のステータス概要
-- **バージョン**: `v0.0.1-beta.86`（コミット通番＋短縮ハッシュ ハイブリッド方式）
+- **バージョン**: `v0.0.1-beta.87`（コミット通番＋短縮ハッシュ ハイブリッド方式）
 - **テスト通過状況**: 全 32 テストファイル / 435 件パス（`npm test` / Vitest）
 - **型検査状況**: エラー 0 件（`npx tsc -b`）
 - **主要機能の稼働状況**:
@@ -53,6 +53,15 @@
 ---
 
 ## 3. 直近の完了作業（最新）
+
+- **仮想キーボードの VOL DIRECT 選択時に MML キャレットの @VE が発音へ適用される問題を修正 (`src/view/VirtualKeyboard.tsx`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-08):
+  - **背景・ユーザー指摘**: 「MML Editorモードで、仮想キーボードの VOL を DIRECTにしても、仮想キーボードを押すと@VE が有効になって鳴っています。」
+  - **原因**: `effectiveVolEnvData` の適用条件が `psgVolumeMode === 'env' || (activeTabContext === 'mml' && mmlContext?.volEnvId)` となっており、ユーザーが `DIRECT` を明示選択していても MML キャレット位置に `@VE` 指定があれば発音へエンベロープが適用されていた。
+  - **対応内容**:
+    - 適用条件を `psgVolumeMode === 'env'` のみに修正し、**手動選択 (DIRECT / @VE) を最優先**。
+    - `DIRECT` 選択中は MML キャレットの `@VE` 指定があっても直接音量 (0〜15) で発音される。
+    - MML キャレット移動時の自動連動 (`@VE` 検出時に `@VE` モードへ自動切替) は従来どおり有効。
+  - **検証**: `npx tsc -b` エラーゼロ / `npm run lint` 警告増加なし・エラーゼロ / `npm test` 全 32 ファイル・437 件合格。
 
 - **仮想キーボードの V-ENV / P-ENV プルダウンも MML 定義済みリストへ刷新 (`src/view/VirtualKeyboard.tsx`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-08):
   - **背景・ユーザー要望**: 「V-ENV / P-ENV も同様にお願いします。」(FM VOICE プルダウンの MML 定義ベース化と同様の対応)

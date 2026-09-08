@@ -240,7 +240,8 @@ export function VirtualKeyboard({
       // VOL ENVエディタ時はエディタで編集中のデータを常に適用
       return { data: activeVolEnv, loop: activeVolEnvLoop };
     }
-    if (psgVolumeMode === 'env' || (activeTabContext === 'mml' && mmlContext?.volEnvId)) {
+    // ユーザーが DIRECT を明示選択した場合は、MML キャレットの @VE 指定より手動選択を最優先する
+    if (psgVolumeMode === 'env') {
       if (selectedVolEnv === 'editor' && activeVolEnv) {
         return { data: activeVolEnv, loop: activeVolEnvLoop };
       }
