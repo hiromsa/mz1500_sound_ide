@@ -113,7 +113,7 @@ describe('Z80DriverMachine', () => {
     runFrames(machine, 2);
 
     expect(chips.psg1.attenuationRegister(3)).toBe(0);
-    expect(chips.psg1.isNoiseWhite).toBe(false); // flags 初期値 0 = periodic
+    expect(chips.psg1.isNoiseWhite).toBe(true); // 波形初期値 = white (@WN1 相当)
     expect(chips.psg1.noiseRateMode).toBe(2); // A4 の period から hint 2
   });
 

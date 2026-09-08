@@ -584,14 +584,14 @@ export class MmlParser {
 
     let hasNoise = false;
     for (const t of tracks) {
-      t.state.noiseFlags = (t.state.noiseFlags & ~0x01) | read.value;
+      t.state.noiseWhite = read.value;
       if (!t.track.isNoise) {
         continue;
       }
 
       hasNoise = true;
       t.code.push(OpNoiseCtl);
-      t.code.push(t.state.noiseFlags);
+      t.code.push(t.state.noiseWhite);
     }
 
     if (!hasNoise) {
@@ -604,24 +604,26 @@ export class MmlParser {
   private processNoiseSync(line: string, pos: number, lineNo: number, tracks: TrackBuilder[]): number {
     const read = readUnsigned(line, pos, -1);
     if (read === null || (read.value !== 0 && read.value !== 1 && read.value !== 2)) {
-      this.diagnostics.push(mmlError(lineNo, pos + 1, '@in には 0 (オフ) / 1 (周期連動) / 2 (ホワイト連動) が必要です'));
+      this.diagnostics.push(
+        mmlError(lineNo, pos + 1, '@in には 0 (統合解除) / 1 (周期ノイズ連動) / 2 (ホワイトノイズ連動) が必要です'),
+      );
       return -1;
     }
 
-    let hasNoise = false;
+    let hasTone3 = false;
     for (const t of tracks) {
-      t.state.noiseFlags = (t.state.noiseFlags & ~0x06) | (read.value << 1);
-      if (!t.track.isNoise) {
+      t.state.noiseIntegrate = read.value;
+      if (!t.track.isDcsgTone3) {
         continue;
       }
 
-      hasNoise = true;
+      hasTone3 = true;
       t.code.push(OpNoiseCtl);
-      t.code.push(t.state.noiseFlags);
+      t.code.push(t.state.noiseIntegrate);
     }
 
-    if (!hasNoise) {
-      this.diagnostics.push(mmlWarn(lineNo, pos + 1, '@in はノイズ トラック (N1, N2) でのみ有効です'));
+    if (!hasTone3) {
+      this.diagnostics.push(mmlWarn(lineNo, pos + 1, '@in はトーン 3 トラック (P3, P6) でのみ有効です'));
     }
 
     return read.next;

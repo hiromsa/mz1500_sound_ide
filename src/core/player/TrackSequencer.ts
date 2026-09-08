@@ -55,6 +55,9 @@ export class TrackSequencer {
 
   private readonly isNoise: boolean;
 
+  /** DCSG トーン 3 トラック (P3 / P6)。@IN ノイズ統合モードの対象。 */
+  private readonly isDcsgTone3: boolean;
+
   private readonly fmChannel: number;
 
   private readonly loopPositions = new Array<number>(TrackSequencer.maxLoopDepth).fill(0);
@@ -89,7 +92,15 @@ export class TrackSequencer {
 
   private sweep = 0;
 
-  private noiseFlags = 0;
+  /** ノイズ波形 (0 = periodic / 1 = white)。N1 / N2 トラックのみ参照 (@WN)。 */
+  private noiseWhite = 1;
+
+  /**
+   * ノイズ統合モード (0 = 解除 / 1 = periodic 連動 / 2 = white 連動)。
+   * P3 / P6 トラックのみ参照 (@IN)。統合中はノイズチャンネルが tone2 の周波数レジスタ
+   * (このトラックの音符音程) で駆動され、発音もノイズチャンネルへ切り替わる。
+   */
+  private noiseIntegrate = 0;
 
   private venvIndex = -1;
 
@@ -130,6 +141,7 @@ export class TrackSequencer {
     this.isBeep = trackIndex === 8;
     this.isFm = trackIndex >= 9;
     this.isNoise = trackIndex === 3 || trackIndex === 7;
+    this.isDcsgTone3 = trackIndex === 2 || trackIndex === 6;
     this.fmChannel = trackIndex - 9;
   }
 
@@ -310,13 +322,20 @@ export class TrackSequencer {
 
         break;
 
-      case MzsdOp.NoiseCtl:
-        this.noiseFlags = data[this.pointer++];
+      case MzsdOp.NoiseCtl: {
+        const flags = data[this.pointer++];
         if (this.isNoise) {
+          // N1 / N2: bit0 = ノイズ波形 (@WN)
+          this.noiseWhite = flags & 1;
           this.applyNoiseMode();
+        } else if (this.isDcsgTone3) {
+          // P3 / P6: ノイズ統合モード (@IN)
+          this.noiseIntegrate = flags;
+          this.applyNoiseIntegrate();
         }
 
         break;
+      }
 
       case MzsdOp.LoopStart:
         if (this.loopDepth < TrackSequencer.maxLoopDepth) {
@@ -389,11 +408,9 @@ export class TrackSequencer {
       // ノイズの音程 → 非連動時の分周ヒント (低域ほど粗い分周)
       this.noiseRateHint = freq < 40000 ? 2 : freq < 80000 ? 1 : 0;
       this.applyNoiseMode();
-      if (this.dcsg !== null && ((this.noiseFlags >> 1) & 0x3) !== 0) {
-        // 同期ノイズ: 同一 PSG の tone2 レジスタへ音程を書く (実機の結線に準拠)
-        this.dcsg.chip.setTonePeriod(2, this.periodFor(freq));
-      }
     } else if (this.dcsg !== null) {
+      // トーン (P1-P6)。統合モード中の P3 / P6 も tone2 レジスタへ音程を書き、
+      // ノイズシフトクロック (= 音程 × 16) を駆動する
       this.basePeriod = this.periodFor(freq);
       this.applyPitchFrame();
     }
@@ -401,15 +418,33 @@ export class TrackSequencer {
     this.writeAttenuation();
   }
 
-  /** ノイズ波形 / 連動モードをレジスタへ反映する。 */
+  /** ノイズ波形をレジスタへ反映する (N1 / N2 トラック用)。 */
   private applyNoiseMode(): void {
     if (this.dcsg === null) {
       return;
     }
 
-    const white = (this.noiseFlags & 1) !== 0;
-    const sync = (this.noiseFlags >> 1) & 0x3;
-    this.dcsg.chip.setNoiseControl(white, sync !== 0 ? 3 : this.noiseRateHint);
+    this.dcsg.chip.setNoiseControl(this.noiseWhite === 1, this.noiseRateHint);
+  }
+
+  /**
+   * トーン 3 のノイズ統合モード (@IN) をレジスタへ反映する (P3 / P6 トラック用)。
+   * 統合中はノイズチャンネルが tone2 の周波数レジスタ (= 音符の音程 × 16) で駆動され、
+   * 減衰もノイズチャンネルへ切り替わる (writeAttenuation)。トーン 3 自体は無音化する。
+   */
+  private applyNoiseIntegrate(): void {
+    if (this.dcsg === null) {
+      return;
+    }
+
+    if (this.noiseIntegrate !== 0) {
+      // 統合開始: 波形はモード値 (1 = periodic / 2 = white)、クロックは tone2 連動 (rate 3)
+      this.dcsg.chip.setNoiseControl(this.noiseIntegrate === 2, 3);
+    } else {
+      // 統合解除: ノイズチャンネルを解放 (無音化) し、トーン 3 を通常出力へ戻す
+      this.dcsg.chip.setAttenuation(3, 15);
+      this.writeAttenuation();
+    }
   }
 
   /** スイープ / ピッチエンベロープ / ディチューンを反映してレジスタへ書き込む。 */
@@ -597,7 +632,14 @@ export class TrackSequencer {
         this.chips.fm.setReg(0x60 + (op << 3) + this.fmChannel, tl);
       }
     } else if (this.dcsg !== null) {
-      this.dcsg.chip.setAttenuation(this.dcsg.channel, this.attenuation);
+      if (this.isDcsgTone3 && this.noiseIntegrate !== 0) {
+        // ノイズ統合中: 発音はノイズチャンネル (このトラックの音量) へ切り替わり、
+        // トーン 3 自体は無音化する
+        this.dcsg.chip.setAttenuation(3, this.attenuation);
+        this.dcsg.chip.setAttenuation(2, 15);
+      } else {
+        this.dcsg.chip.setAttenuation(this.dcsg.channel, this.attenuation);
+      }
     }
   }
 }

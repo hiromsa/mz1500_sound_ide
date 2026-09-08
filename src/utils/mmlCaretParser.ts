@@ -61,7 +61,7 @@ function createDefaultTrackState(): TrackPlayState {
     volEnvId: undefined,
     pitchEnvId: undefined,
     detune: 0,
-    noiseType: 'periodic',
+    noiseType: 'white',
     fmVolume: 127,
   };
 }

@@ -29,7 +29,10 @@ export class TrackState {
   volumeEnvIndex = -1;
   pitchEnvIndex = -1;
   sweep = 0;
-  noiseFlags = 0;
+  /** @WN で指定したノイズ波形 (0 = periodic / 1 = white)。N1 / N2 トラック専用。 */
+  noiseWhite = 1;
+  /** @IN で指定したノイズ統合モード (0 = 解除 / 1 = periodic 連動 / 2 = white 連動)。P3 / P6 トラック専用。 */
+  noiseIntegrate = 0;
 }
 
 /** タイ (^) で延長対象となる直前 NOTE/REST の長さフィールド位置。 */

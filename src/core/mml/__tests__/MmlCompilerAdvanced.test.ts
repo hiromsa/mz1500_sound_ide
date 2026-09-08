@@ -87,16 +87,30 @@ describe('MmlCompiler advanced', () => {
     expect(detune > 32767 ? detune - 65536 : detune).toBe(-10); // 符号付き 16bit で -10
   });
 
-  it('noise commands are applied to noise tracks', () => {
-    const result = compile('N1 @wn1 @in2 c');
+  it('noise waveform goes to noise tracks and @in goes to tone-3 tracks', () => {
+    const result = compile('N1 @wn1 c\nP3 @in2 c');
     expect(result.success).toBe(true);
 
+    // @wn1 → N1 へ NOISECTL(0x01) = ホワイト
     const n1 = getTrackData(result, 'N1');
-    // @wn1 → NOISECTL(flags=0x01)、@in2 → NOISECTL(flags=0x05) の順に emit
     expect(n1[0]).toBe(0x0a); // NOISECTL
     expect(n1[1]).toBe(0x01); // ホワイト (bit0)
-    expect(n1[2]).toBe(0x0a); // 2 つ目の NOISECTL
-    expect(n1[3]).toBe(0b0000_0101); // トーン 3 連動・ホワイト
+
+    // @in2 → P3 へ NOISECTL(0x02) = ホワイトノイズ連動
+    const p3 = getTrackData(result, 'P3');
+    expect(p3[0]).toBe(0x0a); // NOISECTL
+    expect(p3[1]).toBe(0x02); // トーン 3 ホワイト連動
+  });
+
+  it('@in on a noise track or @wn on a tone-3 track warns without emitting', () => {
+    const result = compile('N1 @in1 c\nP3 @wn1 c');
+    expect(result.success).toBe(true);
+    expect(result.diagnostics.some((d) => d.message.includes('@in'))).toBe(true);
+    expect(result.diagnostics.some((d) => d.message.includes('@wn'))).toBe(true);
+
+    // 対象外トラックへは NOISECTL が出力されない
+    expect(getTrackData(result, 'N1')[0]).not.toBe(0x0a);
+    expect(getTrackData(result, 'P3')[0]).not.toBe(0x0a);
   });
 
   it('sample song compiles', () => {

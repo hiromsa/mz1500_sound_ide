@@ -11,6 +11,8 @@ export interface TrackId {
   readonly isNoise: boolean;
   readonly isBeep: boolean;
   readonly isFm: boolean;
+  /** DCSG トーン 3 トラック (P3 / P6)。@IN (ノイズ統合モード) の対象。 */
+  readonly isDcsgTone3: boolean;
   /** FM チャンネル番号 (0-7、FM 以外は -1)。 */
   readonly fmChannel: number;
 }
@@ -21,18 +23,34 @@ function buildAllTracks(): TrackId[] {
   // この番号は MZSD トラックテーブルの slot 番号と一致し、
   // TrackSequencer / mzsd_driver.asm / AudioFrameMixer が期待する並びと統一されている。
   for (let i = 1; i <= 3; i++) {
-    list.push({ id: `P${i}`, index: list.length, isNoise: false, isBeep: false, isFm: false, fmChannel: -1 });
+    list.push({
+      id: `P${i}`,
+      index: list.length,
+      isNoise: false,
+      isBeep: false,
+      isFm: false,
+      isDcsgTone3: i === 3,
+      fmChannel: -1,
+    });
   }
 
-  list.push({ id: 'N1', index: list.length, isNoise: true, isBeep: false, isFm: false, fmChannel: -1 });
+  list.push({ id: 'N1', index: list.length, isNoise: true, isBeep: false, isFm: false, isDcsgTone3: false, fmChannel: -1 });
   for (let i = 4; i <= 6; i++) {
-    list.push({ id: `P${i}`, index: list.length, isNoise: false, isBeep: false, isFm: false, fmChannel: -1 });
+    list.push({
+      id: `P${i}`,
+      index: list.length,
+      isNoise: false,
+      isBeep: false,
+      isFm: false,
+      isDcsgTone3: i === 6,
+      fmChannel: -1,
+    });
   }
 
-  list.push({ id: 'N2', index: list.length, isNoise: true, isBeep: false, isFm: false, fmChannel: -1 });
-  list.push({ id: 'B1', index: list.length, isNoise: false, isBeep: true, isFm: false, fmChannel: -1 });
+  list.push({ id: 'N2', index: list.length, isNoise: true, isBeep: false, isFm: false, isDcsgTone3: false, fmChannel: -1 });
+  list.push({ id: 'B1', index: list.length, isNoise: false, isBeep: true, isFm: false, isDcsgTone3: false, fmChannel: -1 });
   for (let i = 1; i <= 8; i++) {
-    list.push({ id: `F${i}`, index: list.length, isNoise: false, isBeep: false, isFm: true, fmChannel: i - 1 });
+    list.push({ id: `F${i}`, index: list.length, isNoise: false, isBeep: false, isFm: true, isDcsgTone3: false, fmChannel: i - 1 });
   }
 
   return list;

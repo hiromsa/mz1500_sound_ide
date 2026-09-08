@@ -160,11 +160,11 @@ describe('noise track playback (N1 / N2)', () => {
     expect(driverObservation.soundingFrames).toBe(driverObservation.activeFrames);
   });
 
-  it('follows the note pitch with the interlocked periodic noise (@IN1 @WN0)', () => {
-    // 髱樣｣蜍・(@IN 縺ｪ縺・ 縺ｮ蜻ｨ譛溘ヮ繧､繧ｺ縺ｯ SN76489 繝上・繝峨え繧ｧ繧｢莉墓ｧ倅ｸ翫∝崋螳壹け繝ｭ繝・け蛻・捉
-    // (螳溯ｳｪ 3.5kHz) 縺ｮ縺ｿ縲・IN1 繧剃ｽｵ逕ｨ縺吶ｋ縺ｨ N1 縺ｮ髻ｳ隨ｦ髻ｳ遞九′ tone2 縺ｸ譖ｸ縺九ｌ縲・
-    // 繝弱う繧ｺ繧ｷ繝輔ヨ繧ｯ繝ｭ繝・け = 髻ｳ遞・ﾃ・16 縺ｧ霑ｽ蠕薙☆繧・(16 繧ｹ繝・ャ繝怜ｾｪ迺ｰ縺ｧ蝓ｺ譛ｬ = 髻ｳ遞・縲・
-    const data = compileToSong('N1 t120 v12 l4 @IN1 @WN0 o4 c4 e4 g4 > c4');
+  it('follows the note pitch with the tone-3 integrated periodic noise (@IN1)', () => {
+    // P3 が @IN1 でノイズへ統合されると、P3 の音符音程が tone2 レジスタへ書かれ、
+    // ノイズシフトクロック = 音程 × 16 で駆動される (16 ステップ循環の基本波 = 音程)。
+    // 発音はノイズチャンネルへ切り替わり (減衰 = P3 の音量)、トーン 3 自体は無音化する。
+    const data = compileToSong('P3 t120 v12 l4 @IN1 o4 c4 e4 g4 > c4');
 
     const chips = new ChipBank();
     const sequencer = new MzsdSequencer(MzsdSong.parse(data), chips, false);
@@ -174,8 +174,14 @@ describe('noise track playback (N1 / N2)', () => {
     for (let frame = 0; frame < 120 && !sequencer.isFinished; frame++) {
       sequencer.tick();
 
-      expect(chips.psg1.noiseRateMode).toBe(3); // tone2 騾｣蜍・
-      expect(chips.psg1.isNoiseWhite).toBe(false); // 蜻ｨ譛溘ヮ繧､繧ｺ
+      expect(chips.psg1.noiseRateMode).toBe(3); // tone2 連動
+      expect(chips.psg1.isNoiseWhite).toBe(false); // periodic (@IN1)
+
+      if (frame === 3) {
+        // 発音はノイズチャンネルへ切り替わり、トーン 3 自体は無音化する
+        expect(chips.psg1.attenuationRegister(2)).toBe(15);
+        expect(chips.psg1.attenuationRegister(3)).toBe(3); // v12 → att 3
+      }
 
       const period = chips.psg1.tonePeriodRegister(2);
       if (period !== lastPeriod) {
@@ -184,12 +190,12 @@ describe('noise track playback (N1 / N2)', () => {
       }
     }
 
-    // c4 (427) 竊・e4 (338) 竊・g4 (284) 竊・> c4 (213) 縺ｮ髻ｳ遞句､牙喧縺・tone2 縺ｸ蜿肴丐縺輔ｌ繧・
+    // c4 (427) → e4 (338) → g4 (284) → > c4 (213) の音程変化が tone2 へ反映される
     expect(tone2Periods).toEqual([427, 338, 284, 213]);
   });
 
-  it('follows the note pitch with the interlocked periodic noise in the Z80Driver engine', () => {
-    const data = compileToSong('N1 t120 v12 l4 @IN1 @WN0 o4 c4 e4 g4 > c4');
+  it('follows the note pitch with the tone-3 integrated periodic noise in the Z80Driver engine', () => {
+    const data = compileToSong('P3 t120 v12 l4 @IN1 o4 c4 e4 g4 > c4');
 
     const chips = new ChipBank();
     const playback = new Z80DriverPlayback(chips);
@@ -212,4 +218,29 @@ describe('noise track playback (N1 / N2)', () => {
 
     expect(tone2Periods).toEqual([427, 338, 284, 213]);
   });
+
+  it('switches to the integrated white noise with @IN2 and releases it with @IN0', () => {
+    const data = compileToSong('P3 t120 v10 l4 @IN2 o4 c4 @IN0 c4');
+
+    const chips = new ChipBank();
+    const sequencer = new MzsdSequencer(MzsdSong.parse(data), chips, false);
+
+    let whiteSounded = false;
+    let released = false;
+    for (let frame = 0; frame < 160 && !sequencer.isFinished; frame++) {
+      sequencer.tick();
+
+      if (chips.psg1.isNoiseWhite && chips.psg1.noiseRateMode === 3 && chips.psg1.attenuationRegister(3) < 15) {
+        whiteSounded = true; // @IN2: white 連動でノイズ発音
+      }
+
+      if (chips.psg1.attenuationRegister(3) === 15 && chips.psg1.attenuationRegister(2) < 15) {
+        released = true; // @IN0: 統合解除でトーン 3 が通常発音し、ノイズは無音化
+      }
+    }
+
+    expect(whiteSounded).toBe(true);
+    expect(released).toBe(true);
+  });
+
 });

@@ -63,7 +63,7 @@ CH_TRANS        equ     9               ; 1B: トランスポーズ (符号付�
 CH_LDEPTH       equ     10              ; 1B: ループ深度 (0-8)
 CH_PORT         equ     11              ; 1B: PSG ポート (0xF2 / 0xF3、BEEP は未使用)
 CH_DCSG         equ     12              ; 1B: DCSG チャンネル (0-2 = tone、3 = noise)
-CH_NOISE        equ     13              ; 1B: ノイズ制御フラグ (NOISECTL 値)
+CH_NOISE        equ     13              ; 1B: N1/N2 = ノイズ波形 (bit0 white) / P3/P6 = 統合モード (0-2)
 CH_HINT         equ     14              ; 1B: ノイズ分周ヒント (非連動時)
 CH_VOLUME       equ     15              ; 1B: MML 音量 (0-15、15 = 最大)
 CH_SIZE         equ     16              ; 基本部サイズ
@@ -701,14 +701,24 @@ ev_tone_n:
         jp      re_loop
 
 ; ---- NOISECTL: flags(1)
+;      ノイズトラック (N1/N2): bit0 = white (@WN)
+;      トーン 3 トラック (P3/P6): 0 = 統合解除 / 1 = periodic 連動 / 2 = white 連動 (@IN)
 ev_noisectl:
         ld      a,(hl)
         inc     hl
         ld      (ix+CH_NOISE),a
         bit     1,(ix+CH_FLAGS)
-        jr      z,enc_c
+        jr      z,enc_t2
         push    hl
         call    apply_noise             ; ノイズトラックは即レジスタ反映
+        pop     hl
+        jr      enc_c
+enc_t2:
+        ld      a,(ix+CH_DCSG)
+        cp      2
+        jr      nz,enc_c                ; トーン 3 以外は状態保持のみ
+        push    hl
+        call    apply_noise_integrate   ; 統合モードを即レジスタ反映
         pop     hl
 enc_c:
         call    update_ptr
@@ -1070,7 +1080,7 @@ write_period:
         pop     af
         ret
 
-; ---- ノイズ: 分周ヒント更新 + (同期時) tone2 へ音程 / ノイズ制御
+; ---- ノイズ: 分周ヒント更新 + ノイズ制御レジスタ出力
 play_noise:
         push    bc
         push    de
@@ -1104,37 +1114,6 @@ pn_1:
         ld      a,1
 pn_store:
         ld      (ix+CH_HINT),a
-        ; 同期モードは同一 PSG の tone2 へ音程を書く (実機結線に準拠)
-        ld      a,(ix+CH_NOISE)
-        and     0x06
-        jr      z,pn_ctrl
-        ld      c,(ix+CH_PORT)
-        ld      b,0
-        ; coarse 先に計算 (fine バイトを e へ入れると period 下位が失われるため)
-        ld      a,d
-        add     a,a
-        add     a,a
-        add     a,a
-        add     a,a                     ; a = d << 4
-        ld      d,a
-        ld      a,e
-        and     0xF0
-        srl     a
-        srl     a
-        srl     a
-        srl     a                       ; a = e >> 4
-        or      d
-        and     0x3F
-        ld      d,a                     ; d = coarse = (period >> 4) & 0x3F
-        ; fine ラッチ: 0xC0 | (period & 0x0F)
-        ld      a,e
-        and     0x0F
-        or      0xC0
-        ld      e,a
-        out     (c),e                   ; tone2 fine ラッチ
-        ld      e,d
-        out     (c),e                   ; tone2 coarse
-pn_ctrl:
         call    apply_noise
         pop     hl
         pop     de
@@ -1184,6 +1163,8 @@ write_beep_counter:
         ret
 
 ; ---- 減衰量出力: DCSG = attenuation レジスタ / BEEP = ゲート
+;      トーン 3 トラック (P3/P6) がノイズ統合モード中 (CH_NOISE != 0) の場合は
+;      ノイズチャンネルの減衰にこのトラックの CH_ATT を出力し、トーン 3 自体は無音化する
 write_att:
         push    af
         push    bc
@@ -1193,6 +1174,23 @@ write_att:
         ld      a,(ix+CH_FLAGS)
         bit     3,a                     ; FM?
         jp      nz,wa_fm
+        ld      a,(ix+CH_DCSG)
+        cp      2                       ; トーン 3 トラック?
+        jr      nz,wa_dcsg
+        ld      a,(ix+CH_NOISE)
+        or      a                       ; 統合モード中?
+        jr      z,wa_dcsg
+        ; 統合中: ノイズ減衰 = CH_ATT / トーン 3 減衰 = 15 (無音)
+        ld      c,(ix+CH_PORT)
+        ld      b,0
+        ld      a,0xF0
+        or      (ix+CH_ATT)
+        ld      e,a
+        out     (c),e
+        ld      e,0xDF                  ; 0x90|(2<<5)|15 = トーン 3 減衰 15 (無音)
+        out     (c),e
+        jr      wa_done
+wa_dcsg:
         ld      c,(ix+CH_PORT)
         ld      b,0
         ld      a,(ix+CH_DCSG)
@@ -1220,24 +1218,17 @@ wa_done:
         pop     af
         ret
 
-; ---- ノイズ制御レジスタ出力: 0xE0 | (white << 2) | rate
+; ---- ノイズ制御レジスタ出力 (N1/N2): 0xE0 | (white << 2) | hint
 apply_noise:
         push    af
         push    bc
         push    de
-        ld      d,(ix+CH_NOISE)         ; bit0 = white / bit1-2 = 同期モード
-        ld      c,(ix+CH_HINT)          ; c = 分周ヒント
-        ld      a,d
-        and     0x06
-        jr      z,an_async
-        ld      c,3                     ; 同期 = rate 3 (tone2 連動)
-an_async:
-        ld      a,d
+        ld      a,(ix+CH_NOISE)
         and     0x01
         add     a,a
         add     a,a                     ; white << 2
         or      0xE0
-        or      c
+        or      (ix+CH_HINT)            ; 非連動分周ヒント (0-2)
         push    af
         ld      a,(ix+CH_PORT)
         ld      b,0
@@ -1245,6 +1236,40 @@ an_async:
         pop     af
         ld      e,a
         out     (c),e
+        pop     de
+        pop     bc
+        pop     af
+        ret
+
+; ---- トーン 3 ノイズ統合モード反映 (P3/P6): CH_NOISE = 0 (解除) / 1 (periodic) / 2 (white)
+;      統合 ON: ノイズ制御レジスタへ 0xE0 | (white << 2) | 3 (tone2 連動) を出力
+;      統合解除: ノイズチャンネルを無音化し、write_att でトーン 3 減衰を通常へ戻す
+;      (CH_NOISE = 0 のため write_att はトーン 3 として減衰を出力する)
+apply_noise_integrate:
+        push    af
+        push    bc
+        push    de
+        ld      a,(ix+CH_NOISE)
+        or      a
+        jr      z,ani_off
+        and     0x02                    ; flags bit1 = white (@IN2)
+        add     a,a                     ; ノイズ制御レジスタの bit2 へ
+        or      0xE3                    ; rate 3 = tone2 連動
+        ld      e,a
+        ld      c,(ix+CH_PORT)
+        ld      b,0
+        out     (c),e
+        pop     de
+        pop     bc
+        pop     af
+        ret
+ani_off:
+        ld      a,(ix+CH_PORT)
+        ld      c,a
+        ld      b,0
+        ld      e,0xFF                  ; ノイズ減衰 15 (無音化)
+        out     (c),e
+        call    write_att               ; トーン 3 減衰を通常出力へ戻す
         pop     de
         pop     bc
         pop     af
@@ -2086,7 +2111,7 @@ init_ch_regs:
         ld      (ix+CH_TRANS),0
         ld      (ix+CH_LDEPTH),0
         ld      (ix+CH_FLAGS),0
-        ld      (ix+CH_NOISE),0
+        ld      (ix+CH_NOISE),0         ; N1/N2 以外は統合解除 (P3/P6 初期値 = @IN0)
         ld      (ix+CH_HINT),0
         ld      (ix+CH_VOLUME),15
         ld      (ix+CH_VENV),0xFF       ; エンベロープ未使用
@@ -2125,6 +2150,7 @@ icr_n1:
         ld      (ix+CH_PORT),PSG1_IO
         ld      (ix+CH_DCSG),3
         ld      (ix+CH_FLAGS),2
+        ld      (ix+CH_NOISE),1         ; 波形初期値 = white (@WN1 相当)
         jr      icr_done
 icr_psg2:
         sub     4                       ; 4-6 -> 0-2
@@ -2135,6 +2161,7 @@ icr_n2:
         ld      (ix+CH_PORT),PSG2_IO
         ld      (ix+CH_DCSG),3
         ld      (ix+CH_FLAGS),2
+        ld      (ix+CH_NOISE),1         ; 波形初期値 = white (@WN1 相当)
         jr      icr_done
 icr_beep:
         ld      (ix+CH_PORT),0

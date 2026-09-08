@@ -242,28 +242,40 @@ describe('Z80Driver 等価性 (SourceInterpreter vs Z80Driver)', () => {
     runBoth(builder, 45, false, 'ピッチエンベロープ / スイープ / ディチューン');
   });
 
-  it('ノイズモード (同期 / 非同期) がリファレンスと一致する', () => {
+  it('ノイズモード (波形 / トーン 3 統合) がリファレンスと一致する', () => {
     const builder = new SongBuilder();
     builder.addTrack(
       3,
-      SongBuilder.noiseCtl(0x06), // 同期 (white)
+      SongBuilder.noiseCtl(0x01), // ホワイト (@WN1)
       SongBuilder.note(69, 6, 6),
-      SongBuilder.noiseCtl(0x04), // 同期 (periodic)
+      SongBuilder.noiseCtl(0x00), // 周期 (@WN0)
       SongBuilder.note(72, 6, 6),
-      SongBuilder.noiseCtl(0x01), // 非同期 white (ヒントは音程から)
+      SongBuilder.noiseCtl(0x01), // ホワイト (ヒントは音程から)
       SongBuilder.note(60, 6, 6),
-      SongBuilder.noiseCtl(0x00), // 非同期 periodic
+      SongBuilder.noiseCtl(0x00), // 周期
       SongBuilder.note(48, 6, 6),
       SongBuilder.trackEnd(),
     );
     builder.addTrack(
       7,
-      SongBuilder.noiseCtl(0x07),
+      SongBuilder.noiseCtl(0x01),
       SongBuilder.note(84, 8, 8),
       SongBuilder.trackEnd(),
     );
+    // トーン 3 (P3) のノイズ統合モード: periodic 連動 → white 連動 → 解除
+    builder.addTrack(
+      2,
+      SongBuilder.noiseCtl(1), // periodic 連動 (@IN1)
+      SongBuilder.note(69, 6, 6),
+      SongBuilder.note(72, 6, 6),
+      SongBuilder.noiseCtl(2), // white 連動 (@IN2)
+      SongBuilder.note(67, 6, 6),
+      SongBuilder.noiseCtl(0), // 統合解除 (@IN0)
+      SongBuilder.note(65, 6, 6),
+      SongBuilder.trackEnd(),
+    );
 
-    runBoth(builder, 30, false, 'ノイズモード (同期 / 非同期)');
+    runBoth(builder, 32, false, 'ノイズモード (波形 / トーン 3 統合)');
   });
 
   it('全体ループ (L) がリファレンスと一致する', () => {
@@ -505,8 +517,9 @@ describe('Z80Driver 等価性 (SourceInterpreter vs Z80Driver)', () => {
       't140',
       'P1 @VE0 o4 l8 [c d e f]2 @VE1 g2 e4',
       'P2 @EP0 o3 l8 c c d d e2',
+      'P3 @in1 o3 l4 c e > c', // トーン 3 ノイズ統合 (periodic 連動)
       'P4 o2 l4 c c',
-      'N1 @in2 o8 l8 c c g g',
+      'N1 @wn1 o8 l8 c c g g',
       'N2 @wn1 o10 l16 c c c c',
       'B1 l4 c r c r',
       'F1 @0 o4 l8 c d e c g2',

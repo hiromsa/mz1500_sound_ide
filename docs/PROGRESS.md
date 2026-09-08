@@ -6,8 +6,8 @@
 ---
 
 ## 1. 現在のステータス概要
-- **バージョン**: `v0.0.1-beta.96`（コミット通番＋短縮ハッシュ ハイブリッド方式）
-- **テスト通過状況**: 全 34 テストファイル / 457 件パス + 1 skip（`npm test` / Vitest）
+- **バージョン**: `v0.0.1-beta.99`（コミット通番＋短縮ハッシュ ハイブリッド方式）
+- **テスト通過状況**: 全 35 テストファイル / 476 件パス + 1 skip（`npm test` / Vitest）
 - **型検査状況**: エラー 0 件（`npx tsc -b`）
 - **主要機能の稼働状況**:
   - Web ネイティブ MML コンパイラ（9ch / 17ch / ワークトラック W1〜W99 対応）
@@ -53,6 +53,26 @@
 ---
 
 ## 3. 直近の完了作業（最新）
+
+- **`@IN` を P3/P6 トーン 3 統合トラック専用コマンドへ変更 — ノイズ仕様の 2 系統化 (`src/core/mml/TrackId.ts`, `src/core/mml/parser/MmlParser.ts`, `src/core/mml/parser/MmlParserTypes.ts`, `src/core/player/TrackSequencer.ts`, `driver/mzsd_driver.asm`, `src/utils/mmlCaretParser.ts`, テスト 5 件・サンプル 2 件・仕様書 2 件更新)** (2026-09-08):
+  - **背景・ユーザー指摘**: 「`@IN` が N1 (Noise) チャンネル用として処理されているのは SN76489 (DCSG) の仕様上明確な誤り。専用ノイズトラック (N1/N2 = `@WN`) と Tone 3 連動トラック (P3/P6 = `@IN`) の 2 系統の仕様と意図に基づいてパーサーおよびコンパイラのルーティングを修正してほしい」
+  - **新仕様 (2 系統)**:
+    - `@WN` (N1/N2 専用・継続): `@WN1` = ホワイト (**初期値**) / `@WN0` = 周期ノイズ。音高は `c`/`e`/`g` の **3 段階シフトレート**
+    - `@IN` (**P3/P6 専用に変更**): `@IN0` = 統合解除 (**初期値**) / `@IN1` = 周期ノイズ連動 (硬いパルス波) / `@IN2` = ホワイトノイズ連動 (音階に追従するノイズ)。音高は `cdefgab` の通常の音符で自由指定
+  - **統合モードの動作** (ハードウェアの「トーン 3 がノイズに乗っ取る」に忠実):
+    1. P3/P6 の音符音程が自身の周波数レジスタ (tone2) へ書かれ (通常 NOTE 経路のまま)、ノイズシフトクロック = 音程 × 16 で駆動
+    2. **発音はノイズチャンネルへ切り替わり**、トラックの音量 `v` はノイズ減衰レジスタへ適用、トーン 3 自体は減衰 15 で無音化
+    3. `@IN0` でノイズチャンネルを無音化して解放し、通常の矩形波へ復帰
+  - **実装変更**:
+    1. `TrackId` へ `isDcsgTone3` (P3/P6) 追加、`TrackState` を `noiseWhite` (初期 1) / `noiseIntegrate` (初期 0) へ分割
+    2. `MmlParser.processNoiseSync` (`@IN`): emit 先を N1/N2 → **P3/P6** へ変更。警告文言「@in はトーン 3 トラック (P3, P6) でのみ有効です」
+    3. `TrackSequencer` (SourceInterpreter): `isDcsgTone3` / `applyNoiseIntegrate()` 新設、`writeAttenuation` に統合分岐 (ノイズ減衰 = トラック音量 / tone2 = 15)、N1 側の sync/tone2 書き込みを廃止
+    4. `mzsd_driver.asm` (実機ドライバ): `ev_noisectl` に tone2 判定分岐 + `apply_noise_integrate` ルーチン新設、`write_att` に統合分岐 (ノイズ減衰 `0xF0|att` 出力 + トーン 3 減衰 `0xDF` 出力)、`init_ch_regs` はノイズトラックのみ `CH_NOISE = 1` (N1/N2 = white 初期値 / P3/P6 = 統合解除)
+    5. `mmlCaretParser`: エディタ文脈のノイズ波形初期値を `white` へ統一
+  - **MZSD バイナリ互換**: `NOISECTL (0x0A)` 命令のフォーマットは不変。flags の意味をトラック種別 (slot 3/7 = ノイズ波形 bit0 / slot 2/6 = 統合モード値 0-2) で判別
+  - **テスト**: `MmlCompilerAdvanced` (`@WN`→N1 / `@IN`→P3 ルーティング + 誤記警告)、`NoiseTrackPlayback` (`P3 @IN1` で tone2 period が c4/e4/g4/c5 = 427/338/284/213 に追従・ノイズ発音 & tone3 無音検証、`@IN2`→white / `@IN0`→解除を両エンジンで)、`Z80DriverEquivalence` (トーン 3 統合トラックの両エンジン全レジスタ等価)、`Z80DriverMachine` (white 初期値) を更新。**`MmlSamplesCompile.test.ts` を新設** (samples/ 配下全 17 .mml のエラー・警告ゼロ検証を恒久テスト化)
+  - **サンプル・ドキュメント**: `psg_noise_basic.mml` (@WN のみに整理) / `psg_noise_interlock.mml` (P3 @IN デモに全面改訂)、`noise_channel.md` (2 系統仕様へ全面改訂・§3.4 flags 構成・§7 FAQ 更新)、`mml_reference.md` (`@WN`/`@IN` 行を新仕様に更新)
+  - **検証**: `npx tsc -b` エラーゼロ / `npm test` 全 35 ファイル・476 件合格 + 1 skip / `npm run lint` エラーゼロ (既存警告 10 は変更なし) / `npm run build` 成功
 
 - **ノイズ仕様の C# オリジナル照合 (`C:\tools\mz1500_sound_driver` / `mz1500_sound_devenv` 参照) & [`docs/specification/noise_channel.md`](./specification/noise_channel.md) 更新** (2026-09-08):
   - **背景・ユーザー指摘**: 「C:\tools\mz1500_sound_driver を参照してみてください。たしか@in は P3 または P6 で指定する仕様だったように思えます。」
