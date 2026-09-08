@@ -54,6 +54,19 @@
 
 ## 3. 直近の完了作業（最新）
 
+- **ノイズ仕様の C# オリジナル照合 (`C:\tools\mz1500_sound_driver` / `mz1500_sound_devenv` 参照) & [`docs/specification/noise_channel.md`](./specification/noise_channel.md) 更新** (2026-09-08):
+  - **背景・ユーザー指摘**: 「C:\tools\mz1500_sound_driver を参照してみてください。たしか@in は P3 または P6 で指定する仕様だったように思えます。」
+  - **照合結果 (C# オリジナル実装との突合)**:
+    - `mz1500_sound_devenv/src/MzSound.MmlCompiler/Internal/MmlParser.AtNoise.cs`: `@WN` は bit0 のみ (`~0x01` マスク)、`@IN` は bit1-2 のみ (`~0x06` マスク) を更新し、**N1/N2 以外のトラックへの記述は警告**「@wn / @in はノイズ トラック (N1, N2) でのみ有効です」— 現行 TS 実装と**同一**。
+    - `MzSound.Player/Sequencer/TrackSequencer.cs`: 同期判定 `(_noiseFlags >> 1) & 0x3 != 0` → rate 3、非連動 hint `freq < 40000 ? 2 : freq < 80000 ? 1 : 0` — 現行 TS 実装と**同一**。
+    - **結論**: 「`@IN` は P3/P6 で指定する」仕様は存在しない (C# 版も N1/N2 記述が正・P3/P6 への記述は警告)。**現行実装の変更は不要**。`@IN1`/`@IN2` の違いは sync ビット値のみで挙動は同一、波形は `@WN` で決まる点も同一。
+  - **ドキュメント更新** (`noise_channel.md`):
+    - §3.3 に注意書き追加: C# 版リファレンス (`mz1500_sound_driver/mml_reference.md` §5.1) の「音符 c〜d/e〜f/g 以上で Low/Mid/High が切り替わる」記述は C# 実装と不一致 (実用音域では常に rate 2)。本 IDE は C# **実装**準拠。
+    - §3.4「C# オリジナルとの整合」新設: flags 更新式・警告文言・同期判定・hint の対応表と、「`@IN` を P3/P6 に書く仕様は存在しない」を明記。
+    - §6 に連動白噪のノウハウ (C# 版リファレンス §5.2 準拠: `@IN2 @WN1 o10` で超高速シフトの細かい白噪) を追記。※同 §5.2 の「@EP 急降下スネア」は C#/TS ともノイズトラックに @EP が適用されないため動作しない旨も注意書き。
+    - §7 FAQ に Q7 追加 (`@IN` は N1/N2 記述が正 — 混同しやすい理由の説明)。
+  - **テスト**: コード変更なし (`npm test` 全 34 ファイル・457 件合格 + 1 skip を再確認)。
+
 - **ノイズチャンネル総合仕様ドキュメントを新設 ([`docs/specification/noise_channel.md`](./specification/noise_channel.md), `docs/specification/README.md`, [`docs/specification/mml_reference.md`](./specification/mml_reference.md))** (2026-09-08):
   - **背景・ユーザー要望**: 「今一度ノイズのモードや3chとの同期、本ドライバの実装 mmlとの関係について教えてください。いつも忘れてしまうので、どこかに.mdとして仕様をまとめてください。」
   - **対応内容**: ハードウェア (SN76489AN / LFSR / rate 0-3) → MML (`@WN`/`@IN` flags) → ドライバ実装 (SourceInterpreter / mzsd_driver.asm) → Web エミュレーション (DcsgChip 差分) を貫く総合仕様書 `noise_channel.md` を新設。
