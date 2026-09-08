@@ -1,11 +1,11 @@
-/**
- * ノイズトラック (N1 / N2) の演奏回帰テスト。
- * ユーザー報告「ノイズサンプルが PLAY で鳴らない」の修正を固定する。
+﻿/**
+ * 繝弱う繧ｺ繝医Λ繝・け (N1 / N2) 縺ｮ貍泌･丞屓蟶ｰ繝・せ繝医・
+ * 繝ｦ繝ｼ繧ｶ繝ｼ蝣ｱ蜻翫後ヮ繧､繧ｺ繧ｵ繝ｳ繝励Ν縺・PLAY 縺ｧ魑ｴ繧峨↑縺・阪・菫ｮ豁｣繧貞崋螳壹☆繧九・
  *
- * 原因: MmlCompiler 側 TrackId の並び (N1=6) が演奏側 (TrackSequencer /
- * mzsd_driver.asm / AudioFrameMixer = N1=3, N2=7) と不一致で、N1 のデータが
- * P6 (trackIndex 6 = psg2 ch2 矩形波) の slot へ書かれ、ノイズチャンネルが
- * 無音のままになっていた。
+ * 蜴溷屏: MmlCompiler 蛛ｴ TrackId 縺ｮ荳ｦ縺ｳ (N1=6) 縺梧ｼ泌･丞・ (TrackSequencer /
+ * mzsd_driver.asm / AudioFrameMixer = N1=3, N2=7) 縺ｨ荳堺ｸ閾ｴ縺ｧ縲¨1 縺ｮ繝・・繧ｿ縺・
+ * P6 (trackIndex 6 = psg2 ch2 遏ｩ蠖｢豕｢) 縺ｮ slot 縺ｸ譖ｸ縺九ｌ縲√ヮ繧､繧ｺ繝√Ε繝ｳ繝阪Ν縺・
+ * 辟｡髻ｳ縺ｮ縺ｾ縺ｾ縺ｫ縺ｪ縺｣縺ｦ縺・◆縲・
  */
 import { describe, expect, it } from 'vitest';
 import { MmlCompiler } from '../../mml/MmlCompiler';
@@ -15,7 +15,7 @@ import { MzsdSong } from '../MzsdSong';
 import { MzsdSequencer } from '../MzsdSequencer';
 import { Z80DriverPlayback } from '../Z80DriverPlayback';
 
-/** ユーザー報告のサンプル (samples/mml_reference/psg/psg_noise_basic.mml)。 */
+/** 繝ｦ繝ｼ繧ｶ繝ｼ蝣ｱ蜻翫・繧ｵ繝ｳ繝励Ν (samples/mml_reference/psg/psg_noise_basic.mml)縲・*/
 const noiseBasicSource = `#TITLE "PSG Noise Basic"
 #OPM OFF
 N1 t120 v12 l4 q8
@@ -34,23 +34,23 @@ function compileToSong(source: string): Uint8Array {
   return result.musicData as Uint8Array;
 }
 
-/** 1 エンジン分のノイズ発音観察結果。 */
+/** 1 繧ｨ繝ｳ繧ｸ繝ｳ蛻・・繝弱う繧ｺ逋ｺ髻ｳ隕ｳ蟇溽ｵ先棡縲・*/
 interface NoiseObservation {
-  /** ノイズチャンネル減衰レジスタの最小値 (< 15 なら何らかの音量で発音)。 */
+  /** 繝弱う繧ｺ繝√Ε繝ｳ繝阪Ν貂幄｡ｰ繝ｬ繧ｸ繧ｹ繧ｿ縺ｮ譛蟆丞､ (< 15 縺ｪ繧我ｽ輔ｉ縺九・髻ｳ驥上〒逋ｺ髻ｳ)縲・*/
   minAttenuation: number;
 
-  /** 発音フレーム (減衰 < 15) の総数。 */
+  /** 逋ｺ髻ｳ繝輔Ξ繝ｼ繝 (貂幄｡ｰ < 15) 縺ｮ邱乗焚縲・*/
   activeFrames: number;
 
   /**
-   * 発音フレームのうち、出力が正負に振れている (AC 振幅 > 0.04) フレーム数。
-   * LFSR が 0x0000 (bit0 固定) に落ちた状態は DC 出力で振れがなく無音に聞こえるため、
-   * 単なる非ゼロ判定ではなく振れ幅で判定する。
+   * 逋ｺ髻ｳ繝輔Ξ繝ｼ繝縺ｮ縺・■縲∝・蜉帙′豁｣雋縺ｫ謖ｯ繧後※縺・ｋ (AC 謖ｯ蟷・> 0.04) 繝輔Ξ繝ｼ繝謨ｰ縲・
+   * LFSR 縺・0x0000 (bit0 蝗ｺ螳・ 縺ｫ關ｽ縺｡縺溽憾諷九・ DC 蜃ｺ蜉帙〒謖ｯ繧後′縺ｪ縺冗┌髻ｳ縺ｫ閨槭％縺医ｋ縺溘ａ縲・
+   * 蜊倥↑繧矩撼繧ｼ繝ｭ蛻､螳壹〒縺ｯ縺ｪ縺乗険繧悟ｹ・〒蛻､螳壹☆繧九・
    */
   soundingFrames: number;
 }
 
-/** 両エンジン共通のノイズ発音観察。1 フレーム = 800 標本 (@48kHz)。 */
+/** 荳｡繧ｨ繝ｳ繧ｸ繝ｳ蜈ｱ騾壹・繝弱う繧ｺ逋ｺ髻ｳ隕ｳ蟇溘・ 繝輔Ξ繝ｼ繝 = 800 讓呎悽 (@48kHz)縲・*/
 function observeNoise(
   data: Uint8Array,
   chip: 'psg1' | 'psg2',
@@ -58,7 +58,7 @@ function observeNoise(
   maxFrames: number,
 ): NoiseObservation {
   const chips = new ChipBank();
-  const channel = 3; // DCSG ノイズチャンネル
+  const channel = 3; // DCSG 繝弱う繧ｺ繝√Ε繝ｳ繝阪Ν
 
   let driver: FrameDriver;
   if (useDriver) {
@@ -114,9 +114,9 @@ describe('noise track playback (N1 / N2)', () => {
     const data = compileToSong(noiseBasicSource);
     const song = MzsdSong.parse(data);
 
-    // N1 のデータは trackIndex 3 (DCSG1 ノイズ) へ書かれる
+    // N1 縺ｮ繝・・繧ｿ縺ｯ trackIndex 3 (DCSG1 繝弱う繧ｺ) 縺ｸ譖ｸ縺九ｌ繧・
     expect(song.trackDataOffset(3)).toBeGreaterThan(0);
-    // 修正前は N1 データが P6 (trackIndex 6) へ書かれていた (回帰防止)
+    // 菫ｮ豁｣蜑阪・ N1 繝・・繧ｿ縺・P6 (trackIndex 6) 縺ｸ譖ｸ縺九ｌ縺ｦ縺・◆ (蝗槫ｸｰ髦ｲ豁｢)
     expect(song.trackDataOffset(6)).toBe(0);
   });
 
@@ -132,8 +132,8 @@ describe('noise track playback (N1 / N2)', () => {
     const data = compileToSong(noiseBasicSource);
     const observation = observeNoise(data, 'psg1', false, 480);
 
-    // white / periodic 両セクションを含む曲全体で、発音フレームはすべて持続して鳴る
-    // (LFSR が 0x0000 へ吸引される AND フィードバック実装だと DC 出力で無音化する)
+    // white / periodic 荳｡繧ｻ繧ｯ繧ｷ繝ｧ繝ｳ繧貞性繧譖ｲ蜈ｨ菴薙〒縲∫匱髻ｳ繝輔Ξ繝ｼ繝縺ｯ縺吶∋縺ｦ謖∫ｶ壹＠縺ｦ魑ｴ繧・
+    // (LFSR 縺・0x0000 縺ｸ蜷ｸ蠑輔＆繧後ｋ AND 繝輔ぅ繝ｼ繝峨ヰ繝・け螳溯｣・□縺ｨ DC 蜃ｺ蜉帙〒辟｡髻ｳ蛹悶☆繧・
     expect(observation.minAttenuation).toBeLessThan(15);
     expect(observation.activeFrames).toBeGreaterThan(50);
     expect(observation.soundingFrames).toBe(observation.activeFrames);
@@ -158,5 +158,58 @@ describe('noise track playback (N1 / N2)', () => {
     const driverObservation = observeNoise(data, 'psg2', true, 240);
     expect(driverObservation.minAttenuation).toBeLessThan(15);
     expect(driverObservation.soundingFrames).toBe(driverObservation.activeFrames);
+  });
+
+  it('follows the note pitch with the interlocked periodic noise (@IN1 @WN0)', () => {
+    // 髱樣｣蜍・(@IN 縺ｪ縺・ 縺ｮ蜻ｨ譛溘ヮ繧､繧ｺ縺ｯ SN76489 繝上・繝峨え繧ｧ繧｢莉墓ｧ倅ｸ翫∝崋螳壹け繝ｭ繝・け蛻・捉
+    // (螳溯ｳｪ 3.5kHz) 縺ｮ縺ｿ縲・IN1 繧剃ｽｵ逕ｨ縺吶ｋ縺ｨ N1 縺ｮ髻ｳ隨ｦ髻ｳ遞九′ tone2 縺ｸ譖ｸ縺九ｌ縲・
+    // 繝弱う繧ｺ繧ｷ繝輔ヨ繧ｯ繝ｭ繝・け = 髻ｳ遞・ﾃ・16 縺ｧ霑ｽ蠕薙☆繧・(16 繧ｹ繝・ャ繝怜ｾｪ迺ｰ縺ｧ蝓ｺ譛ｬ = 髻ｳ遞・縲・
+    const data = compileToSong('N1 t120 v12 l4 @IN1 @WN0 o4 c4 e4 g4 > c4');
+
+    const chips = new ChipBank();
+    const sequencer = new MzsdSequencer(MzsdSong.parse(data), chips, false);
+
+    const tone2Periods: number[] = [];
+    let lastPeriod = -1;
+    for (let frame = 0; frame < 120 && !sequencer.isFinished; frame++) {
+      sequencer.tick();
+
+      expect(chips.psg1.noiseRateMode).toBe(3); // tone2 騾｣蜍・
+      expect(chips.psg1.isNoiseWhite).toBe(false); // 蜻ｨ譛溘ヮ繧､繧ｺ
+
+      const period = chips.psg1.tonePeriodRegister(2);
+      if (period !== lastPeriod) {
+        tone2Periods.push(period);
+        lastPeriod = period;
+      }
+    }
+
+    // c4 (427) 竊・e4 (338) 竊・g4 (284) 竊・> c4 (213) 縺ｮ髻ｳ遞句､牙喧縺・tone2 縺ｸ蜿肴丐縺輔ｌ繧・
+    expect(tone2Periods).toEqual([427, 338, 284, 213]);
+  });
+
+  it('follows the note pitch with the interlocked periodic noise in the Z80Driver engine', () => {
+    const data = compileToSong('N1 t120 v12 l4 @IN1 @WN0 o4 c4 e4 g4 > c4');
+
+    const chips = new ChipBank();
+    const playback = new Z80DriverPlayback(chips);
+    playback.play(data, false);
+
+    const tone2Periods: number[] = [];
+    let lastPeriod = -1;
+    for (let frame = 0; frame < 120 && !playback.isFinished; frame++) {
+      playback.tick();
+
+      expect(chips.psg1.noiseRateMode).toBe(3);
+      expect(chips.psg1.isNoiseWhite).toBe(false);
+
+      const period = chips.psg1.tonePeriodRegister(2);
+      if (period !== lastPeriod) {
+        tone2Periods.push(period);
+        lastPeriod = period;
+      }
+    }
+
+    expect(tone2Periods).toEqual([427, 338, 284, 213]);
   });
 });
