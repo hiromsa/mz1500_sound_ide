@@ -3,22 +3,8 @@ import { Volume2, VolumeX } from 'lucide-react';
 import { virtualSynth, type SoundEngineType, type SynthPlayOptions } from '../utils/virtualSynth';
 import type { MmlCaretContext } from '../utils/mmlCaretParser';
 import { findDefinitionBlocks } from '../utils/mmlContextParser';
-import { loadFmToneDefinition } from '../utils/mmlDefinitionLoader';
+import { loadFmToneDefinition, loadPitchEnvDefinition, loadVolEnvDefinition } from '../utils/mmlDefinitionLoader';
 import type { FmToneData } from '../core/fm/FmTone';
-
-// プリセットピッチエンベロープ (@PE)
-const PRESET_PITCH_ENVS: Record<number, { name: string; data: number[]; loop: number }> = {
-  1: { name: 'Vib Mild', data: [0, 1, 2, 3, 2, 1, 0, -1, -2, -3, -2, -1], loop: 0 },
-  2: { name: 'Vib Deep', data: [0, 3, 6, 8, 6, 3, 0, -3, -6, -8, -6, -3], loop: 0 },
-  3: { name: 'Attack Drop', data: [12, 10, 8, 6, 4, 2, 0], loop: -1 },
-};
-
-// プリセットボリュームエンベロープ (@VE)
-const PRESET_VOL_ENVS: Record<number, { name: string; data: number[]; loop: number }> = {
-  1: { name: 'Piano Decay', data: [15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0], loop: -1 },
-  2: { name: 'Organ Sust', data: [15, 14, 14, 14, 14, 14, 14, 14], loop: 2 },
-  3: { name: 'Short Pluck', data: [15, 11, 7, 4, 2, 1, 0], loop: -1 },
-};
 
 // 鍵盤情報定義
 interface KeyDefinition {
@@ -172,6 +158,30 @@ export function VirtualKeyboard({
       : definedFmTones[0].id;
   }, [definedFmTones, selectedFmToneId]);
 
+  // MML 上で定義済みのピッチエンベロープ (@PEN) リスト (ID 昇順)
+  const definedPitchEnvs = useMemo(() => {
+    if (!mmlSource) return [];
+    return findDefinitionBlocks(mmlSource)
+      .filter((b) => b.kind === 'pitchEnv')
+      .flatMap((b) => {
+        const env = loadPitchEnvDefinition(mmlSource, b.id);
+        return env ? [{ id: b.id, name: env.name, data: env.data, loop: env.loopPoint }] : [];
+      })
+      .sort((a, b) => a.id - b.id);
+  }, [mmlSource]);
+
+  // MML 上で定義済みのボリュームエンベロープ (@VEN) リスト (ID 昇順)
+  const definedVolEnvs = useMemo(() => {
+    if (!mmlSource) return [];
+    return findDefinitionBlocks(mmlSource)
+      .filter((b) => b.kind === 'volEnv')
+      .flatMap((b) => {
+        const env = loadVolEnvDefinition(mmlSource, b.id);
+        return env ? [{ id: b.id, name: env.name, data: env.data, loop: env.loopPoint }] : [];
+      })
+      .sort((a, b) => a.id - b.id);
+  }, [mmlSource]);
+
   // 押下中のMIDIノート一覧
   const [pressedNotes, setPressedNotes] = useState<Set<number>>(new Set());
   const isMouseDownRef = useRef<boolean>(false);
@@ -213,16 +223,16 @@ export function VirtualKeyboard({
     }
     if (selectedPitchEnv.startsWith('pe')) {
       const id = parseInt(selectedPitchEnv.slice(2), 10);
-      const p = PRESET_PITCH_ENVS[id];
+      const p = definedPitchEnvs.find((env) => env.id === id);
       if (p) return { data: p.data, loop: p.loop };
     }
     // MMLキャレットに@PE指定がある場合
     if (activeTabContext === 'mml' && selectedPitchEnv === 'none' && mmlContext?.pitchEnvId) {
-      const p = PRESET_PITCH_ENVS[mmlContext.pitchEnvId];
+      const p = definedPitchEnvs.find((env) => env.id === mmlContext.pitchEnvId);
       if (p) return { data: p.data, loop: p.loop };
     }
     return { data: undefined, loop: undefined };
-  }, [activeTabContext, selectedPitchEnv, activePitchEnv, activePitchEnvLoop, mmlContext]);
+  }, [activeTabContext, selectedPitchEnv, activePitchEnv, activePitchEnvLoop, mmlContext, definedPitchEnvs]);
 
   // 4. ボリュームエンベロープ (@VE) の実効データ判定
   const effectiveVolEnvData = useMemo(() => {
@@ -235,11 +245,11 @@ export function VirtualKeyboard({
         return { data: activeVolEnv, loop: activeVolEnvLoop };
       }
       const id = parseInt(selectedVolEnv, 10) || mmlContext?.volEnvId || 1;
-      const v = PRESET_VOL_ENVS[id];
+      const v = definedVolEnvs.find((env) => env.id === id);
       if (v) return { data: v.data, loop: v.loop };
     }
     return { data: undefined, loop: undefined };
-  }, [activeTabContext, psgVolumeMode, selectedVolEnv, activeVolEnv, activeVolEnvLoop, mmlContext]);
+  }, [activeTabContext, psgVolumeMode, selectedVolEnv, activeVolEnv, activeVolEnvLoop, mmlContext, definedVolEnvs]);
 
   // 初期スクロール: C4 (中央C) 付近にスクロール
   useEffect(() => {
@@ -604,9 +614,9 @@ export function VirtualKeyboard({
                 {activePitchEnv && (
                   <option value="editor">@PE (EDITOR)</option>
                 )}
-                <option value="pe1">@PE1: Vib Mild</option>
-                <option value="pe2">@PE2: Vib Deep</option>
-                <option value="pe3">@PE3: Drop</option>
+                {definedPitchEnvs.map((env) => (
+                  <option key={env.id} value={`pe${env.id}`}>@PE{env.id}: {env.name || 'UNNAMED'}</option>
+                ))}
               </select>
             )}
           </div>
@@ -653,13 +663,14 @@ export function VirtualKeyboard({
                     value={selectedVolEnv}
                     onChange={(e) => setSelectedVolEnv(e.target.value)}
                     className="h-5 px-1.5 rounded bg-[#0c0d12] border border-white/[0.1] text-zinc-200 text-[10px] focus:outline-none focus:border-cyan-400 cursor-pointer"
+                    title="MML で定義済みのボリュームエンベロープ (@VE) を選択"
                   >
                     {activeVolEnv && (
                       <option value="editor">@VE (EDITOR)</option>
                     )}
-                    <option value="1">@VE1: Piano</option>
-                    <option value="2">@VE2: Organ</option>
-                    <option value="3">@VE3: Pluck</option>
+                    {definedVolEnvs.map((env) => (
+                      <option key={env.id} value={String(env.id)}>@VE{env.id}: {env.name || 'UNNAMED'}</option>
+                    ))}
                   </select>
                 )}
               </div>

@@ -6,7 +6,7 @@
 ---
 
 ## 1. 現在のステータス概要
-- **バージョン**: `v0.0.1-beta.85`（コミット通番＋短縮ハッシュ ハイブリッド方式）
+- **バージョン**: `v0.0.1-beta.86`（コミット通番＋短縮ハッシュ ハイブリッド方式）
 - **テスト通過状況**: 全 32 テストファイル / 435 件パス（`npm test` / Vitest）
 - **型検査状況**: エラー 0 件（`npx tsc -b`）
 - **主要機能の稼働状況**:
@@ -53,6 +53,16 @@
 ---
 
 ## 3. 直近の完了作業（最新）
+
+- **仮想キーボードの V-ENV / P-ENV プルダウンも MML 定義済みリストへ刷新 (`src/view/VirtualKeyboard.tsx`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-08):
+  - **背景・ユーザー要望**: 「V-ENV / P-ENV も同様にお願いします。」(FM VOICE プルダウンの MML 定義ベース化と同様の対応)
+  - **対応内容**:
+    - `definedPitchEnvs` / `definedVolEnvs` useMemo を新設し、MML 上で定義済みの `@PEN` / `@VEN` を ID 昇順の動的リスト化 (`loadPitchEnvDefinition` / `loadVolEnvDefinition` 使用)。
+    - PITCH プルダウン: モック (`@PE1: Vib Mild` 等) を廃止し、`@PEID: NAME` (NAME 未設定時は `UNNAMED`) を動的表示。
+    - VOLUME (@VE モード) プルダウン: モック (`@VE1: Piano` 等) を廃止し、同様に動的表示。
+    - 発音 (`effectivePitchEnvData` / `effectiveVolEnvData`) も MML 定義データを使用するよう修正 (ENV エディタ表示中は従来どおりエディタ編集中のカーブを優先)。
+    - モック定数 `PRESET_PITCH_ENVS` / `PRESET_VOL_ENVS` を完全削除。
+  - **検証**: `npx tsc -b` エラーゼロ / `npm run lint` 警告増加なし・エラーゼロ / `npm test` 全 32 ファイル・437 件合格。
 
 - **仮想キーボードの FM VOICE プルダウンを MML 定義済み音色の実表示に刷新 (`src/view/VirtualKeyboard.tsx`, `src/view/MmlEditor.tsx`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-08):
   - **背景・ユーザー指摘**: 「仮想キーボードのFM 音色選択プルダウンで、正しいNAMEが表示されていません。モック？」

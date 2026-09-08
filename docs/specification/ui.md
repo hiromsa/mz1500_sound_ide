@@ -242,6 +242,7 @@ FlexboxおよびCSS Gridを活用し、解像度変化に追従するペイン�
         - **VOL ENVエディタ**: 編集中のボリュームエンベロープカーブを適用してリアルタイム発音（PSG / NOISE、PITCH ENV併用可）。
       - **コントロールバー機能**: CHIP選択（AUTO / PSG / FM / BEEP / NOISE）、FM VOICE選択、PITCH ENV / VOL ENV適用トグル、PITCH/DETUNEプルダウン指定、音量スライダー（v0〜v15）、PANIC（全音停止）ボタン。
         - **FM VOICE選択 (2026-09-08 本実装)**: アクティブ MML 上で定義済みの FM 音色 (`@N`) を `@ID: NAME` 形式で動的リスト表示 (NAME 未設定時は `UNNAMED`、ID 昇順)。旧ハードコードのモック (`E.PIANO 1` / `SLAP BASS` 等の `DEFAULT_PRESET_FM_TONES`) は廃止。発音はプルダウンで選択中の定義音色で行い、TONE タブ表示中はエディタ編集中の音色を優先する。
+        - **PITCH ENV / VOLUME ENV 選択 (2026-09-08 本実装)**: 同様にアクティブ MML 上で定義済みの `@PEN` / `@VEN` を `@PEID: NAME` / `@VEID: NAME` 形式で動的リスト表示 (NAME 未設定時は `UNNAMED`、ID 昇順)。旧ハードコードのモック (`Vib Mild` / `Piano Decay` 等の `PRESET_PITCH_ENVS` / `PRESET_VOL_ENVS`) は廃止。発音も選択中の MML 定義エンベロープのデータで行い、各 ENV エディタ表示中はエディタ編集中のカーブを優先する。
     - `[PROBLEMS (X)]`: コンパイルエラー・警告一覧。エラー数・警告数に応じたカラーバッジ（赤/黄/グレー）表示。右側に `CLEAR` ボタン。
       - **位置情報表示 & 精度 (2026-09-06 強化)**:
         - 各行右側に `Line <行>, Col <列>` バッジを表示 (旧 `Ln` 表記を `Line` に変更)。
