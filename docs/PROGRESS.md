@@ -6,7 +6,7 @@
 ---
 
 ## 1. 現在のステータス概要
-- **バージョン**: `v0.0.1-beta.90`（コミット通番＋短縮ハッシュ ハイブリッド方式）
+- **バージョン**: `v0.0.1-beta.91`（コミット通番＋短縮ハッシュ ハイブリッド方式）
 - **テスト通過状況**: 全 33 テストファイル / 445 件パス（`npm test` / Vitest）
 - **型検査状況**: エラー 0 件（`npx tsc -b`）
 - **主要機能の稼働状況**:
@@ -53,6 +53,17 @@
 ---
 
 ## 3. 直近の完了作業（最新）
+
+- **mml_reference へ音源別 (fm / psg / beep) コマンド学習サンプルを整備 (`samples/mml_reference/fm|psg|beep/` 新設 14 ファイル追加・既存 2 ファイル移動, `samples/mml_reference/README.md`)** (2026-09-08):
+  - **背景・ユーザー要望**: 「mml_referenceフォルダに色々なサンプルの.mmlを置いていきたいです。コマンド毎の動作が確認でき、書き方がわかるようにする意図があります。考えられるものをいくつか作ってみてください。fm音源とPSG、BEEPは分けたいです。」
+  - **対応内容**:
+    - `samples/mml_reference/` 配下に `fm/` `psg/` `beep/` サブフォルダを新設し、コマンドの動作を聞き比べられる 1 テーマ 1 ファイル構成のサンプル 12 本を新規追加。既存 `quantize.mml` / `volume2.mml` は PSG サンプルとして `psg/` へ移動。
+    - `fm/`: `@v` 音量 / `@N`・`@FMN` 音色定義切替 / `p` パン / `D`・`@SW`・`@PE` (`fm_volume_atv` / `fm_voice_macro` / `fm_panpot` / `fm_pitch_effect`)。
+    - `psg/`: 音符・休符・付点・タイ・連符 / `o`・`<>`・`K` / `t`・`@t`・`l` / `@VE` (減衰・ループ・リリース) / `@PE`・`@SW`・`D` / `[]`・`L` / `@WN` / `@IN` (`psg_notes_basic` / `psg_octave_transpose` / `psg_tempo_length` / `psg_volume_envelope` / `psg_pitch_effect` / `psg_loop_flow` / `psg_noise_basic` / `psg_noise_interlock`)。
+    - `beep/`: `B1` 音階 / `@SW`・`@PE`・`D` (`beep_basic_scale` / `beep_pitch_effect`)。
+    - `README.md` にフォルダ構成と「ファイル × 確認できるコマンド」対応表を追記。
+    - 既存 `psg/volume2.mml` の `v16` (0-15 範囲外で警告発生) を `v15` に修正し、mml_reference 配下全 16 ファイルがエラー・警告ゼロでコンパイルできることを一時検証テストで確認。
+  - **検証**: `npm test` 全 33 ファイル・445 件合格 / samples/ 配下全 .mml のエラー・警告ゼロコンパイル確認。
 
 - **TRACK_END 時のリリース巻き戻し防止 & 仮想キーボード押下音の @VE リリース対応 (`src/core/player/TrackSequencer.ts`, `driver/mzsd_driver.asm`, `src/utils/virtualSynth.ts`, `src/view/VirtualKeyboard.tsx`, `src/view/MmlEditor.tsx`, `src/view/VolEnvelopeEditor.tsx`, `src/app/App.tsx`, [`docs/specification/ui.md`](./specification/ui.md), [`docs/specification/web_core_port.md`](./specification/web_core_port.md))** (2026-09-08):
   - **背景・ユーザー指摘**:

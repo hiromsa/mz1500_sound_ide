@@ -1,0 +1,15 @@
+/* BEEP トラック B1 の基本サンプルです */
+; B1 は 8253 タイマーによる 1bit パルス矩形波 (実機の BEEP 相当)。
+; 音階 (音符 c-b / o / < >) と音長でメロディを演奏できます。
+; 音量コマンド (v / @VE) はハードウェア的に使えません (ON/OFF のみ)。
+
+#TITLE "BEEP Basic Scale"
+#COMPOSER "Hotate"
+#OPM OFF
+#OCTAVE NORMAL
+
+B1 t120 o5 l4 q8
+B1 c d e f g a b > c      ; 上がるスケール
+B1 < c b a g f e d c      ; 下がるスケール
+B1 o4 c8 d8 e8 f8 g4 r4   ; 音長を変えて
+B1 o5 {c d e}1 r1         ; 連符も使える

@@ -1,0 +1,20 @@
+/* BEEP のピッチ効果 @SW / @PE / D のサンプルです */
+; BEEP でもスイープ (@SW)・ピッチエンベロープ (@PE)・ディチューン (D) が使えます。
+; 滑らかな効果音 (サイレン・レーザー等) が作れます。
+; 解除は D0 / @SW0 / @PE255。
+
+#TITLE "BEEP Pitch Effect"
+#COMPOSER "Hotate"
+#OPM OFF
+#OCTAVE NORMAL
+
+@PE1 = { |, 0, 8, 0, -8 }    ; ビブラート
+
+B1 t120 o5 l4 q8
+B1 cccc                 ; 通常の音 (比較用)
+B1 D60 dddd             ; ディチューン (高め)
+B1 D-60 eeee            ; ディチューン (低め)
+B1 D0 @SW3 f1           ; 上昇スイープ (だんだん上がる)
+B1 o5 @SW-6 g1          ; 下降スイープ (だんだん下がる)
+B1 @SW0 @PE1 a1         ; ビブラート
+B1 @PE255 b1            ; 解除して終了
