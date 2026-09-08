@@ -317,14 +317,13 @@ export function VolEnvelopeEditor({
     if (releasePoint >= clamped) setReleasePoint(-1);
   };
 
-  // プリセット適用
+  // プリセット適用 (NAME は現在値を保持: プリセットはあくまで参考値としてのみ使用する)
   const handleApplyPreset = (key: string) => {
     const p = PRESETS[key];
     if (!p) return;
     setEnvData([...p.data]);
     setLoopPoint(p.loopPoint);
     setReleasePoint(Math.min(p.releasePoint, p.data.length - 1));
-    setEnvName(p.name);
   };
 
   // 波形クイック編集ユーティリティ (プロDAWツール)

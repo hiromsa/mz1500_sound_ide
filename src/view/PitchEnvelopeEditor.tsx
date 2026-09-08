@@ -366,14 +366,13 @@ export function PitchEnvelopeEditor({
     if (loopPoint >= clamped) setLoopPoint(-1);
   };
 
-  // プリセット適用
+  // プリセット適用 (NAME は現在値を保持: プリセットはあくまで参考値としてのみ使用する)
   const handleApplyPreset = (key: string) => {
     const p = PRESETS[key];
     if (!p) return;
     setPitchRange(p.range);
     setEnvData([...p.data]);
     setLoopPoint(p.loopPoint);
-    setEnvName(p.name);
   };
 
   // ビブラート自動生成ツール (正弦波ビブラート生成)

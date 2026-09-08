@@ -1251,9 +1251,10 @@ export function FmToneEditor({
     setToneData(prev => ({ ...prev, fb }));
   };
 
-  // プリセット適用
+  // プリセット適用 (NAME は現在値を保持: プリセットはあくまで参考値としてのみ使用する)
   const handleApplyPreset = (preset: FmToneData) => {
-    setToneData(JSON.parse(JSON.stringify(preset)));
+    const cloned = JSON.parse(JSON.stringify(preset)) as FmToneData;
+    setToneData({ ...cloned, name: toneData.name });
   };
 
   // 各パラメータの有効範囲定義 (クランプ用)

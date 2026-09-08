@@ -6,7 +6,7 @@
 ---
 
 ## 1. 現在のステータス概要
-- **バージョン**: `v0.0.1-beta.81`（コミット通番＋短縮ハッシュ ハイブリッド方式）
+- **バージョン**: `v0.0.1-beta.82`（コミット通番＋短縮ハッシュ ハイブリッド方式）
 - **テスト通過状況**: 全 32 テストファイル / 435 件パス（`npm test` / Vitest）
 - **型検査状況**: エラー 0 件（`npx tsc -b`）
 - **主要機能の稼働状況**:
@@ -53,6 +53,15 @@
 ---
 
 ## 3. 直近の完了作業（最新）
+
+- **プリセット選択時の NAME 自動反映を廃止 (`src/view/FmToneEditor.tsx`, `src/view/VolEnvelopeEditor.tsx`, `src/view/PitchEnvelopeEditor.tsx`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-08):
+  - **背景・ユーザー要望**: 「FM TONEやV-ENV、P-ENV で プリセットを選択したときに、NAMEには何もはいらないようにしたいです。あくまでもプリセットで参考値として使いたいだけなので。」
+  - **対応内容 (A案: NAME 変更なし・既存値保持)**:
+    - 3 エディタの `handleApplyPreset` からプリセット名の NAME 設定を廃止。プリセット選択時はパラメータのみ適用し、NAME 入力欄は既存の値をそのまま保持する。
+    - FM TONE: プリセット `FmToneData` のディープコピー時に `name: toneData.name` で現在値を維持。
+    - V-ENV / P-ENV: `setEnvName(p.name)` 呼び出しを削除。
+    - 名称の復元は従来どおり MML からのロード時（`/* NAME: ... */` コメント）のみ。
+  - **ユーザー確定判断 (2026-09-08)**: 選択肢 (A: NAME 変更なし / B: 毎回クリア) のうち **案 A「NAMEには何も設定しない」** を選択。
 
 - **FM TONE の「MMLに反映」出力書式を簡素化 (`src/view/FmToneEditor.tsx`, `src/utils/__tests__/mmlDefinitionLoader.test.ts`, `src/core/mml/__tests__/MmlCompilerAdvanced.test.ts`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-08):
   - **背景・ユーザー要望**: 「FM TONE で INSERTするMML はこんな書式にしたいです。」(例示: `/* ALG, FB */` ラベル + OP 共通パラメータ順ラベルのみの 46 値列)「OP1 とか Carrier とか、 ALG FBの数値不要」
