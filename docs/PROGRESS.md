@@ -54,6 +54,18 @@
 
 ## 3. 直近の完了作業（最新）
 
+- **仮想キーボードのコントロール 2 行化（キーアサイン & オクターブ操作バー新設）と @IN / @WN セレクタ追加 (`src/view/VirtualKeyboard.tsx`, `src/utils/virtualSynth.ts`, `src/utils/mmlCaretParser.ts`, `src/utils/__tests__/mmlCaretParser.test.ts`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-09):
+  - **背景・ユーザー要望**: 「仮想キーボードについて、オクターブ変更のボタンとキーアサインについては、行を追加して配置してほしい（鍵盤のエリアの高さがその分小さくなってもOK）。その上で、PITCHの右側あたりに @IN と @WN の設定を追加してほしい。@IN と @WN の有効・無効など連動については、他の設定と同様にうまく連動するようにしてほしい。」
+  - **対応内容**:
+    1. **キーアサイン & オクターブ操作バーの新設 (行2)**: 従来コントロールバー (行1) 右側に詰め込んでいた PC キーボード演奏インジケータ (`⌨ PC: A-K`)、オクターブ切替 (`OCT: [Z-] X [X+]`)、オクターブジャンプ (`JUMP: C1`〜`C7`、キャレットオクターブハイライト維持)、`PANIC` ボタンを独立した行 (h-7) へ移動。あわせて **QWERTY キーアサイン表示** (`A W S E D F T G Y H U J K O L P ; '` を鍵盤順にミニキーで視覚化・白鍵/黒鍵で色分け・押下中のキーはシアン発光) を新設。鍵盤エリアは flex-1 のため行追加分だけ自動縮小。MML モード時は `⌨ PC PLAY: OFF (MML)` + `OCT: X (AUTO)` 表示 (従来どおり演奏・オクターブ切替無効)。
+    2. **@IN セレクタ追加 (PITCH の右隣)**: `AUTO (@INn)` / `@IN0: 解除` / `@IN1: 周期連動` / `@IN2: 白連動`。**有効化条件は実効音源が PSG のときのみ** (それ以外は `N/A (PSG)` 無効バッジ・BEEP 音量 N/A と同一パターン)。
+    3. **@WN セレクタ追加 (@IN の右隣)**: `AUTO (@WNn)` / `@WN0: 周期` / `@WN1: ホワイト`。**有効化条件は実効音源が NOISE のときのみ** (それ以外は `N/A (N1/N2)`)。
+    4. **他設定と同一パターンの MML キャレット連動**: `AUTO` 選択時はキャレット解析値を発音へ反映、手動選択時はその値を最優先、MML キャレット移動時の自動連動で手動選択を `AUTO` へ戻す (CHIP / 音量と同一挙動)。
+    5. **`mmlCaretParser.ts` に @IN 解析を追加**: `TrackPlayState` / `MmlCaretContext` へ `noiseIntegrate` (0-2) 新設、`COMMAND_PATTERN` へ `@in` トークン追加。**P3/P6 (トーン 3 統合トラック) でのみ状態更新** (正式パーサ `processNoiseSync` 準拠)。
+    6. **`virtualSynth.ts` にノイズ統合発音を実装**: `SynthPlayOptions.noiseIntegrate` 新設。PSG エンジン選択時に `@IN1` / `@IN2` なら音程に追従するノイズ (bandpass 中心 = 音程比例、@IN1 = Q10 硬い金属音 / @IN2 = Q2 広がりのあるノイズ) で発音し、`@PE` 併用時は playbackRate でピッチ変調 (実機: tone2 周波数レジスタ変調に相当)。あわせて従来未反映だった NOISE 時の `noiseType` (@WN) も発音オプションへ反映。
+  - **テスト**: `mmlCaretParser.test.ts` に `@WN0/@WN1` 波形解析、`@IN0/1/2` (P3/P6 有効・P1/P4/N1 無視・初期値 0) のテスト 5 件追加。
+  - **検証**: `npx tsc -b` エラーゼロ / `npm test` 全 35 ファイル・486 件合格 + 1 skip / `npm run lint` エラーゼロ (既存警告 10 は変更なし) / `npm run build` 成功。
+
 - **FM TONE / VOL ENV / PITCH ENV の試聴音を MASTER VOLUME の影響下に統合 (`src/app/App.tsx`, `src/view/FmToneEditor.tsx`, `src/view/VolEnvelopeEditor.tsx`, `src/view/PitchEnvelopeEditor.tsx`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-09):
   - **背景・ユーザー要望**: 「FM TONE や P-ENV、V-ENV の PreviewボタンもMASTER VOLUMEの影響を受けるようにしてください。」(仮想キーボードの MASTER VOLUME 統合の続き)
   - **従来の問題**: 右ペイン各エディタの試聴 (▶ PREVIEW / ▶ KEY ON) は独自の Web Audio 経路で固定ゲイン (FM: 0.35 / V-ENV: 0.25 / P-ENV: 0.2) により発音しており、TRACK MONITOR の MASTER VOL とは無関係だった。

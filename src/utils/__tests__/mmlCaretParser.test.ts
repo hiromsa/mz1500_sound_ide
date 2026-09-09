@@ -193,4 +193,31 @@ describe('parseMmlCaretContext', () => {
       expect(ctx.fmVolume).toBe(100);
     });
   });
+
+  describe('@WN / @IN (ノイズ波形・統合モード) の適用範囲', () => {
+    it('@WN0 / @WN1 でノイズ波形を解析する', () => {
+      expect(parseMmlCaretContext('N1 @WN0 c', 1, 9).noiseType).toBe('periodic');
+      expect(parseMmlCaretContext('N1 @WN1 c', 1, 9).noiseType).toBe('white');
+    });
+
+    it('@IN0 / @IN1 / @IN2 を P3 トラックで解析する', () => {
+      expect(parseMmlCaretContext('P3 @IN1 c', 1, 9).noiseIntegrate).toBe(1);
+      expect(parseMmlCaretContext('P3 @IN2 c', 1, 9).noiseIntegrate).toBe(2);
+      expect(parseMmlCaretContext('P3 @IN1 @IN0 c', 1, 13).noiseIntegrate).toBe(0);
+    });
+
+    it('@IN は P6 トラックでも有効 (トーン 3 統合トラック)', () => {
+      expect(parseMmlCaretContext('P6 @IN2 c', 1, 9).noiseIntegrate).toBe(2);
+    });
+
+    it('@IN は P3/P6 以外のトラックでは無視される (正式パーサ準拠)', () => {
+      expect(parseMmlCaretContext('P1 @IN1 c', 1, 9).noiseIntegrate).toBe(0);
+      expect(parseMmlCaretContext('P4 @IN1 c', 1, 9).noiseIntegrate).toBe(0);
+      expect(parseMmlCaretContext('N1 @IN1 c', 1, 9).noiseIntegrate).toBe(0);
+    });
+
+    it('@IN 指定が無いトラックの noiseIntegrate は初期値 0', () => {
+      expect(parseMmlCaretContext('P3 o4 c', 1, 8).noiseIntegrate).toBe(0);
+    });
+  });
 });

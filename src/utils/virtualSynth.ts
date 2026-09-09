@@ -27,6 +27,8 @@ export interface SynthPlayOptions {
   volEnvRelease?: number; // リリース開始インデックス (KEY OFF 後に再生する区間。undefined / -1: なし)
   detune?: number; // デチューン値 (MML Dコマンド相当, ±cents)
   noiseType?: 'periodic' | 'white'; // ノイズ種別
+  /** ノイズ統合モード (MML @IN コマンド相当、PSG エンジン専用)。0 = 統合なし / 1 = 周期ノイズ連動 / 2 = ホワイトノイズ連動。 */
+  noiseIntegrate?: 0 | 1 | 2;
 }
 
 /**
@@ -201,18 +203,38 @@ export class VirtualSynthEngine {
     let triggerRelease: (() => boolean) | undefined;
     let releaseStopTimer: number | null = null;
 
-    // --- 1. PSG (DCSG 矩形波) ---
+    // --- 1. PSG (DCSG 矩形波 / @IN ノイズ統合) ---
     if (options.engine === 'psg') {
-      const osc = ctx.createOscillator();
-      osc.type = 'square';
-      osc.frequency.setValueAtTime(baseFreq, ctx.currentTime);
+      const integrateMode = options.noiseIntegrate ?? 0;
+      // @IN 統合時は音程に追従するノイズで発音する
+      // (実機仕様: トーン 3 の周波数レジスタでノイズジェネレータを駆動し、発音もノイズへ切替)
+      const useIntegrateNoise = integrateMode === 1 || integrateMode === 2;
 
       const gain = ctx.createGain();
       gain.gain.setValueAtTime(peakGain, ctx.currentTime);
-
-      osc.connect(gain);
       gain.connect(masterGain);
-      osc.start();
+
+      const osc = useIntegrateNoise ? null : ctx.createOscillator();
+      const integrateNoiseSrc = useIntegrateNoise ? ctx.createBufferSource() : null;
+      const integrateNoiseFilter = useIntegrateNoise ? ctx.createBiquadFilter() : null;
+
+      if (osc) {
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(baseFreq, ctx.currentTime);
+        osc.connect(gain);
+        osc.start();
+      } else if (integrateNoiseSrc && integrateNoiseFilter) {
+        integrateNoiseSrc.buffer = this.getNoiseBuffer(ctx);
+        integrateNoiseSrc.loop = true;
+        // bandpass 中心を音程に比例させ、ノイズの高さが音階へ追従する
+        integrateNoiseFilter.type = 'bandpass';
+        integrateNoiseFilter.frequency.setValueAtTime(Math.min(16000, baseFreq * 4), ctx.currentTime);
+        // @IN1 = 周期ノイズ連動 (Q高めで硬い金属音) / @IN2 = ホワイトノイズ連動 (Q低めで広がりのあるノイズ)
+        integrateNoiseFilter.Q.setValueAtTime(integrateMode === 1 ? 10 : 2, ctx.currentTime);
+        integrateNoiseSrc.connect(integrateNoiseFilter);
+        integrateNoiseFilter.connect(gain);
+        integrateNoiseSrc.start();
+      }
 
       // エンベロープ処理 (60fps)
       let currentFrame = 0;
@@ -244,7 +266,12 @@ export class VirtualSynthEngine {
             }
             const pVal = options.pitchEnv[pIdx] ?? 0;
             const detuneCents = (options.detune || 0) + pVal * 25;
-            osc.detune.setValueAtTime(detuneCents, now);
+            if (integrateNoiseSrc) {
+              // ノイズ統合時は playbackRate でピッチ変調 (実機: tone2 周波数レジスタの変調に相当)
+              integrateNoiseSrc.playbackRate.setValueAtTime(Math.pow(2, detuneCents / 1200), now);
+            } else if (osc) {
+              osc.detune.setValueAtTime(detuneCents, now);
+            }
           }
 
           currentFrame++;
@@ -274,7 +301,13 @@ export class VirtualSynthEngine {
           const now = ctx.currentTime;
           gain.gain.linearRampToValueAtTime(0.0001, now + 0.05);
           setTimeout(() => {
-            try { osc.stop(); osc.disconnect(); } catch { /* ignore */ }
+            try {
+              osc?.stop();
+              osc?.disconnect();
+              integrateNoiseSrc?.stop();
+              integrateNoiseSrc?.disconnect();
+              integrateNoiseFilter?.disconnect();
+            } catch { /* ignore */ }
           }, 60);
         } catch { /* ignore */ }
       });

@@ -14,6 +14,8 @@ export interface MmlCaretContext {
   pitchEnvId?: number;
   detune: number;
   noiseType?: 'periodic' | 'white';
+  /** ノイズ統合モード (@IN コマンド、0 = 解除 / 1 = 周期ノイズ連動 / 2 = ホワイトノイズ連動)。P3/P6 トラックのみ更新される。 */
+  noiseIntegrate?: number;
   /** FM 専用音量 (@v コマンド、0-127、127 = 最大)。FM トラックのみ更新される。 */
   fmVolume: number;
 }
@@ -27,6 +29,7 @@ export interface TrackPlayState {
   pitchEnvId: number | undefined;
   detune: number;
   noiseType: 'periodic' | 'white';
+  noiseIntegrate: number;
   fmVolume: number;
 }
 
@@ -39,7 +42,7 @@ const TRACK_NAME_PATTERN = /^(?:P[1-6]|N[1-2]|B1|F[1-8]|W\d+)$/;
  * - `D` (ディチューン) は音符 `d` と区別するため大文字のみ (正式パーサ準拠)
  * - `f2` / `d4` のような音長付き音符はどのパターンにも誤マッチしない
  */
-const COMMAND_PATTERN = /@[fF][mM]\d+|@[pP][eE]\d+|@[eE][pP]\d+|@[vV][eE]\d+|@[wW][nN]\d+|@[vV]\d+|@\d+|[oO][1-8]|[<>]|[vV]\d+|D-?\d+/g;
+const COMMAND_PATTERN = /@[fF][mM]\d+|@[pP][eE]\d+|@[eE][pP]\d+|@[vV][eE]\d+|@[wW][nN]\d+|@[iI][nN]\d+|@[vV]\d+|@\d+|[oO][1-8]|[<>]|[vV]\d+|D-?\d+/g;
 
 /** トラック名から音源種別を判定する (mml_reference.md 2節準拠) */
 export function resolveEngineFromTrackName(trackName: string): SoundEngineType {
@@ -47,6 +50,11 @@ export function resolveEngineFromTrackName(trackName: string): SoundEngineType {
   if (/^B1$/.test(trackName)) return 'beep';
   if (/^N[1-2]$/.test(trackName)) return 'noise';
   return 'psg'; // P1-P6 (DCSG 矩形波)
+}
+
+/** DCSG トーン 3 統合トラック (P3/P6) かどうか (@IN はこのトラックでのみ有効・正式パーサ準拠) */
+function isDcsgTone3Track(trackName: string): boolean {
+  return /^P[36]$/.test(trackName);
 }
 
 /**
@@ -62,6 +70,7 @@ function createDefaultTrackState(): TrackPlayState {
     pitchEnvId: undefined,
     detune: 0,
     noiseType: 'white',
+    noiseIntegrate: 0,
     fmVolume: 127,
   };
 }
@@ -236,6 +245,13 @@ export class MmlCaretContextTracker {
       }
     } else if (upper.startsWith('@WN')) {
       state.noiseType = parseInt(upper.slice(3), 10) === 1 ? 'white' : 'periodic';
+    } else if (upper.startsWith('@IN')) {
+      // @IN: ノイズ統合モード (0 = 解除 / 1 = 周期ノイズ連動 / 2 = ホワイトノイズ連動)。
+      // トーン 3 トラック (P3/P6) でのみ有効 (正式パーサ `processNoiseSync` 準拠)
+      const mode = parseOptionalInt(upper.slice(3));
+      if (mode !== undefined && isDcsgTone3Track(trackName)) {
+        state.noiseIntegrate = Math.max(0, Math.min(2, mode));
+      }
     } else if (upper.startsWith('@FM')) {
       this.applyFmToneId(parseOptionalInt(upper.slice(3)), trackName, state);
     } else if (upper.startsWith('@')) {

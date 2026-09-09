@@ -104,6 +104,9 @@ const SEMITONE_TO_KEY_LABEL: Record<number, string> = {
   17: "'",
 };
 
+// PCキーボード演奏キーのうち黒鍵に割り当てられるセミトーン (キーアサイン表示の色分け用)
+const BLACK_KEY_SEMITONES = new Set([1, 3, 6, 8, 10, 13, 15]);
+
 export type ActiveTabContext = 'mml' | 'tone' | 'vol_envelope' | 'pitch_envelope';
 
 interface VirtualKeyboardProps {
@@ -141,6 +144,10 @@ export function VirtualKeyboard({
   const [selectedVolEnv, setSelectedVolEnv] = useState<string>('editor'); // 'editor' | '1' | '2' | '3'
   const [selectedPitchEnv, setSelectedPitchEnv] = useState<string>('none'); // 'none' | 'editor' | '1' | '2' | '3'
   const [selectedFmToneId, setSelectedFmToneId] = useState<number>(1);
+  // ノイズ波形 (@WN) の手動選択 (AUTO = MML キャレットの @WN 状態へ追従)
+  const [selectedNoiseWave, setSelectedNoiseWave] = useState<'auto' | 'periodic' | 'white'>('auto');
+  // ノイズ統合モード (@IN) の手動選択 (AUTO = MML キャレットの @IN 状態へ追従)
+  const [selectedNoiseIntegrate, setSelectedNoiseIntegrate] = useState<'auto' | 'off' | 'in1' | 'in2'>('auto');
 
   // MML 上で定義済みの FM 音色 (@N) リスト (ID 昇順)
   const definedFmTones = useMemo<FmToneData[]>(() => {
@@ -216,6 +223,22 @@ export function VirtualKeyboard({
   // 2. 実効音量 (0〜15)
   const effectiveVolume = manualVolume !== null ? manualVolume : (mmlContext?.volume ?? 12);
 
+  // 2.5 ノイズ波形 (@WN) の実効判定 (AUTO 時は MML キャレットの @WN 状態へ追従)
+  const effectiveNoiseType: 'periodic' | 'white' =
+    selectedNoiseWave === 'auto'
+      ? (mmlContext?.noiseType ?? 'white')
+      : selectedNoiseWave === 'white' ? 'white' : 'periodic';
+
+  // 2.6 ノイズ統合モード (@IN) の実効判定 (AUTO 時は MML キャレットの @IN 状態へ追従)
+  const effectiveNoiseIntegrate: 0 | 1 | 2 =
+    selectedNoiseIntegrate === 'auto'
+      ? ((mmlContext?.noiseIntegrate ?? 0) as 0 | 1 | 2)
+      : selectedNoiseIntegrate === 'in1' ? 1 : selectedNoiseIntegrate === 'in2' ? 2 : 0;
+
+  // @WN はノイズトラック (N1/N2) 専用 / @IN は PSG トラック専用コマンド (正式パーサ準拠の有効化条件)
+  const isNoiseWaveActive = effectiveEngine === 'noise';
+  const isNoiseIntegrateActive = effectiveEngine === 'psg';
+
   // 3. ピッチエンベロープ (@PE) の実効データ判定
   const effectivePitchEnvData = useMemo(() => {
     if (activeTabContext === 'pitch_envelope') {
@@ -289,6 +312,10 @@ export function VirtualKeyboard({
     // 3. 音量の自動連動 (手動オーバーライドをリセットしMML値優先)
     setManualVolume(null);
 
+    // 4. ノイズ波形 / 統合モードの自動連動 (手動オーバーライドをAUTOに戻しMML値優先)
+    setSelectedNoiseWave('auto');
+    setSelectedNoiseIntegrate('auto');
+
     // 4. FM音色ID自動連動
     if (mmlContext.voiceId !== undefined) {
       setSelectedFmToneId(mmlContext.voiceId);
@@ -360,6 +387,14 @@ export function VirtualKeyboard({
       detune: mmlContext?.detune || 0,
     };
 
+    // ノイズ波形 / 統合モード設定 (ノイズトラックは @WN、PSG は @IN)
+    if (effectiveEngine === 'noise') {
+      options.noiseType = effectiveNoiseType;
+    }
+    if (effectiveEngine === 'psg' && effectiveNoiseIntegrate !== 0) {
+      options.noiseIntegrate = effectiveNoiseIntegrate;
+    }
+
     // FM音色設定: TONEエディタ編集中はエディタの音色、それ以外はプルダウンで選択中の MML 定義音色
     if (effectiveEngine === 'fm') {
       const selectedDefinedTone = definedFmTones.find((tone) => tone.id === effectiveSelectedFmToneId);
@@ -386,6 +421,8 @@ export function VirtualKeyboard({
   }, [
     effectiveEngine,
     effectiveVolume,
+    effectiveNoiseType,
+    effectiveNoiseIntegrate,
     mmlContext,
     activeFmTone,
     definedFmTones,
@@ -623,7 +660,56 @@ export function VirtualKeyboard({
             )}
           </div>
 
-          {/* 4) VOLUME指定 (FM: 0-15 / PSG: 0-15 or @VE / BEEP: N/A) */}
+          {/* 4) ノイズ統合指定 (@IN: PSG時のみ有効) */}
+          <div className="flex items-center gap-1 pl-1 border-l border-white/[0.08]">
+            <span className="text-[10px] text-zinc-500">@IN:</span>
+            {isNoiseIntegrateActive ? (
+              <select
+                value={selectedNoiseIntegrate}
+                onChange={(e) => setSelectedNoiseIntegrate(e.target.value as 'auto' | 'off' | 'in1' | 'in2')}
+                className="h-5 px-1.5 rounded bg-[#0c0d12] border border-white/[0.1] text-zinc-200 text-[10px] focus:outline-none focus:border-cyan-400 cursor-pointer"
+                title="ノイズ統合モード (@IN) を選択。AUTO は MML キャレットの状態へ追従 (P3/P6 トラック専用コマンドの試聴)"
+              >
+                <option value="auto">AUTO ({`@IN${effectiveNoiseIntegrate}`})</option>
+                <option value="off">@IN0: 解除</option>
+                <option value="in1">@IN1: 周期連動</option>
+                <option value="in2">@IN2: 白連動</option>
+              </select>
+            ) : (
+              <span
+                className="h-5 px-1.5 rounded bg-zinc-900 border border-white/[0.05] text-zinc-600 text-[10px] flex items-center"
+                title="@IN は PSG トラック (P3/P6) 専用コマンドのため、PSG 選択時のみ試聴できます"
+              >
+                N/A (PSG)
+              </span>
+            )}
+          </div>
+
+          {/* 5) ノイズ波形指定 (@WN: NOISE時のみ有効) */}
+          <div className="flex items-center gap-1 pl-1 border-l border-white/[0.08]">
+            <span className="text-[10px] text-zinc-500">@WN:</span>
+            {isNoiseWaveActive ? (
+              <select
+                value={selectedNoiseWave}
+                onChange={(e) => setSelectedNoiseWave(e.target.value as 'auto' | 'periodic' | 'white')}
+                className="h-5 px-1.5 rounded bg-[#0c0d12] border border-white/[0.1] text-zinc-200 text-[10px] focus:outline-none focus:border-cyan-400 cursor-pointer"
+                title="ノイズ波形 (@WN) を選択。AUTO は MML キャレットの状態へ追従 (N1/N2 トラック専用コマンドの試聴)"
+              >
+                <option value="auto">AUTO ({effectiveNoiseType === 'white' ? '@WN1' : '@WN0'})</option>
+                <option value="periodic">@WN0: 周期</option>
+                <option value="white">@WN1: ホワイト</option>
+              </select>
+            ) : (
+              <span
+                className="h-5 px-1.5 rounded bg-zinc-900 border border-white/[0.05] text-zinc-600 text-[10px] flex items-center"
+                title="@WN はノイズトラック (N1/N2) 専用コマンドのため、NOISE 選択時のみ試聴できます"
+              >
+                N/A (N1/N2)
+              </span>
+            )}
+          </div>
+
+          {/* 6) VOLUME指定 (FM: 0-15 / PSG: 0-15 or @VE / BEEP: N/A) */}
           <div className="flex items-center gap-1 pl-1 border-l border-white/[0.08]">
             <span className="text-[10px] text-zinc-500">VOL:</span>
             {effectiveEngine === 'beep' ? (
@@ -694,41 +780,82 @@ export function VirtualKeyboard({
             )}
           </div>
         </div>
+      </div>
 
-        {/* 右側: PCキーボード演奏案内 & スペースドラッグ案内 & オクターブジャンプ & Panicボタン */}
-        <div className="flex items-center gap-1 shrink-0 ml-auto">
-          {/* PCキーボード演奏インジケータ & オクターブ切替 (MMLモード時は無効) */}
-          {activeTabContext !== 'mml' ? (
-            <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-zinc-900/90 border border-white/[0.08] text-[9px] text-zinc-400">
+      {/* 2. 上部コントロール行2: PCキーボード・キーアサイン & オクターブ操作 */}
+      <div className="h-7 px-2.5 bg-[#16171f] border-b border-white/[0.08] flex items-center gap-1.5 shrink-0 overflow-x-auto scrollbar-thin scrollbar-thumb-zinc-700">
+        {/* PCキーボード演奏インジケータ & キーアサイン (MMLモード時は無効) */}
+        {activeTabContext !== 'mml' ? (
+          <>
+            <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-zinc-900/90 border border-white/[0.08] text-[9px] text-zinc-400 shrink-0">
               <span className="text-zinc-500 font-semibold hidden md:inline">⌨ PC:</span>
               <span className="text-cyan-300 font-mono font-bold">A-K</span>
-              <span className="text-zinc-600">|</span>
-              <span className="text-zinc-300 font-bold">OCT {typingOctave}</span>
-              <button
-                onClick={() => changeTypingOctave(o => Math.max(1, o - 1))}
-                className="px-1 py-0.2 bg-[#222430] hover:bg-zinc-700 text-zinc-300 hover:text-white rounded border border-white/[0.06] cursor-pointer"
-                title="オクターブ下げる (Zキー)"
-              >
-                Z-
-              </button>
-              <button
-                onClick={() => changeTypingOctave(o => Math.min(7, o + 1))}
-                className="px-1 py-0.2 bg-[#222430] hover:bg-zinc-700 text-zinc-300 hover:text-white rounded border border-white/[0.06] cursor-pointer"
-                title="オクターブ上げる (Xキー)"
-              >
-                X+
-              </button>
             </div>
-          ) : (
-            <div
-              className="hidden xl:flex items-center gap-1 px-1.5 py-0.5 rounded bg-zinc-900/40 border border-white/[0.04] text-[9px] text-zinc-600 select-none"
-              title="MMLエディタ入力保護のため、PCキーボード(A-K)演奏は右ペイン各エディタ(TONE/ENV)選択時のみ有効です"
-            >
-              <span>⌨ PC PLAY: OFF (MML)</span>
-            </div>
-          )}
 
-          <span className="text-[10px] text-zinc-500 mr-1 hidden sm:inline">OCT:</span>
+            {/* キーアサイン表示 (鍵盤順・白鍵/黒鍵で色分け・押下中のキーはシアン発光) */}
+            <div className="flex items-center gap-[2px] px-1 py-0.5 rounded bg-[#0c0d12] border border-white/[0.08] shrink-0">
+              {Object.entries(PC_KEY_TO_SEMITONE).map(([code, semitone]) => {
+                const isPressedKey = pressedNotes.has((typingOctave + 1) * 12 + semitone);
+                const isBlackKey = BLACK_KEY_SEMITONES.has(semitone);
+                return (
+                  <span
+                    key={code}
+                    className={`w-[15px] h-[15px] rounded-[2px] text-[8px] font-bold flex items-center justify-center border transition-colors duration-75 ${
+                      isPressedKey
+                        ? 'bg-cyan-400 text-black border-cyan-300 shadow-[0_0_5px_rgba(34,211,238,0.8)]'
+                        : isBlackKey
+                          ? 'bg-black text-zinc-500 border-white/[0.08]'
+                          : 'bg-[#26282f] text-zinc-300 border-white/[0.12]'
+                    }`}
+                    title={`${SEMITONE_TO_KEY_LABEL[semitone]} キー = 基準オクターブ +${semitone} 半音`}
+                  >
+                    {SEMITONE_TO_KEY_LABEL[semitone]}
+                  </span>
+                );
+              })}
+            </div>
+          </>
+        ) : (
+          <div
+            className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-zinc-900/40 border border-white/[0.04] text-[9px] text-zinc-600 select-none shrink-0"
+            title="MMLエディタ入力保護のため、PCキーボード(A-K)演奏は右ペイン各エディタ(TONE/ENV)選択時のみ有効です"
+          >
+            <span>⌨ PC PLAY: OFF (MML)</span>
+          </div>
+        )}
+
+        {/* オクターブ切替 (PC演奏・テストノートの基準オクターブ / MMLモード時はキャレットへ自動追従) */}
+        {activeTabContext !== 'mml' ? (
+          <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-zinc-900/90 border border-white/[0.08] shrink-0">
+            <span className="text-[10px] text-zinc-500 font-semibold">OCT:</span>
+            <button
+              onClick={() => changeTypingOctave(o => Math.max(1, o - 1))}
+              className="h-4 px-1 rounded bg-[#222430] hover:bg-zinc-700 text-zinc-300 hover:text-white border border-white/[0.06] text-[9px] cursor-pointer"
+              title="オクターブ下げる (Zキー)"
+            >
+              Z-
+            </button>
+            <span className="text-[11px] text-cyan-300 font-bold w-3 text-center">{typingOctave}</span>
+            <button
+              onClick={() => changeTypingOctave(o => Math.min(7, o + 1))}
+              className="h-4 px-1 rounded bg-[#222430] hover:bg-zinc-700 text-zinc-300 hover:text-white border border-white/[0.06] text-[9px] cursor-pointer"
+              title="オクターブ上げる (Xキー)"
+            >
+              X+
+            </button>
+          </div>
+        ) : (
+          <div
+            className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-zinc-900/40 border border-white/[0.04] text-[10px] text-zinc-600 select-none shrink-0"
+            title="MMLモード時のオクターブはキャレット位置へ自動追従します"
+          >
+            <span>OCT: {typingOctave} (AUTO)</span>
+          </div>
+        )}
+
+        {/* オクターブジャンプ (鍵盤の該当オクターブへスクロール) */}
+        <div className="flex items-center gap-1 shrink-0">
+          <span className="text-[10px] text-zinc-500 mr-0.5">JUMP:</span>
           {[1, 2, 3, 4, 5, 6, 7].map(oct => {
             const isCurrentOct = mmlContext?.octave === oct;
             return (
@@ -746,18 +873,18 @@ export function VirtualKeyboard({
               </button>
             );
           })}
-
-          <button
-            onClick={handleAllNotesOff}
-            className="h-5 px-2 ml-1.5 rounded bg-zinc-800 hover:bg-red-950/80 text-zinc-400 hover:text-red-300 border border-white/[0.08] hover:border-red-600/50 text-[10px] transition-colors cursor-pointer"
-            title="All Notes Off (Panic)"
-          >
-            PANIC
-          </button>
         </div>
+
+        <button
+          onClick={handleAllNotesOff}
+          className="h-5 px-2 rounded bg-zinc-800 hover:bg-red-950/80 text-zinc-400 hover:text-red-300 border border-white/[0.08] hover:border-red-600/50 text-[10px] transition-colors cursor-pointer shrink-0"
+          title="All Notes Off (Panic)"
+        >
+          PANIC
+        </button>
       </div>
 
-      {/* 2. 下部キーボード描画エリア (横スクロール対応) */}
+      {/* 3. 下部キーボード描画エリア (横スクロール対応) */}
       <div 
         ref={keyboardScrollRef}
         onMouseDown={handleContainerMouseDown}
