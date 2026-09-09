@@ -158,9 +158,17 @@ C# の partial class (1 クラス複数ファイル) は、TS では 1 ファイ
   ノイズシフトクロック (55.9〜223.7kHz) は音声ナイキスト (24kHz) を大きく超えるため、
   ビット列をそのまま標本化すると折り返し雑音 (エイリアス) が金属的な高音として聞こえる。
   実機はアナログ出力段で高域が減衰するため、TS 版は `DcsgChip.renderSample` のノイズ出力に
-  **2 段 1-pole LPF (8kHz) + RMS 補正ゲイン + DC ブロック (30Hz / 出力コンデンサ相当)** を追加した
-  (仮想キーボード `virtualSynth.ts` の白噪 lowpass 8kHz と同一基準)。
+  **2 段 1-pole LPF + RMS 補正ゲイン + DC ブロック (30Hz / 出力コンデンサ相当)** を追加した
+  (カットオフはホワイトノイズのみ分周モード連動: rate 0/3 = 8kHz / 1 = 4kHz / 2 = 2kHz。
+  周期ノイズは基本波が音の高さのため固定 8kHz。仮想キーボード
+  `virtualSynth.ts` も `DcsgChip.lpfCutoffForRate` で同一基準)。
   効果は隣接標本差平均で検証 (無フィルタ ≈ 1.0 → 0.12、テスト `attenuates the alias high band`)。
+- **意図的な C# からの差分 (2026-09-09): 専用ノイズトラックの分周ヒントを音名ベースへ変更**。
+  C# 版は `TrackSequencer.cs` の周波数しきい値 (`freq < 40000 ? 2 : freq < 80000 ? 1 : 0`) のため
+  実用音域で常に rate 2 に丸まり、c/e/g の 3 段階が聞こえなかった。本 IDE は C# 版リファレンス
+  (`mz1500_sound_driver/mml_reference.md` §5.1) の記述どおり、音名で 3 段階
+  (c〜d# = 2 低 / e〜f# = 1 中 / g〜b = 0 高、オクターブ不問) を選択する
+  (`DcsgChip.noiseRateForNote` / `mzsd_driver.asm` `play_noise` の `pn_rate_tbl`)。
 
 ## 4. 検証方針
 

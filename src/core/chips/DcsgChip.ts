@@ -38,6 +38,9 @@ export class DcsgChip {
   /** フィルタ係数を計算したときの sampleRate (キャッシュ無効化用)。 */
   private noiseFilterRate = 0;
 
+  /** フィルタ係数を計算したときの LPF カットオフ (キャッシュ無効化用)。 */
+  private noiseFilterCutoff = 0;
+
   /** 1-pole LPF の 1 標本あたり係数。 */
   private noiseFilterK = 0;
 
@@ -62,6 +65,48 @@ export class DcsgChip {
     this.noiseWhite = white;
     this.noiseRate = clampInt(rate, 0, 3);
   }
+
+  /**
+   * 音名 → 非連動ノイズの分周レート (0-2)。
+   * c〜d# = 2 (低) / e〜f# = 1 (中) / g〜b = 0 (高)。オクターブは問わない。
+   * SourceInterpreter / 実機ドライバ / 仮想キーボードの共通規約であり、
+   * 実機ドライバ (8bit レジスタ) と同じ桁落ち規約 (note & 0xff) を適用する。
+   */
+  static noiseRateForNote(note: number): number {
+    return DcsgChip.noiseRateByDegree[(note & 0xff) % 12];
+  }
+
+  /**
+   * 非連動ノイズの分周モード (0-2) に対応する出力 LPF カットオフ (Hz)。
+   * ホワイトノイズは低いレートほど沈んだ音 (2 / 4 / 8kHz)。周期ノイズは基本波
+   * (= シフトクロック / 16) 自体が音の高さのため固定 8kHz のまま (rate 差は基本波で決まる)。
+   */
+  static lpfCutoffForRate(rate: number, white: boolean): number {
+    if (!white) {
+      return NoiseFilterCutoffHz; // 周期ノイズ: 基本波が音の高さ = 固定 LPF
+    }
+
+    switch (clampInt(rate, 0, 3)) {
+      case 1:
+        return 4000; // Clock/32
+      case 2:
+        return 2000; // Clock/64
+      default:
+        return NoiseFilterCutoffHz; // rate 0 (Clock/16) / rate 3 (tone2 連動)
+    }
+  }
+
+  /** 非連動ノイズの分周モード (0-2) における周期ノイズ基本波 (Hz) (= シフトクロック / 16)。 */
+  static periodicCenterForRate(rate: number): number {
+    return DcsgChip.ClockHz / 256.0 / 2 ** clampInt(rate, 0, 2);
+  }
+
+  /** 音名 (オクターブ内の 12 半音、c = 0) → 分周レート。 */
+  private static readonly noiseRateByDegree: readonly number[] = [
+    2, 2, 2, 2, // c, c#, d, d#
+    1, 1, 1, // e, f, f#
+    0, 0, 0, 0, 0, // g, g#, a, a#, b
+  ];
 
   /** UI ミキサーのチャンネルゲイン (0-1) を設定する。 */
   setChannelGain(channel: number, gain: number): void {
@@ -153,10 +198,14 @@ export class DcsgChip {
 
         // 実機のアナログ出力段を近似し、シフトクロック (55.9〜223.7kHz) が
         // 音声帯域を大きく超えることによるエイリアス高音 (折り返し雑音) を減衰する。
-        // 2 段 1-pole LPF (8kHz) + RMS 補正 + DC ブロック (出力コンデンサ相当)。
-        if (this.noiseFilterRate !== sampleRate) {
+        // 2 段 1-pole LPF + RMS 補正 + DC ブロック (出力コンデンサ相当)。
+        // LPF カットオフは分周モード連動 (rate 0/3 = 8kHz / 1 = 4kHz / 2 = 2kHz) で、
+        // 音名 3 段階 (c/e/g) が明るさの違いとして聞こえるようにしている。
+        const lpfCutoff = DcsgChip.lpfCutoffForRate(this.noiseRate, this.noiseWhite);
+        if (this.noiseFilterRate !== sampleRate || this.noiseFilterCutoff !== lpfCutoff) {
           this.noiseFilterRate = sampleRate;
-          this.noiseFilterK = 1 - Math.exp((-2 * Math.PI * NoiseFilterCutoffHz) / sampleRate);
+          this.noiseFilterCutoff = lpfCutoff;
+          this.noiseFilterK = 1 - Math.exp((-2 * Math.PI * lpfCutoff) / sampleRate);
           // 2 段 1-pole の白色入力に対する RMS 減衰 (= k / (2 - k)) を補正する
           this.noiseFilterGain = (2 - this.noiseFilterK) / this.noiseFilterK;
           this.noiseDcBlockK = 1 - Math.exp((-2 * Math.PI * NoiseDcBlockCutoffHz) / sampleRate);
@@ -200,10 +249,12 @@ export class DcsgChip {
 const AttenuationStepDb = 2.0;
 
 /**
- * ノイズ出力のローパスカットオフ (Hz)。
+ * ノイズ出力のローパスカットオフ上限 (Hz)。
  * 実機のアナログ出力段 (RC LPF) を近似し、ノイズシフトクロック (55.9〜223.7kHz) が
  * 音声帯域 (ナイキスト 24kHz) を大きく超えることによるエイリアス高音 (折り返し雑音) を
- * 減衰する。仮想キーボード (virtualSynth.ts) の白噪 lowpass 8kHz と同一基準。
+ * 減衰する。rate 0 / 3 (最も明るい分周モード) のカットオフであり、rate 1 / 2 は
+ * `lpfCutoffForRate` により 4kHz / 2kHz へ下げて音名 3 段階 (c/e/g) の明るさ差を作る。
+ * 仮想キーボード (virtualSynth.ts) も同一基準 (`DcsgChip.lpfCutoffForRate`) を使用する。
  */
 const NoiseFilterCutoffHz = 8000;
 

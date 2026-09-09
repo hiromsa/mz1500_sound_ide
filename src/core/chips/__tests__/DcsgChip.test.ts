@@ -232,4 +232,46 @@ describe('DcsgChip', () => {
 
     expect(Math.abs(sum / 48000)).toBeLessThan(0.05);
   });
+
+  it('maps note names to the 3-stage noise rate (octave independent)', () => {
+    // 音名ベースの分周ヒント (c〜d# = 2 低 / e〜f# = 1 中 / g〜b = 0 高、オクターブ不問)
+    expect(DcsgChip.noiseRateForNote(60)).toBe(2); // c4
+    expect(DcsgChip.noiseRateForNote(61)).toBe(2); // c#4
+    expect(DcsgChip.noiseRateForNote(63)).toBe(2); // d#4
+    expect(DcsgChip.noiseRateForNote(64)).toBe(1); // e4
+    expect(DcsgChip.noiseRateForNote(66)).toBe(1); // f#4
+    expect(DcsgChip.noiseRateForNote(67)).toBe(0); // g4
+    expect(DcsgChip.noiseRateForNote(69)).toBe(0); // a4
+    expect(DcsgChip.noiseRateForNote(71)).toBe(0); // b4
+    expect(DcsgChip.noiseRateForNote(72)).toBe(2); // c5 (オクターブ不問)
+    expect(DcsgChip.noiseRateForNote(-1)).toBe(DcsgChip.noiseRateForNote(255)); // 8bit ラップ規約
+  });
+
+  it('renders the 3-stage white noise with rate-dependent brightness', () => {
+    // 分周レートが下がるほど出力 LPF (8k → 4k → 2kHz) で沈んだ音になる。
+    // 高域エネルギーの代理として隣接標本差の平均を比較する。
+    const diffAverage = (rate: number): number => {
+      const chip = new DcsgChip();
+      chip.setAttenuation(0, 15);
+      chip.setAttenuation(1, 15);
+      chip.setAttenuation(2, 15);
+      chip.setNoiseControl(true, rate);
+
+      let prev = chip.renderSample(48000.0);
+      let diffSum = 0;
+      for (let i = 0; i < 48000; i++) {
+        const sample = chip.renderSample(48000.0);
+        diffSum += Math.abs(sample - prev);
+        prev = sample;
+      }
+      return diffSum / 48000;
+    };
+
+    const low = diffAverage(2);
+    const mid = diffAverage(1);
+    const high = diffAverage(0);
+    expect(low).toBeGreaterThan(0.05); // 沈んでも無音にはならない
+    expect(low).toBeLessThan(mid);
+    expect(mid).toBeLessThan(high);
+  });
 });

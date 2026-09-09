@@ -55,7 +55,7 @@ LFSR を 1 ステップ進めるクロックはノイズ制御レジスタの下
 | 2 | Clock/64 = 55.9 kHz | **約 3.5 kHz** (最も低い) |
 | 3 | **tone2 周波数 × 16** (連動) | **音符の音程** と等しくなる |
 
-- rate 0〜2 は「固定クロック」= 音程とは無関係
+- rate 0〜2 は「固定クロック」。音名 3 段階 (§3.3) で選択され、連続的な音程追従はしない
 - **rate 3 が「3ch (P3/P6) との同期」**: 同一 PSG 内の tone2 (P3 または P6 の音程レジスタ) の出力で LFSR が駆動される。tone2 が音程 f で鳴っていれば LFSR は f × 16 でシフト → periodic の基本波 = f、white の散らばりも f に比例
 
 ### 2.4 SN76489 レジスタ (データポート 0xF2 / 0xF3 への書き込み)
@@ -81,7 +81,7 @@ LFSR を 1 ステップ進めるクロックはノイズ制御レジスタの下
 | `@WN0` | 周期ノイズ (金属音) | bit0 = 0 |
 | `@WN1` | ホワイトノイズ (**初期値**) | bit0 = 1 |
 
-- 音高は音符の音程から **3 段階のシフトレート (hint) を自動選択**する (§3.3)
+- 音高は音符の**音名**から **3 段階のシフトレート (hint) を自動選択**する (c〜d# = 低 / e〜f# = 中 / g〜b = 高、§3.3)
 - 有効な他のコマンド: `v` (0-15)、`@VE` (音量エンベロープ)、`q`/`@q` (ゲート)、`o`/`<>`/`K` (音程 = シフトレートの段階)、`t`/`l`、`[ ]`/`L`
 - 無効なコマンド: `@SW` / `@PE` / `D` (ノイズトラックの NOTE は tone2 を 1 回書くだけで、これらのフレーム進行は適用されない)
 - `@IN` は N1/N2 では無効 (警告「@in はトーン 3 トラック (P3, P6) でのみ有効です」)
@@ -105,21 +105,23 @@ LFSR を 1 ステップ進めるクロックはノイズ制御レジスタの下
 - `@SW` / `@PE` / `D` / `@VE` / `@v` など通常のトーントラックのコマンドはそのまま有効 (tone2 が動けばノイズクロックも追従する)
 - **注意**: 統合中は同一 PSG のノイズチャンネル (N1 / N2) と減衰レジスタを共有する。N1 と P3 を同時に鳴らすと**後から書いた方が勝つ** (実機と同じ挙動)
 
-### 3.3 専用ノイズトラックの分周ヒント (rate 0-2 の自動選択)
+### 3.3 専用ノイズトラックの分周ヒント (rate 0-2 の音名選択)
 
-`@WN` 時 (連動なし) の音高は、ドライバが**音符の高さから rate を 3 段階で自動選択**する:
+`@WN` 時 (連動なし) の音高は、ドライバが**音符の音名から rate を 3 段階で自動選択**する
+(オクターブは問わない):
 
-| 実装 | 判定 | 実用音域 (o1〜o10 ≈ 33Hz〜16.7kHz) での選択 |
-|---|---|---|
-| SourceInterpreter (`TrackSequencer`) | 音符周波数 < 40kHz → rate 2 / < 80kHz → rate 1 / else rate 0 | **常に rate 2 (55.9kHz)** |
-| 実機ドライバ (`mzsd_driver.asm`) | tone period == 0 → 0 / == 1 → 1 / else 2 | **常に rate 2** |
+| 音名 | c 〜 d# | e 〜 f# | g 〜 b |
+|---|---|---|---|
+| rate (シフトクロック) | 2 (55.9kHz) | 1 (111.9kHz) | 0 (223.7kHz) |
+| periodic の高さ | 約 3.5kHz (低) | 約 7kHz (中) | 約 14kHz (高) |
 
-つまり実用音域では rate 2 に丸められ、`@WN0` は約 3.5kHz 固定、`@WN1` はいつも同じ帯域の「シャー」になる。**これは実機 (.qdf) でも同じ挙動**。
-
-> **注意**: C# 版オリジナルのリファレンス (`mz1500_sound_driver/mml_reference.md` §5.1) には
-> 「音符 c〜d で Low / e〜f で Mid / g 以上で High が切り替わる」との記述があるが、
-> C# 実装 (`TrackSequencer.cs` の `freq < 40000 ? 2 : freq < 80000 ? 1 : 0`) とは一致しない
-> (実用音域では常に rate 2)。本 IDE は C# **実装**に準拠する。
+- 実装箇所: `DcsgChip.noiseRateForNote()` (SourceInterpreter / 仮想キーボードの共通規約) と
+  実機ドライバ `mzsd_driver.asm` `play_noise` (`pn_rate_tbl`)。8bit 桁落ち (`& 0xff`) を含め両者は同一。
+- **(2026-09-09 改訂)** かつては C# 実装準拠の周波数しきい値判定
+  (`freq < 40000 ? 2 : freq < 80000 ? 1 : 0`) だったため、実用音域では常に rate 2 に丸められ
+  c/e/g が同じ音になっていた。C# 版リファレンス (`mz1500_sound_driver/mml_reference.md` §5.1) の
+  記述「音符 c〜d で Low / e〜f で Mid / g 以上で High」どおりの**音名ベース判定へ変更**した
+  (C# 実装からは意図的な差分)。
 
 ### 3.4 MZSD バイナリ (NOISECTL flags) の構成
 
@@ -170,7 +172,7 @@ MML "@IN1" (P3) ─┘                                     │
   - トーン 3 トラック → `noiseIntegrate` を更新し `applyNoiseIntegrate()`:
     - `@IN1` / `@IN2` → `setNoiseControl(mode === 2, 3)` (波形 / tone2 連動 rate 3)
     - `@IN0` → ノイズ減衰を 15 (無音化) に戻し `writeAttenuation()` でトーン 3 減衰を復帰
-- `startNote` (ノイズ): `hint = freq < 40000 ? 2 : freq < 80000 ? 1 : 0` を更新 → `applyNoiseMode()`
+- `startNote` (ノイズ): `noiseRateHint` を音名 3 段階 (`DcsgChip.noiseRateForNote(note + transpose)`、§3.3) で更新 → `applyNoiseMode()`
 - `startNote` (トーン 3): 通常どおり tone2 へ period 書き込み (`applyPitchFrame`)。統合中も同一経路でノイズクロックが駆動される
 - `writeAttenuation`: 統合中 (`isDcsgTone3 && noiseIntegrate !== 0`) は `setAttenuation(3, att)` + `setAttenuation(2, 15)` (発音のノイズチャンネルへの切替)
 
@@ -180,7 +182,7 @@ MML "@IN1" (P3) ─┘                                     │
   - 統合 ON: `0xE0 | (flags bit1 << 2) | 3` (flags 2 = white → bit2 / rate 3 = tone2 連動) を出力
   - 統合解除: ノイズ減衰 `0xFF` (無音) 出力 → `write_att` でトーン 3 減衰を通常へ復帰
 - `play_dcs` (トーン NOTE): 通常どおり tone2 の fine / coarse を出力 (統合中も同一経路 = ノイズクロックの音程書き込み)
-- `play_noise`: `note_dctbl` から period を取得 → hint 計算 (`p==0→0 / p==1→1 / else→2`) → `apply_noise` (`0xE0|white<<2|rate`) → `write_att`
+- `play_noise`: 音名 (note + transpose) を `pn_rate_tbl` (12 バイト) へ折り返して hint を選択 (c〜d#→2 / e〜f#→1 / g〜b→0) → `apply_noise` (`0xE0|white<<2|rate`) → `write_att`
 - `write_att`: トーン 3 かつ `CH_NOISE != 0` (統合中) は **ノイズ減衰 (`0xF0|att`) に `CH_ATT` を出力し、トーン 3 減衰は `0xDF` (無音)**。それ以外は通常のチャンネル減衰
 - 初期値 (`init_ch_regs`): ノイズトラック (slot 3 / 7) は `CH_NOISE = 1` (white)、それ以外は `0` (P3/P6 = 統合解除)
 - 両エンジンの等価性は `Z80DriverEquivalence.test.ts` (全フレーム音源レジスタ比較) で検証済み
@@ -193,9 +195,10 @@ MML "@IN1" (P3) ─┘                                     │
 
 1. **LFSR は 16bit** (`bit15` 挿入、初期値 0x8000)。white = `bit0 XOR bit3`。
    - C# 版は AND フィードバックのため白噪が即無音化するバグ、および 15bit 化すると 63 ステップの短循環 (約 890Hz のブザー音) になる問題を修正した差分実装
-2. **ノイズ出力に 2 段 1-pole LPF (8kHz) + RMS 補正 + DC ブロック (30Hz)** を実装。
+2. **ノイズ出力に 2 段 1-pole LPF + RMS 補正 + DC ブロック (30Hz)** を実装。
    - シフトクロック (55.9〜223.7kHz) が音声ナイキスト (24kHz) を超えることで生じる標本化エイリアス (金属的な高音) を、実機のアナログ出力段相当に減衰する
-3. 仮想キーボード (`src/utils/virtualSynth.ts`) のノイズは Web Audio 直結の別実装 (白噪 lowpass 8kHz / 周期ノイズは音符周波数中心の bandpass)。演奏経路 (PLAY) と音質基準を揃えてある
+   - LPF カットオフはホワイトノイズのみ分周モード連動 (rate 0 / 3 = 8kHz / rate 1 = 4kHz / rate 2 = 2kHz)。音名 3 段階 (c/e/g) が明るさの違いとして聞こえる (§3.3)。周期ノイズは基本波自体が音の高さのため固定 8kHz
+3. 仮想キーボード (`src/utils/virtualSynth.ts`) のノイズは Web Audio 直結の別実装 (白噪 lowpass は分周レート連動 2/4/8kHz / 周期ノイズは分周レートの基本波 3.5/7/14kHz 中心の bandpass)。演奏経路 (PLAY) と音質基準・音名 3 段階規約を揃えてある (`DcsgChip.noiseRateForNote` 共通)
 
 ---
 

@@ -3,6 +3,7 @@ import {
   isOpCarrier,
   OP_MODULATION_TARGETS,
 } from '../core/fm/FmTone';
+import { DcsgChip } from '../core/chips/DcsgChip';
 
 // MIDIノート番号から周波数 (Hz) を計算
 export function midiNoteToFrequency(midiNote: number, detuneCents: number = 0): number {
@@ -302,15 +303,20 @@ export class VirtualSynthEngine {
       noiseSrc.buffer = this.getNoiseBuffer(ctx);
       noiseSrc.loop = true;
 
-      // 周期ノイズまたはホワイトノイズ用のバンドパスフィルター
+      // 音名で 3 段階のシフトレート (c〜d# = 低 / e〜f# = 中 / g〜b = 高、演奏エンジンと同一規約)
+      const noiseRate = DcsgChip.noiseRateForNote(midiNote);
+
+      // 周期ノイズ / ホワイトノイズ用のフィルタ (DcsgChip の出力特性と同一基準)
       const filter = ctx.createBiquadFilter();
       if (options.noiseType === 'periodic') {
         filter.type = 'bandpass';
-        filter.frequency.setValueAtTime(baseFreq, ctx.currentTime);
+        // 周期ノイズの基本波 = シフトクロック / 16 (低 = 3.5kHz / 中 = 7kHz / 高 = 14kHz)
+        filter.frequency.setValueAtTime(DcsgChip.periodicCenterForRate(noiseRate), ctx.currentTime);
         filter.Q.setValueAtTime(10, ctx.currentTime);
       } else {
         filter.type = 'lowpass';
-        filter.frequency.setValueAtTime(8000, ctx.currentTime);
+        // ホワイトノイズの明るさ = 分周レート連動 (低 = 2kHz / 中 = 4kHz / 高 = 8kHz)
+        filter.frequency.setValueAtTime(DcsgChip.lpfCutoffForRate(noiseRate, true), ctx.currentTime);
       }
 
       const gain = ctx.createGain();

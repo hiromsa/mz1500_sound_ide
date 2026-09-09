@@ -130,7 +130,7 @@ export class TrackSequencer {
   /** 現在の ALG/FB (pan 変更時の 0x20 レジスタ再合成用)。 */
   private fmAlgFb = 0;
 
-  /** 非連動ノイズの分周ヒント (直近のノート周波数から算出)。 */
+  /** 非連動ノイズの分周ヒント (直近の音符の音名から算出)。 */
   private noiseRateHint = 0;
 
   constructor(song: MzsdSong, trackIndex: number, chips: ChipBank) {
@@ -405,8 +405,8 @@ export class TrackSequencer {
       // Key On (4 オペレータすべて): $08 = slot bits (bit3-6) + channel (bit0-2)
       this.chips.fm.setReg(0x08, 0x78 | this.fmChannel);
     } else if (this.isNoise) {
-      // ノイズの音程 → 非連動時の分周ヒント (低域ほど粗い分周)
-      this.noiseRateHint = freq < 40000 ? 2 : freq < 80000 ? 1 : 0;
+      // ノイズの音程 → 非連動時の分周ヒント (音名で 3 段階: c〜d# = 低 / e〜f# = 中 / g〜b = 高)
+      this.noiseRateHint = DcsgChip.noiseRateForNote(note + this.transpose);
       this.applyNoiseMode();
     } else if (this.dcsg !== null) {
       // トーン (P1-P6)。統合モード中の P3 / P6 も tone2 レジスタへ音程を書き、

@@ -1085,40 +1085,29 @@ play_noise:
         push    bc
         push    de
         push    hl
-        ld      l,a
-        ld      h,0
-        add     hl,hl
-        ld      de,note_dctbl
+        ; hint: 音名で 3 段階 (c-d# -> 2 / e-f# -> 1 / g-b -> 0、オクターブ不問)。
+        ; SourceInterpreter (DcsgChip.noiseRateForNote) と同一規約 (8bit 桁落ちも同一)。
+pn_mod12:
+        cp      12
+        jr      c,pn_deg
+        sub     12
+        jr      pn_mod12
+pn_deg:
+        ld      e,a
+        ld      d,0
+        ld      hl,pn_rate_tbl
         add     hl,de
-        ld      e,(hl)
-        inc     hl
-        ld      d,(hl)                  ; de = period
-        ; hint: p == 0 -> 0 / p == 1 -> 1 / else 2 (C# StartNote の分周ヒントと同一)
-        ld      a,d
-        or      a
-        jr      nz,pn_2
-        ld      a,e
-        or      a
-        jr      z,pn_0
-        cp      1
-        jr      z,pn_1
-        ld      a,2
-        jr      pn_store
-pn_0:
-        xor     a
-        jr      pn_store
-pn_2:
-        ld      a,2
-        jr      pn_store
-pn_1:
-        ld      a,1
-pn_store:
+        ld      a,(hl)
         ld      (ix+CH_HINT),a
         call    apply_noise
         pop     hl
         pop     de
         pop     bc
         jp      write_att               ; チャンネル減衰 (CH_ATT) も出力する
+
+; ---- 音名別ノイズ分周レートテーブル (c c# d d# = 2 / e f f# = 1 / g g# a a# b = 0)
+pn_rate_tbl:
+        db      2,2,2,2,1,1,1,0,0,0,0,0
 
 ; ---- BEEP: counter テーブル -> ベース値保存 + 8253 Ch.0 出力 (CTRL -> LSB -> MSB)
 play_beep:

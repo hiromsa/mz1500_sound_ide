@@ -114,7 +114,7 @@ describe('Z80DriverMachine', () => {
 
     expect(chips.psg1.attenuationRegister(3)).toBe(0);
     expect(chips.psg1.isNoiseWhite).toBe(true); // 波形初期値 = white (@WN1 相当)
-    expect(chips.psg1.noiseRateMode).toBe(2); // A4 の period から hint 2
+    expect(chips.psg1.noiseRateMode).toBe(0); // A4 (a) = 高域レート (音名 3 段階規約)
   });
 
   it('全体ループ (L) でトラックが巻き戻る', () => {

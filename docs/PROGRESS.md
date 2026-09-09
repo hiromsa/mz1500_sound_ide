@@ -6,7 +6,7 @@
 ---
 
 ## 1. 現在のステータス概要
-- **バージョン**: `v0.0.1-beta.102`（コミット通番＋短縮ハッシュ ハイブリッド方式）
+- **バージョン**: `v0.0.1-beta.103`（コミット通番＋短縮ハッシュ ハイブリッド方式）
 - **テスト通過状況**: 全 35 テストファイル / 476 件パス + 1 skip（`npm test` / Vitest）
 - **型検査状況**: エラー 0 件（`npx tsc -b`）
 - **主要機能の稼働状況**:
@@ -53,6 +53,17 @@
 ---
 
 ## 3. 直近の完了作業（最新）
+
+- **非連動ノイズの音名 3 段階シフトレート対応 — c/e/g が同じ音になる問題を修正 (`src/core/chips/DcsgChip.ts`, `src/core/player/TrackSequencer.ts`, `src/utils/virtualSynth.ts`, `driver/mzsd_driver.asm`, テスト 3 件・仕様書 2 件更新)** (2026-09-09):
+  - **背景・ユーザー指摘**: 「psg_noise_basic.mml に記載のノイズについて c e g のノイズの種類の変化が発音されません。同じ音になっています。仮想キーボード、PLAY ボタン両方。」
+  - **原因**: 非連動ノイズの分周ヒントが C# 実装準拠の周波数しきい値 (`freq < 40000 ? 2 : freq < 80000 ? 1 : 0`) だったため、実用音域では常に rate 2 に丸められ c/e/g が同一音になっていた。さらに Web 出力のノイズ LPF が固定 8kHz のため、仮にレートが変わってもホワイトノイズの明るさ差が聞こえない構造だった。
+  - **対応内容**:
+    1. 分周ヒントを**音名ベースの 3 段階**へ変更 (C# 版リファレンス §5.1 の記述どおり / C# 実装からは意図的差分): `DcsgChip.noiseRateForNote()` を新設 (c〜d# = 2 低 / e〜f# = 1 中 / g〜b = 0 高、オクターブ不問、8bit 桁落ち規約)。`TrackSequencer.startNote` と `mzsd_driver.asm` `play_noise` (`pn_rate_tbl` 12 バイトテーブル + mod 12 ループ) の両エンジンで同一規約に統一。
+    2. `DcsgChip.renderSample` のノイズ出力 LPF をホワイトノイズのみ分周レート連動へ (rate 0 = 8kHz / 1 = 4kHz / 2 = 2kHz)。周期ノイズは基本波自体が音の高さ (3.5/7/14kHz) のため固定 8kHz を維持。
+    3. 仮想キーボード (`virtualSynth.ts`) も同一規約に対応: 白噪 lowpass を `DcsgChip.lpfCutoffForRate` でレート連動化、周期ノイズ bandpass 中心を `DcsgChip.periodicCenterForRate` (3.5/7/14kHz) へ変更。
+  - **ドキュメント**: `noise_channel.md` (§2.3 / §3.1 / §3.3 音名選択へ改訂 / §4.3 / §4.4 / §5)、`web_core_port.md` (LPF レート連動 + ヒント音名ベースの意図的差分 2 件追記)。`mml_reference.md` / `psg_noise_basic.mml` のコメントは当初から音名 3 段階の記述のため変更不要。
+  - **テスト**: `NoiseTrackPlayback` に音名 3 段階 (c4→2 / e4→1 / g4→0) を両エンジンで検証するテスト追加、`Z80DriverMachine` の hint 期待値更新 (A4 = rate 0)、`DcsgChip` に音名マッピング + レート別明るさ (隣接標本差 low < mid < high) テスト追加。
+  - **検証**: `npx tsc -b` エラーゼロ / `npm test` 全 35 ファイル・479 件合格 + 1 skip / `npm run lint` エラーゼロ (既存警告 10 は変更なし) / `npm run build` 成功。
 
 - **ノイズ統合サンプルを Integrate 系の名称へ変更 & 干渉注記の削除 (`samples/mml_reference/psg/psg_noise_integrate.mml` ※リネーム, `samples/mml_reference/README.md`, [`docs/specification/noise_channel.md`](./specification/noise_channel.md))** (2026-09-09):
   - **背景・ユーザー要望**: 「psg フォルダ配下の psg_noise_interlock.mml について interlock ではなく Integrate としたい。ファイル名およびコメントなど。mml_reference.md の @in の説明として N1 / N2 と干渉する…等の説明が無いようにしてほしい」

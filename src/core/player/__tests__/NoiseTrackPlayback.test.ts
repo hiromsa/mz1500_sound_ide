@@ -110,6 +110,39 @@ function observeNoise(
 }
 
 describe('noise track playback (N1 / N2)', () => {
+  it('switches the 3-stage shift rate by note name (c=2 / e=1 / g=0) on both engines', () => {
+    // 音名ベースの分周ヒント: 実用音域でも c/e/g でレートが変化する
+    const data = compileToSong('N1 t120 v12 l4 q8 @WN1 o4 c4 e4 g4');
+
+    for (const useDriver of [false, true]) {
+      const chips = new ChipBank();
+      let driver: FrameDriver;
+      if (useDriver) {
+        const playback = new Z80DriverPlayback(chips);
+        playback.play(data, false);
+        driver = playback;
+      } else {
+        driver = new MzsdSequencer(MzsdSong.parse(data), chips, false);
+      }
+
+      const rateSteps: number[] = [];
+      let last = -1;
+      for (let frame = 0; frame < 100 && !driver.isFinished; frame++) {
+        driver.tick();
+        if (chips.psg1.attenuationRegister(3) >= 15) {
+          continue; // 発音前のチップ初期値は記録しない
+        }
+        const mode = chips.psg1.noiseRateMode;
+        if (mode !== last) {
+          rateSteps.push(mode);
+          last = mode;
+        }
+      }
+
+      expect(rateSteps).toEqual([2, 1, 0]); // c4 = 低 / e4 = 中 / g4 = 高
+    }
+  });
+
   it('maps N1 to DCSG1 noise slot (3) and keeps the P6 slot empty', () => {
     const data = compileToSong(noiseBasicSource);
     const song = MzsdSong.parse(data);
