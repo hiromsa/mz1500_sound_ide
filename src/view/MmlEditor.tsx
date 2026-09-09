@@ -19,7 +19,9 @@ import {
   ChevronUp,
   ChevronDown,
   Check,
-  Circle
+  Circle,
+  Play,
+  TextSelect
 } from 'lucide-react';
 import Editor, { type Monaco } from '@monaco-editor/react';
 import type { editor } from 'monaco-editor';
@@ -139,6 +141,7 @@ interface MmlEditorProps {
   onToggleRightPane: () => void;
   logs: string[];
   onClearLogs: () => void;
+  onAppendLog?: (message: string) => void;
   errors: CompileErrorItem[];
   onClearErrors?: () => void;
   onSelectError?: (error: CompileErrorItem) => void;
@@ -193,6 +196,7 @@ export function MmlEditor({
   onToggleRightPane,
   logs,
   onClearLogs,
+  onAppendLog,
   errors,
   onClearErrors,
   onSelectError,
@@ -274,6 +278,20 @@ export function MmlEditor({
   // MMLキャレットコンテキスト
   const [mmlCaretContext, setMmlCaretContext] = useState<MmlCaretContext | undefined>(undefined);
 
+  // 選択範囲状態の管理 (選択有無 & 文字数サマリー)
+  const [hasSelection, setHasSelection] = useState<boolean>(false);
+  const [selectionSummary, setSelectionSummary] = useState<{
+    charCount: number;
+    startLine: number;
+    startColumn: number;
+    endLine: number;
+    endColumn: number;
+  } | null>(null);
+
+  // 部分再生 (モック) の視覚フィードバックステート ('none' | 'caret' | 'selection')
+  const [mockPlayMode, setMockPlayMode] = useState<'none' | 'caret' | 'selection'>('none');
+  const mockPlayTimerRef = useRef<number | null>(null);
+
   const editorContainerRef = useRef<HTMLDivElement>(null);
   const isUpdatingFromExternalRef = useRef<boolean>(false);
 
@@ -293,6 +311,7 @@ export function MmlEditor({
   const onTogglePlayRef = useRef(onTogglePlay);
   const onFocusEditorRef = useRef(onFocusEditor);
   const onCaretContextChangeRef = useRef(onCaretContextChange);
+  const onAppendLogRef = useRef(onAppendLog);
   // Ctrl+S 保存用 ref (stale closure 回避)
   const saveFileRef = useRef<(() => Promise<void>) | null>(null);
 
@@ -306,6 +325,69 @@ export function MmlEditor({
   useEffect(() => { onTogglePlayRef.current = onTogglePlay; }, [onTogglePlay]);
   useEffect(() => { onFocusEditorRef.current = onFocusEditor; }, [onFocusEditor]);
   useEffect(() => { onCaretContextChangeRef.current = onCaretContextChange; }, [onCaretContextChange]);
+  useEffect(() => { onAppendLogRef.current = onAppendLog; }, [onAppendLog]);
+
+  // モック再生: キャレット位置から再生
+  const handleMockPlayFromCaret = useCallback(() => {
+    const ed = monacoEditorRef.current;
+    if (!ed) return;
+    const pos = ed.getPosition() || { lineNumber: 1, column: 1 };
+    const model = ed.getModel();
+    const content = model?.getValue() ?? '';
+    const caretCtx = parseMmlCaretContext(content, pos.lineNumber, pos.column);
+
+    const trackDesc = caretCtx.trackName ? `Track ${caretCtx.trackName}` : 'No track';
+    const octDesc = caretCtx.octave !== undefined ? `o${caretCtx.octave}` : '';
+    const volDesc = caretCtx.volume !== undefined ? `v${caretCtx.volume}` : '';
+    const toneDesc = caretCtx.voiceId !== undefined ? `@${caretCtx.voiceId}` : '';
+    const stateSummary = [trackDesc, octDesc, volDesc, toneDesc].filter(Boolean).join(', ');
+
+    const msg = `[PLAY MOCK] ▶ PLAY FROM CARET at Line ${pos.lineNumber}, Col ${pos.column} (${stateSummary || 'Initial state'}) - [Preceding commands up to caret applied]`;
+    onAppendLogRef.current?.(msg);
+
+    // 視覚フィードバック
+    if (mockPlayTimerRef.current) window.clearTimeout(mockPlayTimerRef.current);
+    setMockPlayMode('caret');
+    mockPlayTimerRef.current = window.setTimeout(() => {
+      setMockPlayMode('none');
+    }, 1500);
+  }, []);
+
+  // モック再生: 選択範囲のみ再生
+  const handleMockPlaySelection = useCallback(() => {
+    const ed = monacoEditorRef.current;
+    if (!ed) return;
+    const selection = ed.getSelection();
+    const model = ed.getModel();
+    if (!selection || selection.isEmpty() || !model) return;
+
+    const selectedText = model.getValueInRange(selection);
+    const content = model.getValue();
+    const caretCtx = parseMmlCaretContext(content, selection.startLineNumber, selection.startColumn);
+
+    const trackDesc = caretCtx.trackName ? `Track ${caretCtx.trackName}` : 'No track';
+    const octDesc = caretCtx.octave !== undefined ? `o${caretCtx.octave}` : '';
+    const volDesc = caretCtx.volume !== undefined ? `v${caretCtx.volume}` : '';
+    const toneDesc = caretCtx.voiceId !== undefined ? `@${caretCtx.voiceId}` : '';
+    const stateSummary = [trackDesc, octDesc, volDesc, toneDesc].filter(Boolean).join(', ');
+
+    const msg = `[PLAY MOCK] ▶ PLAY SELECTION: Line ${selection.startLineNumber}, Col ${selection.startColumn} ～ Line ${selection.endLineNumber}, Col ${selection.endColumn} (${selectedText.length} chars, ${stateSummary || 'Initial state'}) - [Preceding commands up to selection start applied]`;
+    onAppendLogRef.current?.(msg);
+
+    // 視覚フィードバック
+    if (mockPlayTimerRef.current) window.clearTimeout(mockPlayTimerRef.current);
+    setMockPlayMode('selection');
+    mockPlayTimerRef.current = window.setTimeout(() => {
+      setMockPlayMode('none');
+    }, 1500);
+  }, []);
+
+  const mockPlayFromCaretRef = useRef(handleMockPlayFromCaret);
+  const mockPlaySelectionRef = useRef(handleMockPlaySelection);
+  useEffect(() => {
+    mockPlayFromCaretRef.current = handleMockPlayFromCaret;
+    mockPlaySelectionRef.current = handleMockPlaySelection;
+  }, [handleMockPlayFromCaret, handleMockPlaySelection]);
 
 
   // MMLキャレットコンテキスト変更を親コンポーネント (App) へ通知
@@ -335,6 +417,19 @@ export function MmlEditor({
       void saveFileRef.current?.();
     });
 
+    // Alt + Enter でキャレット位置から再生 (モック)
+    editorInstance.addCommand(_monaco.KeyMod.Alt | _monaco.KeyCode.Enter, () => {
+      mockPlayFromCaretRef.current?.();
+    });
+
+    // Ctrl + Shift + Enter で選択範囲のみ再生 (モック)
+    editorInstance.addCommand(
+      _monaco.KeyMod.CtrlCmd | _monaco.KeyMod.Shift | _monaco.KeyCode.Enter,
+      () => {
+        mockPlaySelectionRef.current?.();
+      },
+    );
+
     // エディタにフォーカスが当たった時にペインフォーカスを MML に切り替える
     editorInstance.onDidFocusEditorWidget(() => {
       onFocusEditorRef.current?.();
@@ -350,11 +445,43 @@ export function MmlEditor({
       }
     });
 
-    // 初期マウント時のカーソル位置解析
+    // 選択範囲変更時に選択状態を更新
+    editorInstance.onDidChangeCursorSelection((e) => {
+      const selection = e.selection;
+      const model = editorInstance.getModel();
+      if (!selection || selection.isEmpty() || !model) {
+        setHasSelection(false);
+        setSelectionSummary(null);
+      } else {
+        const text = model.getValueInRange(selection);
+        setHasSelection(true);
+        setSelectionSummary({
+          charCount: text.length,
+          startLine: selection.startLineNumber,
+          startColumn: selection.startColumn,
+          endLine: selection.endLineNumber,
+          endColumn: selection.endColumn,
+        });
+      }
+    });
+
+    // 初期マウント時のカーソル位置・選択範囲解析
     const model = editorInstance.getModel();
     if (model) {
       const pos = editorInstance.getPosition() || { lineNumber: 1, column: 1 };
       setMmlCaretContext(parseMmlCaretContext(model.getValue(), pos.lineNumber, pos.column));
+      const initialSelection = editorInstance.getSelection();
+      if (initialSelection && !initialSelection.isEmpty()) {
+        const text = model.getValueInRange(initialSelection);
+        setHasSelection(true);
+        setSelectionSummary({
+          charCount: text.length,
+          startLine: initialSelection.startLineNumber,
+          startColumn: initialSelection.startColumn,
+          endLine: initialSelection.endLineNumber,
+          endColumn: initialSelection.endColumn,
+        });
+      }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -518,6 +645,35 @@ export function MmlEditor({
 
     const entries: MmlContextMenuEntry[] = [];
 
+    // 現在の選択範囲が空でないか判定 (右クリック時点での最新選択状態)
+    const activeSelection = ed.getSelection();
+    const isSelectionActive = activeSelection != null && !activeSelection.isEmpty();
+    const selectionCharCount = isSelectionActive && ed.getModel()
+      ? ed.getModel()!.getValueInRange(activeSelection).length
+      : 0;
+
+    // 1. 部分再生 (キャレット位置から再生 / 選択範囲のみ再生)
+    entries.push(
+      {
+        id: 'play-from-caret',
+        label: 'キャレット位置から再生',
+        icon: Play,
+        shortcut: 'Alt+Enter',
+        onSelect: () => handleMockPlayFromCaret(),
+      },
+      {
+        id: 'play-selection',
+        label: isSelectionActive
+          ? `選択範囲のみ再生 (${selectionCharCount}文字)`
+          : '選択範囲のみ再生',
+        icon: TextSelect,
+        shortcut: 'Ctrl+Shift+Enter',
+        disabled: !isSelectionActive,
+        onSelect: () => handleMockPlaySelection(),
+      },
+    );
+    entries.push({ type: 'separator' });
+
     // 定義ブロック内の行のみ「編集」項目を表示 (利用箇所では表示しない)
     if (definition !== null) {
       const definitionId = definition.id;
@@ -602,7 +758,7 @@ export function MmlEditor({
     );
 
     setContextMenu({ x: e.clientX, y: e.clientY, entries });
-  }, [handleCut, handleCopy, handlePaste]);
+  }, [handleCut, handleCopy, handlePaste, handleMockPlayFromCaret, handleMockPlaySelection]);
 
   const activeFile = files.find(f => f.id === activeFileId) || files[0];
 
@@ -1130,10 +1286,55 @@ export function MmlEditor({
             <Plus className="w-3.5 h-3.5" />
           </button>
 
+          {/* MML エディタ内クイックトランスポート (キャレット位置から再生 / 選択範囲のみ再生) */}
+          <div className="flex items-center gap-1.5 px-2 border-l border-[#3C3C3C] ml-auto shrink-0 py-1">
+            {/* FROM CARET ボタン */}
+            <button
+              onClick={handleMockPlayFromCaret}
+              className={`h-6 px-2 rounded text-[11px] font-mono font-medium flex items-center gap-1.5 transition-all cursor-pointer select-none ${
+                mockPlayMode === 'caret'
+                  ? 'bg-[#00A8FF]/25 text-[#00A8FF] border border-[#00A8FF] shadow-[0_0_8px_rgba(0,168,255,0.4)] animate-pulse'
+                  : 'bg-[#2E2E2E] hover:bg-[#383838] active:bg-[#404040] text-zinc-300 hover:text-white border border-[#444444] hover:border-[#00A8FF]/50'
+              }`}
+              title="キャレット位置から再生 (Alt+Enter) - キャレット直前までの設定コマンドを適用して再生"
+            >
+              <Play className={`w-3 h-3 fill-current ${mockPlayMode === 'caret' ? 'text-[#00A8FF]' : 'text-zinc-400'}`} />
+              <span className="hidden md:inline">FROM CARET</span>
+              <span className="md:hidden">CARET</span>
+            </button>
+
+            {/* SELECTION ボタン (未選択時は disabled) */}
+            <button
+              onClick={handleMockPlaySelection}
+              disabled={!hasSelection}
+              className={`h-6 px-2 rounded text-[11px] font-mono font-medium flex items-center gap-1.5 transition-all select-none ${
+                !hasSelection
+                  ? 'opacity-35 cursor-not-allowed text-zinc-500 bg-[#252525] border border-transparent'
+                  : mockPlayMode === 'selection'
+                    ? 'bg-emerald-500/25 text-emerald-400 border border-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)] animate-pulse cursor-pointer'
+                    : 'bg-[#2E2E2E] hover:bg-[#383838] active:bg-[#404040] text-zinc-300 hover:text-white border border-[#444444] hover:border-emerald-500/50 cursor-pointer'
+              }`}
+              title={
+                hasSelection
+                  ? `選択範囲のみ再生 (Ctrl+Shift+Enter) - ${selectionSummary?.charCount ?? 0}文字選択中`
+                  : '選択範囲のみ再生 (Ctrl+Shift+Enter) - テキストを選択してください'
+              }
+            >
+              <TextSelect className={`w-3 h-3 shrink-0 ${hasSelection ? 'text-emerald-400' : 'text-zinc-500'}`} />
+              <span className="hidden md:inline">SELECTION</span>
+              <span className="md:hidden">SEL</span>
+              {hasSelection && selectionSummary && (
+                <span className="text-[9px] px-1 rounded bg-emerald-950/70 text-emerald-300 border border-emerald-700/50 font-mono">
+                  {selectionSummary.charCount}
+                </span>
+              )}
+            </button>
+          </div>
+
           {/* 右ペイン開閉トグルボタン (最右端) */}
           <button
             onClick={onToggleRightPane}
-            className={`px-2.5 text-xs font-mono border-l border-[#3C3C3C] transition-colors flex items-center gap-1.5 shrink-0 ml-auto cursor-pointer ${
+            className={`px-2.5 text-xs font-mono border-l border-[#3C3C3C] transition-colors flex items-center gap-1.5 shrink-0 cursor-pointer ${
               showRightPane 
                 ? 'text-[#00A8FF] bg-[#1E1E1E]' 
                 : 'text-zinc-400 hover:text-zinc-200 hover:bg-[#333333]'

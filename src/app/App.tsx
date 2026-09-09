@@ -727,6 +727,7 @@ function App() {
             onToggleRightPane={() => setShowRightPane(prev => !prev)}
             logs={logs}
             onClearLogs={() => setLogs([])}
+            onAppendLog={appendLog}
             errors={compileErrors}
             onClearErrors={() => setCompileErrors([])}
             activeBottomTab={activeBottomTab}
