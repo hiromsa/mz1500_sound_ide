@@ -560,9 +560,16 @@ er_l:
         dec     bc                      ; 実行フレーム分を即時消費 (C# Tick 相当)
         ld      (ix+CH_LEN),c
         ld      (ix+CH_LEN+1),b
+        ; ノート発音中のみキーオフする (TS TrackSequencer と同一判定)。
+        ; 既にキーオフ済み (ゲート終端後 / 連続休符 / 曲先頭の休符) で REST が
+        ; do_keyoff するとリリース区間が再始動し、休符中にリリース音が鳴るため。
+        ld      a,(ix+CH_GATE)
+        or      (ix+CH_GATE+1)
+        jr      z,er_nk
         push    hl
         call    do_keyoff               ; キーオフ (venv 有効時はリリース区間へ)
         pop     hl
+er_nk:
         call    update_ptr
         ret
 
@@ -1719,6 +1726,16 @@ venv_frame:
         call    write_att
         jr      vf_exit
 vf_have:
+        ; ノート発音中 / リリース中以外はエンベロープを進めず音量も書き換えない
+        ; (TS TrackSequencer.applyVolumeFrame と同一。ノート外でエンベロープ値を
+        ;  書き出すと、休符なのに音が出てしまうため)
+        ld      a,(ix+CH_VREL)
+        or      a
+        jr      nz,vf_write             ; リリース中は通常どおり書き換え
+        ld      a,(ix+CH_GATE)
+        or      (ix+CH_GATE+1)
+        jr      z,vf_exit               ; ノート外 (非リリース) は何もしない
+vf_write:
         ; att = 15 - values[min(pos, len-1)]
         ld      a,(ix+CH_VPOS)
         cp      c

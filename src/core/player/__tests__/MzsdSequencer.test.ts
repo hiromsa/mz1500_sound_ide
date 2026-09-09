@@ -336,8 +336,52 @@ describe('FM sequencer', () => {
     }
 
     // キーオフ後: リリース 8,5,2,0 (att 7,10,13,15) を再生して末尾 (0) でホールド
-    // (41 フレーム目にゲート終端キーオフと REST キーオフが同時発生)
+    // (41 フレーム目の REST はゲート終端キーオフ済みのためリリースを再始動しない)
     // 51 フレーム目の TRACK_END ではリリースを巻き戻さず無音のまま固定される
     expect(attenuations.slice(40)).toEqual([7, 10, 13, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15]);
+  });
+
+  it('does not restart the release from rests without a sounding note', () => {
+    // ユーザー報告: @VE 定義直後の休符や連続休符だけでリリース音が鳴る
+    // 曲先頭の休符 / リリース済み後の休符はキーオフしないため、
+    // リリース区間はゲート終端キーオフの 1 回だけ再生される
+    const builder = new SongBuilder();
+    const venv = builder.addVolumeEnvelope([15, 14, 13, 12, 11, 8, 5, 2, 0], 3, 5);
+    builder.addTrack(
+      0,
+      SongBuilder.venv(venv),
+      SongBuilder.rest(10), // 曲先頭の休符: キーオフしない (無音のまま)
+      SongBuilder.rest(10), // 連続休符も同様
+      SongBuilder.note(69, 30, 20), // ゲート 20 < 音長 30: ゲート終端でリリース開始
+      SongBuilder.rest(20), // リリース済みのため再始動しない
+      SongBuilder.trackEnd(),
+    );
+    const chips = new ChipBank();
+    const sequencer = new MzsdSequencer(MzsdSong.parse(builder.build()), chips, false);
+
+    const attenuations: number[] = [];
+    for (let frame = 0; frame < 75; frame++) {
+      sequencer.tick();
+      attenuations.push(chips.psg1.attenuationRegister(0));
+    }
+
+    // 1-20 フレーム目 (休符のみ): エンベロープは書き込まれず無音のまま
+    for (let frame = 0; frame < 20; frame++) {
+      expect(attenuations[frame], `frame ${frame + 1}`).toBe(15);
+    }
+
+    // 21-40 フレーム目 (ノート中): 15,14,13,12,11 -> 12,11 をループ (att 0..4, 3,4,3...)
+    expect(attenuations.slice(20, 25)).toEqual([0, 1, 2, 3, 4]);
+    for (let frame = 25; frame < 40; frame++) {
+      expect(attenuations[frame], `frame ${frame + 1}`).toBe(3 + ((frame - 25) % 2));
+    }
+
+    // 41 フレーム目のゲート終端キーオフでリリース 8,5,2,0 (att 7,10,13,15) を 1 回だけ再生
+    expect(attenuations.slice(40, 44)).toEqual([7, 10, 13, 15]);
+
+    // 51 フレーム目以降の休符でリリースが再始動しない (att 7 に戻らない)
+    for (let frame = 44; frame < attenuations.length; frame++) {
+      expect(attenuations[frame], `frame ${frame + 1}`).toBe(15);
+    }
   });
 });

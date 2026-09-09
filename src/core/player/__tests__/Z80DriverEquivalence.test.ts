@@ -168,7 +168,7 @@ describe('Z80Driver 等価性 (SourceInterpreter vs Z80Driver)', () => {
       0,
       SongBuilder.venv(0),
       SongBuilder.note(69, 20, 20), // 発音中にループエンベロープ
-      SongBuilder.rest(6), // REST でもリリース再始動 (C# KeyOff 準拠)
+      SongBuilder.rest(6), // REST は発音中でないためキーオフしない (リリース再始動なし)
       SongBuilder.venv(1),
       SongBuilder.note(72, 12, 5), // ゲート短め -> キーオフ後は無音
       SongBuilder.venv(0xff), // エンベロープ解除
@@ -205,6 +205,22 @@ describe('Z80Driver 等価性 (SourceInterpreter vs Z80Driver)', () => {
     );
 
     runBoth(builder, 54, false, '@VE キーオン中ループはリリース直前まで');
+  });
+
+  it('休符だけでリリースが再始動しない (ユーザー報告の REST リリース回帰)', () => {
+    const builder = new SongBuilder();
+    // ユーザー報告と同一系統: @VE = { 15, 14, 13, |, 12, 11, >, 8, 5, 2, 0 }
+    builder.addVolumeEnvelope([15, 14, 13, 12, 11, 8, 5, 2, 0], 3, 5);
+    builder.addTrack(
+      0,
+      SongBuilder.venv(0),
+      SongBuilder.rest(10), // 曲先頭の休符: キーオフしない (リリース音も鳴らない)
+      SongBuilder.note(69, 30, 20), // ゲート終端でリリース開始 (att 7,10,13,15)
+      SongBuilder.rest(20), // リリース済みのため再始動しない
+      SongBuilder.trackEnd(),
+    );
+
+    runBoth(builder, 75, false, 'REST は発音中でないとキーオフしない');
   });
 
   it('ピッチエンベロープ / スイープ / ディチューンがリファレンスと一致する', () => {

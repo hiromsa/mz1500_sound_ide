@@ -237,7 +237,14 @@ export class TrackSequencer {
         const len = readUInt16(data, this.pointer);
         this.pointer += 2;
         this.lenRemaining = Math.max(1, len);
-        this.keyOff();
+        // ノート発音中のみキーオフする。
+        // 既にキーオフ済み (ゲート終端後 / 連続休符 / 曲先頭の休符) で休符が
+        // キーオフすると @VE のリリース区間が再始動し、休符なのにリリース音が
+        // 鳴ってしまうため (C# KeyOff 準拠からの意図的差分・web_core_port.md §3.1)。
+        // gateRemaining > 0 は asm 側 (CH_GATE != 0) と同一の発音中判定。
+        if (this.noteOn && this.gateRemaining > 0) {
+          this.keyOff();
+        }
         break;
       }
 
@@ -525,6 +532,12 @@ export class TrackSequencer {
     if (env.values.length === 0) {
       this.attenuation = 15;
       this.writeAttenuation();
+      return;
+    }
+
+    // ノート発音中 / リリース中以外はエンベロープを進めず音量も書き換えない。
+    // (ノート外でエンベロープ値を書き出すと、休符なのに音が出てしまうため)
+    if (!this.noteOn && !this.venvReleasing) {
       return;
     }
 

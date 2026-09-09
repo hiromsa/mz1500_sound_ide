@@ -6,8 +6,8 @@
 ---
 
 ## 1. 現在のステータス概要
-- **バージョン**: `v0.0.1-beta.120`（コミット通番＋短縮ハッシュ ハイブリッド方式）
-- **テスト通過状況**: 全 41 テストファイル / 587 件パス + 1 skip（`npm test` / Vitest）
+- **バージョン**: `v0.0.1-beta.121`（コミット通番＋短縮ハッシュ ハイブリッド方式）
+- **テスト通過状況**: 全 41 テストファイル / 589 件パス + 1 skip（`npm test` / Vitest）
 - **型検査状況**: エラー 0 件（`npx tsc -b`）
 - **主要機能の稼働状況**:
   - Web ネイティブ MML コンパイラ（9ch / 17ch / ワークトラック W1〜W99 対応）
@@ -53,6 +53,19 @@
 ---
 
 ## 3. 直近の完了作業（最新）
+
+- **休符だけで `@VE` リリース音が鳴る問題を修正 — REST 命令を「ノート発音中のみキーオフ」に変更 & 音量エンベロープのノート外書き込みを停止 (`src/core/player/TrackSequencer.ts`, `driver/mzsd_driver.asm`, `src/core/player/__tests__/MzsdSequencer.test.ts`, `src/core/player/__tests__/Z80DriverEquivalence.test.ts`, [`docs/specification/web_core_port.md`](./specification/web_core_port.md), [`docs/specification/mml_reference.md`](./specification/mml_reference.md))** (2026-09-09):
+  - **背景・ユーザー指摘**: 「`@VE1 = {15,15,|13,>,11,10,...}` + `P1 o4 l8 r r r r` のように休符だけでリリース音が鳴ってしまう。`cr` のようなときはリリース音が鳴るべきだが、`r` だけでは鳴らないようにしたい」
+  - **原因** (TS `TrackSequencer` / asm `mzsd_driver.asm` 共通):
+    1. **REST 命令が無条件でキーオフ (`keyOff` / `do_keyoff`)** するため、既にキーオフ済み (ゲート終端後 / 連続休符 / 曲先頭の休符) でも `@VE` のリリース区間が再始動 (`venvPos = releaseIndex`) し、休符中にリリース音が鳴っていた。
+    2. **`@VE` 適用中はノート外でもエンベロープ値を減衰レジスタへ書き続ける** (`applyVolumeFrame` / `venv_frame` の att 書き込みが無条件) ため、休符中にエンベロープの音量がレジスタへ書き出されていた。
+  - **対応内容** (両エンジン同一仕様):
+    1. **REST はノート発音中のみキーオフ**: TS は `noteOn && gateRemaining > 0`、asm は `CH_GATE != 0` 判定 (`pitch_frame` の発音中判定と同一規約) のときだけキーオフする。`cr` のリリースはゲート終端キーオフで発生するため従来どおり 1 回だけ再生され、休符では再始動しない。
+    2. **音量エンベロープの進行 / 書き込みを「ノート発音中 / リリース中」に限定**: `applyVolumeFrame` (TS) と `venv_frame` (asm) に同一ガードを追加し、ノート外・非リリース中はエンベロープを進めず減衰レジスタも書き換えない。曲先頭の休符でエンベロープ先頭値 (最大音量) が書き出される問題も解消。
+    3. **ドキュメント**: `web_core_port.md` §3.1 に意図的な C# からの差分として追記 (C# は REST 無条件 KeyOff + ノート外でもエンベロープ書き込み)。`mml_reference.md` §4.1 のリリース説明を「キーオフのタイミングで 1 回だけ再生・休符で再始動しない」に更新。
+  - **テスト (+2)**: `MzsdSequencer.test.ts` に「曲先頭の連続休符で無音のまま / ゲート終端キーオフのリリースを 1 回だけ再生 / 後続休符で再始動しない」フレーム検証テスト、`Z80DriverEquivalence.test.ts` に同シナリオの両エンジン等価テストを追加。既存 2 件の REST キーオフ関連テストはゲート終端キーオフと REST が同フレームのため期待値変更なし (コメントのみ新仕様に更新)。
+  - **検証**: `npx tsc -b` エラーゼロ / `npm test` 全 41 ファイル・589 件合格 + 1 skip (+2) / `npm run build` 成功 / ユーザー報告 MML (`@VE1 = {15,15,|13,>,...}` + 曲先頭 `r r r r`) を実コンパイラ + TS シーケンサで実行し、休符中はリリース区間 (att 4..14) が一度も書き出されず、各ノートのゲート終端でのみリリースが 1 回再生されることを確認。
+  - **備考**: PSG トラックの `@v0` は FM 専用コマンドのため警告のみでコード出力なし (PSG を無音にする場合は `v0` を使用)。
 
 - **MML TRANSFORM に OTHER TRACKS (他方言 MML の A-Z 1 文字トラック) 対応を追加 & 移調エンジンのオクターブ追跡を正式パーサ準拠に修正 (`src/core/transform/mmlOtherTracks.ts` (新規), `src/core/transform/__tests__/mmlOtherTracks.test.ts` (新規), `src/core/transform/mmlTrackScope.ts`, `src/core/transform/mmlTransformEngine.ts`, `src/core/transform/__tests__/mmlTransformEngine.test.ts`, `src/view/MmlTransformPanel.tsx`, `src/app/App.tsx`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-09):
   - **背景・ユーザー要望**: 「他の方言の mml についても TRANSFORM で CHANNEL 変更できるようにしたい。OTHER TRACKS みたいな感じで、記載されているトラック (ここでは A B C) も表示して変換できるように。A-Z のアルファベット 1 文字のパターンが OTHER という扱いでよい」
