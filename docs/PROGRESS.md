@@ -6,7 +6,7 @@
 ---
 
 ## 1. 現在のステータス概要
-- **バージョン**: `v0.0.1-beta.104`（コミット通番＋短縮ハッシュ ハイブリッド方式）
+- **バージョン**: `v0.0.1-beta.105`（コミット通番＋短縮ハッシュ ハイブリッド方式）
 - **テスト通過状況**: 全 35 テストファイル / 476 件パス + 1 skip（`npm test` / Vitest）
 - **型検査状況**: エラー 0 件（`npx tsc -b`）
 - **主要機能の稼働状況**:
@@ -53,6 +53,19 @@
 ---
 
 ## 3. 直近の完了作業（最新）
+
+- **FM TONE / VOL ENV / PITCH ENV の試聴音を MASTER VOLUME の影響下に統合 (`src/app/App.tsx`, `src/view/FmToneEditor.tsx`, `src/view/VolEnvelopeEditor.tsx`, `src/view/PitchEnvelopeEditor.tsx`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-09):
+  - **背景・ユーザー要望**: 「FM TONE や P-ENV、V-ENV の PreviewボタンもMASTER VOLUMEの影響を受けるようにしてください。」(仮想キーボードの MASTER VOLUME 統合の続き)
+  - **従来の問題**: 右ペイン各エディタの試聴 (▶ PREVIEW / ▶ KEY ON) は独自の Web Audio 経路で固定ゲイン (FM: 0.35 / V-ENV: 0.25 / P-ENV: 0.2) により発音しており、TRACK MONITOR の MASTER VOL とは無関係だった。
+  - **対応内容**:
+    1. `App` で計算済みの `masterLevel` (0-1 / ミュート時 0) を render スコープに引き上げ、3 エディタへ `masterLevel` props として渡すよう変更。
+    2. 各エディタは既定出力ゲインをモジュール定数 `PreviewBaseGain` として明示化し、`perceptualMasterGain(masterLevel)` を乗算して発音 (知覚カーブは仮想キーボード / Player と同一の 2 乗曲線)。
+    3. **発音中の即時反映** (仮想キーボードと同一挙動):
+       - `FmToneEditor`: 発音中の masterGain を `masterGainRef` で追跡し、`useEffect` で `setValueAtTime` 反映 (停止時に null クリア)。
+       - `PitchEnvelopeEditor`: 既存 `gainNodeRef` を利用し同様の `useEffect` 反映。
+       - `VolEnvelopeEditor`: 60fps 発音タイマー内のゲイン計算で `masterLevelRef` (stale closure 回避) を参照し、フレーム単位で反映。
+  - **テスト**: `perceptualMasterGain` は既存単体テストでカバー / AudioContext 依存の発音経路は従来方針どおりブラウザ確認対象。
+  - **検証**: `npx tsc -b` エラーゼロ / `npm run lint` エラーゼロ・警告 10 件 (既存分のみ・増加なし) / `npm test` 全 35 ファイル・481 件合格 + 1 skip。
 
 - **仮想キーボードの発音を MASTER VOLUME の影響下に統合 (`src/utils/virtualSynth.ts`, `src/view/TrackMonitor.tsx`, `src/app/App.tsx`, `src/utils/__tests__/virtualSynth.test.ts`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-09):
   - **背景・ユーザー要望**: 「仮想キーボードの発音についても、MASTER VOLUMEの影響を受けるようにしてください。」

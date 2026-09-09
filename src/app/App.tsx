@@ -511,14 +511,16 @@ function App() {
     setMasterMuted(muted);
   }, []);
 
+  // マスター音量 (0-1 / ミュート時 0)。演奏プレビュー・仮想キーボード・各エディタ試聴の共通音量
+  const masterLevel = masterMuted ? 0 : masterVolume / 100;
+
   // マスター音量 / ミュートを Player (演奏プレビュー) と仮想キーボード発音 (virtualSynth) の
   // 双方へ反映する (プレビュー専用パラメータ、コンパイル・エクスポートには影響しない)
   useEffect(() => {
-    const masterLevel = masterMuted ? 0 : masterVolume / 100;
     masterLevelRef.current = masterLevel;
     playerRef.current?.setMasterVolume(masterLevel);
     virtualSynth.setMasterVolume(masterLevel);
-  }, [masterVolume, masterMuted]);
+  }, [masterLevel]);
 
   // EXPORT ハンドラ (.qdf エクスポート: コンパイル ➜ QuickDisk イメージ生成 ➜ ダウンロード)
   const handleExport = useCallback(() => {
@@ -935,6 +937,7 @@ function App() {
                     onApplyToMml={handleApplyToneToMml}
                     testMidiNote={testMidiNote}
                     onChangeTestMidiNote={setTestMidiNote}
+                    masterLevel={masterLevel}
                   />
                 ) : (
                   <div className="flex-grow p-6 flex flex-col items-center justify-center text-slate-400 font-mono text-xs">
@@ -966,6 +969,7 @@ function App() {
                   onApplyToMml={handleApplyVolEnvToMml}
                   testMidiNote={testMidiNote}
                   onChangeTestMidiNote={setTestMidiNote}
+                  masterLevel={masterLevel}
                 />
               )}
 
@@ -980,6 +984,7 @@ function App() {
                   onApplyToMml={handleApplyPitchEnvToMml}
                   testMidiNote={testMidiNote}
                   onChangeTestMidiNote={setTestMidiNote}
+                  masterLevel={masterLevel}
                 />
               )}
 

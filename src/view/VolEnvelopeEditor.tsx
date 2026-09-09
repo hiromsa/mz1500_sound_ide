@@ -14,8 +14,11 @@ import {
 import { isIdDefined, loadVolEnvDefinition } from '../utils/mmlDefinitionLoader';
 import { DefinitionIdInput } from './DefinitionIdInput';
 import { TestNoteButton } from './components/TestNoteButton';
-import { midiNoteToFrequency } from '../utils/virtualSynth';
+import { midiNoteToFrequency, perceptualMasterGain } from '../utils/virtualSynth';
 import { MmlLiveDock } from './MmlLiveDock';
+
+/** ボリュームエンベロープ試聴音の基準出力ゲイン (TRACK MONITOR の MASTER VOL 100% 時)。 */
+const PreviewBaseGain = 0.25;
 
 const MAX_FRAMES = 128;
 
@@ -76,6 +79,8 @@ export interface VolEnvelopeEditorProps {
   testMidiNote?: number;
   /** テストノート変更コールバック */
   onChangeTestMidiNote?: (note: number) => void;
+  /** マスター音量 (0-1、ミュート時 0)。TRACK MONITOR の MASTER VOL と連動し、知覚カーブ適用のうえ試聴音量へ乗算される。 */
+  masterLevel?: number;
 }
 
 export function VolEnvelopeEditor({
@@ -85,6 +90,7 @@ export function VolEnvelopeEditor({
   onApplyToMml,
   testMidiNote,
   onChangeTestMidiNote,
+  masterLevel = 1,
 }: VolEnvelopeEditorProps = {}) {
   // エンベロープデータ (デフォルト32フレーム, 各フレーム 0〜15)
   const [envData, setEnvData] = useState<number[]>(createInitialEnvData());
@@ -297,6 +303,8 @@ export function VolEnvelopeEditor({
   const oscNodeRef = useRef<OscillatorNode | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
   const playbackTimerRef = useRef<number | null>(null);
+  /** 最新のマスター音量 (0-1)。発音タイマー (stale closure 回避) から参照する。 */
+  const masterLevelRef = useRef(masterLevel);
   const activeStepRef = useRef<number>(-1);
   const [previewActiveStep, setPreviewActiveStep] = useState<number>(-1);
 
@@ -599,6 +607,11 @@ export function VolEnvelopeEditor({
     };
   }, []);
 
+  // マスター音量変更を発音タイマーへ反映させるため ref を最新化
+  useEffect(() => {
+    masterLevelRef.current = masterLevel;
+  }, [masterLevel]);
+
   // Web Audio 試聴再生 (KEY ON)
   const handlePlayKeyOn = (previewNote?: number) => {
     stopAudio();
@@ -648,7 +661,7 @@ export function VolEnvelopeEditor({
       }
 
       const val = envData[step] ?? 0;
-      const gainVal = (val / 15) * 0.25;
+      const gainVal = (val / 15) * PreviewBaseGain * perceptualMasterGain(masterLevelRef.current);
       gainNodeRef.current.gain.setValueAtTime(gainVal, audioCtxRef.current.currentTime);
 
       setPreviewActiveStep(step);

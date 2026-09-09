@@ -15,8 +15,11 @@ import {
 import { isIdDefined, loadPitchEnvDefinition } from '../utils/mmlDefinitionLoader';
 import { DefinitionIdInput } from './DefinitionIdInput';
 import { TestNoteButton } from './components/TestNoteButton';
-import { midiNoteToFrequency } from '../utils/virtualSynth';
+import { midiNoteToFrequency, perceptualMasterGain } from '../utils/virtualSynth';
 import { MmlLiveDock } from './MmlLiveDock';
+
+/** ピッチエンベロープ試聴音の基準出力ゲイン (TRACK MONITOR の MASTER VOL 100% 時)。 */
+const PreviewBaseGain = 0.2;
 
 const MAX_FRAMES = 128;
 
@@ -125,6 +128,8 @@ export interface PitchEnvelopeEditorProps {
   testMidiNote?: number;
   /** テストノート変更コールバック */
   onChangeTestMidiNote?: (note: number) => void;
+  /** マスター音量 (0-1、ミュート時 0)。TRACK MONITOR の MASTER VOL と連動し、知覚カーブ適用のうえ試聴音量へ乗算される。 */
+  masterLevel?: number;
 }
 
 export function PitchEnvelopeEditor({
@@ -134,6 +139,7 @@ export function PitchEnvelopeEditor({
   onApplyToMml,
   testMidiNote,
   onChangeTestMidiNote,
+  masterLevel = 1,
 }: PitchEnvelopeEditorProps = {}) {
   // ピッチエンベロープデータ (各フレームの周波数/ピッチオフセット値)
   const [envData, setEnvData] = useState<number[]>(createInitialPitchData());
@@ -647,6 +653,16 @@ export function PitchEnvelopeEditor({
     };
   }, []);
 
+  // TRACK MONITOR の MASTER VOL 変更を発音中の試聴音へ即時反映 (知覚カーブ適用)
+  useEffect(() => {
+    const gain = gainNodeRef.current;
+    const ctx = audioCtxRef.current;
+    if (!gain || !ctx) return;
+    try {
+      gain.gain.setValueAtTime(PreviewBaseGain * perceptualMasterGain(masterLevel), ctx.currentTime);
+    } catch { /* ignore */ }
+  }, [masterLevel]);
+
   // Web Audio 試聴開始 (KEY ON - ピッチ変調をリアルタイムシミュレート)
   const handlePlayKeyOn = (previewNote?: number) => {
     stopAudio();
@@ -666,7 +682,7 @@ export function PitchEnvelopeEditor({
     osc.frequency.setValueAtTime(baseFreq, ctx.currentTime);
 
     const gain = ctx.createGain();
-    gain.gain.setValueAtTime(0.2, ctx.currentTime);
+    gain.gain.setValueAtTime(PreviewBaseGain * perceptualMasterGain(masterLevel), ctx.currentTime);
 
     osc.connect(gain);
     gain.connect(ctx.destination);

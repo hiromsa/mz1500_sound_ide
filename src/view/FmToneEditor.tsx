@@ -22,8 +22,11 @@ import {
 import { isIdDefined, loadFmToneDefinition } from '../utils/mmlDefinitionLoader';
 import { DefinitionIdInput } from './DefinitionIdInput';
 import { TestNoteButton } from './components/TestNoteButton';
-import { midiNoteToFrequency } from '../utils/virtualSynth';
+import { midiNoteToFrequency, perceptualMasterGain } from '../utils/virtualSynth';
 import { MmlLiveDock } from './MmlLiveDock';
+
+/** FM 試聴音の基準出力ゲイン (TRACK MONITOR の MASTER VOL 100% 時)。 */
+const PreviewBaseGain = 0.35;
 
 // プリセット音色定義
 const PRESET_TONES: FmToneData[] = [
@@ -1152,6 +1155,8 @@ export interface FmToneEditorProps {
   testMidiNote?: number;
   /** テストノート変更コールバック */
   onChangeTestMidiNote?: (note: number) => void;
+  /** マスター音量 (0-1、ミュート時 0)。TRACK MONITOR の MASTER VOL と連動し、知覚カーブ適用のうえ試聴音量へ乗算される。 */
+  masterLevel?: number;
 }
 
 export function FmToneEditor({
@@ -1161,6 +1166,7 @@ export function FmToneEditor({
   onApplyToMml,
   testMidiNote,
   onChangeTestMidiNote,
+  masterLevel = 1,
 }: FmToneEditorProps = {}) {
   // 現在編集中の音色データ (NAME は未設定の空文字で開始: プリセットは参考値としてのみ使用する)
   const [toneData, setToneData] = useState<FmToneData>({ ...PRESET_TONES[0], name: '' });
@@ -1240,6 +1246,8 @@ export function FmToneEditor({
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const activeNodesRef = useRef<{ stop: () => void } | null>(null);
+  /** 発音中の試聴 masterGain (TRACK MONITOR の MASTER VOL 即時反映用)。 */
+  const masterGainRef = useRef<GainNode | null>(null);
 
   // アルゴリズム変更
   const setAlg = (alg: number) => {
@@ -1381,6 +1389,16 @@ export function FmToneEditor({
     };
   }, [stopAudio]);
 
+  // TRACK MONITOR の MASTER VOL 変更を発音中の試聴音へ即時反映 (知覚カーブ適用)
+  useEffect(() => {
+    const gain = masterGainRef.current;
+    const ctx = audioCtxRef.current;
+    if (!gain || !ctx) return;
+    try {
+      gain.gain.setValueAtTime(PreviewBaseGain * perceptualMasterGain(masterLevel), ctx.currentTime);
+    } catch { /* ignore */ }
+  }, [masterLevel]);
+
   // Web Audio 試聴プレビュー開始 (4-Operator FM 合成)
   const playPreviewTone = (previewNote?: number) => {
     stopAudio();
@@ -1397,8 +1415,9 @@ export function FmToneEditor({
     const baseFreq = midiNoteToFrequency(note);
 
     const masterGain = ctx.createGain();
-    masterGain.gain.setValueAtTime(0.35, now);
+    masterGain.gain.setValueAtTime(PreviewBaseGain * perceptualMasterGain(masterLevel), now);
     masterGain.connect(ctx.destination);
+    masterGainRef.current = masterGain;
 
     // 4つのオシレーターとゲインを作成
     const oscs: OscillatorNode[] = [];
@@ -1462,6 +1481,9 @@ export function FmToneEditor({
             try { o.stop(); o.disconnect(); } catch { /* ignore */ }
           });
           masterGain.disconnect();
+          if (masterGainRef.current === masterGain) {
+            masterGainRef.current = null;
+          }
         }, 150);
       }
     };
