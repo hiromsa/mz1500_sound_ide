@@ -6,8 +6,8 @@
 ---
 
 ## 1. 現在のステータス概要
-- **バージョン**: `v0.0.1-beta.105`（コミット通番＋短縮ハッシュ ハイブリッド方式）
-- **テスト通過状況**: 全 35 テストファイル / 476 件パス + 1 skip（`npm test` / Vitest）
+- **バージョン**: `v0.0.1-beta.108`（コミット通番＋短縮ハッシュ ハイブリッド方式）
+- **テスト通過状況**: 全 35 テストファイル / 488 件パス + 1 skip（`npm test` / Vitest）
 - **型検査状況**: エラー 0 件（`npx tsc -b`）
 - **主要機能の稼働状況**:
   - Web ネイティブ MML コンパイラ（9ch / 17ch / ワークトラック W1〜W99 対応）
@@ -53,6 +53,16 @@
 ---
 
 ## 3. 直近の完了作業（最新）
+
+- **仮想キーボードの PSG (DCSG) 発音を実機レジスタ音域に制限 — 出せない低音キーの無効化 & 周波数 10bit レジスタ量子化 (`src/view/VirtualKeyboard.tsx`, `src/utils/virtualSynth.ts`, `src/core/chips/DcsgChip.ts`, `src/core/chips/__tests__/DcsgChip.test.ts`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-09):
+  - **背景・ユーザー指摘**: 「仮想キーボードについて、DSCGでは出せない音域まで低い音が鳴ってます。」
+  - **原因**: 演奏エンジン (TrackSequencer / Z80 ドライバ) は DCSG トーン周期を 10bit レジスタ (0-1023) にクランプするため実機どおり約 109.3Hz (MIDI 45 / A2) が下限だが、仮想キーボードの PSG 発音だけ `midiNoteToFrequency()` の生周波数で Web Audio オシレーターを鳴らしていたため A0 (27.5Hz) まで鳴っていた。
+  - **対応内容** (挙動はユーザー確定: 「出せない低音キーは発音しない (グレーアウトして押せなくする)」):
+    1. `DcsgChip` に実機レジスタ変換 API を新設: `tonePeriodForFrequency()` (周波数 → 10bit period、0-1023 クランプ / TrackSequencer・`dcsgPeriodFor` と同一式)、`toneFrequencyForPeriod()`、`LowestMidiNote = 45` (A2)、`MaxTonePeriod = 1023`。
+    2. `virtualSynth.ts` の PSG 分岐のみ発音周波数を実機レジスタ式に量子化 (矩形波 osc 周波数 + @IN 統合ノイズの bandpass 駆動周波数)。演奏エンジン / 実機と音程一致。BEEP / FM / NOISE は実機音域内のため変更なし。
+    3. `VirtualKeyboard.tsx` は PSG 選択時、MIDI 45 未満 (A0〜G#2 / 24 鍵) の鍵盤を暗いグレーで無効化 (`cursor-not-allowed`・ホバー/押下エフェクトなし・`title` ツールチップで理由表示)。鍵盤クリック / ドラッグ / PC キーボード演奏すべて `handleNoteOn` 冒頭ガードで発音阻止 (`isNotePlayable` は `DcsgChip.LowestMidiNote` を唯一の正として参照)。
+  - **テスト**: `DcsgChip.test.ts` に `tonePeriodForFrequency` (A4 = period 253 / 低音 20Hz → 1023 クランプ / 高音 → 0) と `LowestMidiNote` 境界 (A2 = period 1016 ≤ 1023 で発音可 / G#2 = period 1076 → 1023 に丸められ発音不可) の 2 ケース追加。
+  - **検証**: `npx tsc -b` エラーゼロ / `npm test` 全 35 ファイル・488 件合格 + 1 skip (+2) / `npm run lint` エラーゼロ (既存警告 10 は変更なし)。
 
 - **仮想キーボードの @IN セレクタを MML モード時 P3/P6 キャレット限定に変更 (`src/view/VirtualKeyboard.tsx`, `src/utils/mmlCaretParser.ts`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-09):
   - **背景・ユーザー要望**: 「MMLエディタ 連動の場合で、@INは P3 / P6 の場合のみ有効にしてください。」(前回実装の @IN セレクタは実効音源が PSG なら P1/P2/P4/P5 キャレットでも有効だった)

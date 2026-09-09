@@ -108,6 +108,33 @@ export class DcsgChip {
     0, 0, 0, 0, 0, // g, g#, a, a#, b
   ];
 
+  /**
+   * 実機 10bit トーン周期レジスタで発音可能な最低 MIDI ノート (A2 = 110Hz)。
+   * period = round(Clock/32/110) - 1 = 1016 ≤ 1023 に対し、
+   * 1 つ下の G#2 (103.8Hz) は period 1076 となりレジスタ上限を超えるため発音不可。
+   * 仮想キーボードの鍵盤有効判定に使用する。
+   */
+  static readonly LowestMidiNote = 45;
+
+  /** MaxTonePeriod (レジスタ bit 数 10 相当)。 */
+  static readonly MaxTonePeriod = 1023;
+
+  /**
+   * 周波数 (Hz) → 実機 10bit トーン周期レジスタ値 (0-1023 にクランプ)。
+   * TrackSequencer / Z80 アセンブラ (dcsgPeriodFor) と同一の変換式。
+   * レジスタ上限を超える低音 (period > 1023) は最低周波数へ丸められる (= 実機で鳴る音)。
+   */
+  static tonePeriodForFrequency(frequency: number): number {
+    const safeFrequency = Math.max(frequency, 1.0);
+    const period = Math.round(DcsgChip.ClockHz / 32.0 / safeFrequency) - 1;
+    return Math.min(DcsgChip.MaxTonePeriod, Math.max(0, period));
+  }
+
+  /** トーン周期レジスタ値 → 実際の出力周波数 (Hz)。 */
+  static toneFrequencyForPeriod(period: number): number {
+    return DcsgChip.ClockHz / 32.0 / (clampInt(period, 0, DcsgChip.MaxTonePeriod) + 1);
+  }
+
   /** UI ミキサーのチャンネルゲイン (0-1) を設定する。 */
   setChannelGain(channel: number, gain: number): void {
     this.gain[channel] = Math.min(Math.max(gain, 0), 1);

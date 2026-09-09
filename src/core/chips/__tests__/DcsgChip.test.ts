@@ -53,6 +53,33 @@ describe('DcsgChip', () => {
     expect(chip.channelLevel(0)).toBe(1); // attenuation 0 / gain 1 (クランプ) → 最大レベル 1
   });
 
+  // 仮想キーボードの鍵盤有効判定 / 発音周波数量子化で使用するレジスタ変換。
+  // A4 = 440Hz → period = round(3579545 / 32 / 440) - 1 = 253
+  it('tonePeriodForFrequency quantizes frequencies to the 10-bit register', () => {
+    expect(DcsgChip.tonePeriodForFrequency(440.0)).toBe(253);
+    // レジスタ上限を超える低音は最低周期 (period 1023) に丸められる (= 実機で鳴る最低音)
+    expect(DcsgChip.tonePeriodForFrequency(20.0)).toBe(1023);
+    expect(DcsgChip.toneFrequencyForPeriod(1023)).toBeCloseTo(DcsgChip.ClockHz / 32.0 / 1024.0, 3);
+    // 上限方向のクランプ (period 0 = 最高周波数)
+    expect(DcsgChip.tonePeriodForFrequency(1000000.0)).toBe(0);
+    expect(DcsgChip.toneFrequencyForPeriod(0)).toBeCloseTo(DcsgChip.ClockHz / 32.0, 3);
+  });
+
+  // LowestMidiNote = 実機 10bit period レジスタで発音できる最低 MIDI ノート。
+  // 仮想キーボードの鍵盤無効化 (PSG 選択時 A0〜G#2) と発音ガードの根拠
+  it('LowestMidiNote is the lowest note the 10-bit period register can play', () => {
+    const noteToFrequency = (note: number): number => 440.0 * 2 ** ((note - 69) / 12.0);
+    // A2 (MIDI 45) はレジスタ内に収まる
+    expect(DcsgChip.LowestMidiNote).toBe(45);
+    expect(
+      DcsgChip.tonePeriodForFrequency(noteToFrequency(DcsgChip.LowestMidiNote)),
+    ).toBeLessThanOrEqual(DcsgChip.MaxTonePeriod);
+    // 1 つ下の G#2 (MIDI 44) はレジスタ上限を超えるため発音不可 (= 最低音へ丸められる)
+    expect(
+      DcsgChip.tonePeriodForFrequency(noteToFrequency(DcsgChip.LowestMidiNote - 1)),
+    ).toBe(DcsgChip.MaxTonePeriod);
+  });
+
   it('noise clock follows tone 2 in mode 3', () => {
     const chip = new DcsgChip();
     chip.setTonePeriod(2, 253);

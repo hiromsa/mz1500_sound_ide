@@ -4,6 +4,7 @@ import { virtualSynth, type SoundEngineType, type SynthPlayOptions } from '../ut
 import { isDcsgTone3TrackName, type MmlCaretContext } from '../utils/mmlCaretParser';
 import { findDefinitionBlocks } from '../utils/mmlContextParser';
 import { loadFmToneDefinition, loadPitchEnvDefinition, loadVolEnvDefinition } from '../utils/mmlDefinitionLoader';
+import { DcsgChip } from '../core/chips/DcsgChip';
 import type { FmToneData } from '../core/fm/FmTone';
 
 // 鍵盤情報定義
@@ -243,6 +244,12 @@ export function VirtualKeyboard({
     effectiveEngine === 'psg' &&
     (activeTabContext !== 'mml' || isDcsgTone3TrackName(mmlContext?.trackName ?? ''));
 
+  // DCSG (PSG) 実機レジスタで出せない低音域の鍵盤は無効化する
+  // (トーン周期レジスタ 10bit の下限 = period 1023 ≒ 109.3Hz / A2 未満は実機で発音不可)
+  const isDcsgToneLimited = effectiveEngine === 'psg';
+  const isNotePlayable = (midiNote: number): boolean =>
+    !isDcsgToneLimited || midiNote >= DcsgChip.LowestMidiNote;
+
   // 3. ピッチエンベロープ (@PE) の実効データ判定
   const effectivePitchEnvData = useMemo(() => {
     if (activeTabContext === 'pitch_envelope') {
@@ -381,6 +388,10 @@ export function VirtualKeyboard({
 
   // ノート発音ハンドラ
   const handleNoteOn = useCallback((midiNote: number) => {
+    // DCSG (PSG) 実機レジスタで出せない低音域は発音しない (鍵盤クリック・ドラッグ・タイピング共通)
+    if (effectiveEngine === 'psg' && midiNote < DcsgChip.LowestMidiNote) {
+      return;
+    }
     setPressedNotes(prev => new Set(prev).add(midiNote));
     onChangeTestMidiNote?.(midiNote);
 
@@ -905,11 +916,13 @@ export function VirtualKeyboard({
             const isPressed = pressedNotes.has(key.midiNote);
             const left = key.whiteIndex * WHITE_KEY_WIDTH;
             const isC = key.name.startsWith('C') && !key.name.startsWith('C#');
+            const isPlayable = isNotePlayable(key.midiNote);
 
             return (
               <div
                 key={key.midiNote}
                 data-note={key.midiNote}
+                title={isPlayable ? undefined : '実機 DCSG (SN76489) では出せない音域です (最低音 A2 / 約109Hz)'}
                 style={{
                   left: `${left}px`,
                   width: `${WHITE_KEY_WIDTH - 1}px`,
@@ -917,10 +930,12 @@ export function VirtualKeyboard({
                 onMouseDown={(e) => {
                   e.preventDefault();
                   isMouseDownRef.current = true;
-                  handleNoteOn(key.midiNote);
+                  if (isPlayable) {
+                    handleNoteOn(key.midiNote);
+                  }
                 }}
                 onMouseEnter={() => {
-                  if (isMouseDownRef.current) {
+                  if (isMouseDownRef.current && isPlayable) {
                     handleNoteOn(key.midiNote);
                   }
                 }}
@@ -932,12 +947,14 @@ export function VirtualKeyboard({
                 onMouseUp={() => {
                   handleNoteOff(key.midiNote);
                 }}
-                className={`absolute top-0 bottom-0 rounded-b border select-none z-0 flex flex-col justify-end pb-1 items-center transition-colors duration-75 cursor-pointer ${
+                className={`absolute top-0 bottom-0 rounded-b border select-none z-0 flex flex-col justify-end pb-1 items-center transition-colors duration-75 ${
                   isPressed
-                    ? 'bg-gradient-to-t from-cyan-400 to-cyan-200 border-cyan-300 shadow-[inset_0_3px_6px_rgba(0,0,0,0.35),0_0_14px_rgba(34,211,238,0.9)] z-10 translate-y-1'
-                    : isC
-                      ? 'bg-zinc-100 hover:bg-white border-zinc-400/80 active:translate-y-1'
-                      : 'bg-zinc-200 hover:bg-zinc-100 border-zinc-400/60 active:translate-y-1'
+                    ? 'bg-gradient-to-t from-cyan-400 to-cyan-200 border-cyan-300 shadow-[inset_0_3px_6px_rgba(0,0,0,0.35),0_0_14px_rgba(34,211,238,0.9)] z-10 translate-y-1 cursor-pointer'
+                    : !isPlayable
+                      ? 'bg-[#15161c] border-zinc-800/60 cursor-not-allowed'
+                      : isC
+                        ? 'bg-zinc-100 hover:bg-white border-zinc-400/80 active:translate-y-1 cursor-pointer'
+                        : 'bg-zinc-200 hover:bg-zinc-100 border-zinc-400/60 active:translate-y-1 cursor-pointer'
                 }`}
               >
                 {/* PCキーボード対応キー文字ガイド (右ペイン各エディタ選択中のみ表示) */}
@@ -947,7 +964,11 @@ export function VirtualKeyboard({
                   if (!pcKey) return null;
                   return (
                     <span className={`text-[8px] font-mono font-bold select-none ${
-                      isPressed ? 'text-black' : 'text-cyan-700/80 font-semibold'
+                      isPressed
+                        ? 'text-black'
+                        : !isPlayable
+                          ? 'text-zinc-700/50'
+                          : 'text-cyan-700/80 font-semibold'
                     }`}>
                       {pcKey}
                     </span>
@@ -957,7 +978,11 @@ export function VirtualKeyboard({
                 {/* C音にはオクターブラベル表示 */}
                 {isC && (
                   <span className={`text-[9px] font-extrabold tracking-tighter ${
-                    isPressed ? 'text-black' : 'text-zinc-600'
+                    isPressed
+                      ? 'text-black'
+                      : !isPlayable
+                        ? 'text-zinc-700/60'
+                        : 'text-zinc-600'
                   }`}>
                     {key.name}
                   </span>
@@ -969,12 +994,14 @@ export function VirtualKeyboard({
           {/* 黒鍵描画 */}
           {ALL_KEYS.filter(k => k.isBlack).map((key) => {
             const isPressed = pressedNotes.has(key.midiNote);
+            const isPlayable = isNotePlayable(key.midiNote);
             const left = (key.whiteIndex + 1) * WHITE_KEY_WIDTH - (BLACK_KEY_WIDTH / 2);
 
             return (
               <div
                 key={key.midiNote}
                 data-note={key.midiNote}
+                title={isPlayable ? undefined : '実機 DCSG (SN76489) では出せない音域です (最低音 A2 / 約109Hz)'}
                 style={{
                   left: `${left}px`,
                   width: `${BLACK_KEY_WIDTH}px`,
@@ -983,10 +1010,12 @@ export function VirtualKeyboard({
                 onMouseDown={(e) => {
                   e.preventDefault();
                   isMouseDownRef.current = true;
-                  handleNoteOn(key.midiNote);
+                  if (isPlayable) {
+                    handleNoteOn(key.midiNote);
+                  }
                 }}
                 onMouseEnter={() => {
-                  if (isMouseDownRef.current) {
+                  if (isMouseDownRef.current && isPlayable) {
                     handleNoteOn(key.midiNote);
                   }
                 }}
@@ -998,10 +1027,12 @@ export function VirtualKeyboard({
                 onMouseUp={() => {
                   handleNoteOff(key.midiNote);
                 }}
-                className={`absolute top-0 rounded-b border select-none z-20 flex flex-col justify-end pb-1 items-center shadow-md transition-colors duration-75 cursor-pointer ${
+                className={`absolute top-0 rounded-b border select-none z-20 flex flex-col justify-end pb-1 items-center shadow-md transition-colors duration-75 ${
                   isPressed
-                    ? 'bg-gradient-to-t from-cyan-500 to-cyan-300 border-cyan-200 shadow-[inset_0_3px_6px_rgba(0,0,0,0.6),0_0_14px_rgba(6,182,212,0.9)] translate-y-1'
-                    : 'bg-[#181920] hover:bg-[#252834] border-black/80 active:translate-y-1'
+                    ? 'bg-gradient-to-t from-cyan-500 to-cyan-300 border-cyan-200 shadow-[inset_0_3px_6px_rgba(0,0,0,0.6),0_0_14px_rgba(6,182,212,0.9)] translate-y-1 cursor-pointer'
+                    : !isPlayable
+                      ? 'bg-[#101116] border-zinc-800/80 cursor-not-allowed'
+                      : 'bg-[#181920] hover:bg-[#252834] border-black/80 active:translate-y-1 cursor-pointer'
                 }`}
               >
                 {/* PCキーボード対応キー文字ガイド (右ペイン各エディタ選択中のみ表示) */}

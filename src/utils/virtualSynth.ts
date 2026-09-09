@@ -210,6 +210,11 @@ export class VirtualSynthEngine {
       // (実機仕様: トーン 3 の周波数レジスタでノイズジェネレータを駆動し、発音もノイズへ切替)
       const useIntegrateNoise = integrateMode === 1 || integrateMode === 2;
 
+      // 実機 10bit トーン周期レジスタに量子化した周波数で発音する (演奏エンジンと同一式)。
+      // レジスタ上限 (period 1023 ≒ 109.3Hz) を超える低音は実機どおり最低音へ丸められる
+      const tonePeriod = DcsgChip.tonePeriodForFrequency(baseFreq);
+      const toneFreq = Math.min(20000, DcsgChip.toneFrequencyForPeriod(tonePeriod));
+
       const gain = ctx.createGain();
       gain.gain.setValueAtTime(peakGain, ctx.currentTime);
       gain.connect(masterGain);
@@ -220,7 +225,7 @@ export class VirtualSynthEngine {
 
       if (osc) {
         osc.type = 'square';
-        osc.frequency.setValueAtTime(baseFreq, ctx.currentTime);
+        osc.frequency.setValueAtTime(toneFreq, ctx.currentTime);
         osc.connect(gain);
         osc.start();
       } else if (integrateNoiseSrc && integrateNoiseFilter) {
@@ -228,7 +233,7 @@ export class VirtualSynthEngine {
         integrateNoiseSrc.loop = true;
         // bandpass 中心を音程に比例させ、ノイズの高さが音階へ追従する
         integrateNoiseFilter.type = 'bandpass';
-        integrateNoiseFilter.frequency.setValueAtTime(Math.min(16000, baseFreq * 4), ctx.currentTime);
+        integrateNoiseFilter.frequency.setValueAtTime(Math.min(16000, toneFreq * 4), ctx.currentTime);
         // @IN1 = 周期ノイズ連動 (Q高めで硬い金属音) / @IN2 = ホワイトノイズ連動 (Q低めで広がりのあるノイズ)
         integrateNoiseFilter.Q.setValueAtTime(integrateMode === 1 ? 10 : 2, ctx.currentTime);
         integrateNoiseSrc.connect(integrateNoiseFilter);
