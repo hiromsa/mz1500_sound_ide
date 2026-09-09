@@ -335,6 +335,8 @@ export function MmlEditor({
   // NOTE PREVIEW デバウンス管理 (タイピング停止後 250ms で入力範囲を部分再生する)
   const notePreviewTimerRef = useRef<number | null>(null);
   const notePreviewChangedRangeRef = useRef<PreviewChangedRange | null>(null);
+  // [MML INSERT] 挿入中フラグ (executeEdits 由来の content change を NOTE PREVIEW 集計から除外する)
+  const isMmlInsertEditRef = useRef(false);
 
   // 再生停止時に開始元をリセット (Ctrl+Enter・自然終了・別ボタンからの停止を含む)
   useEffect(() => {
@@ -485,18 +487,32 @@ export function MmlEditor({
     const insertion = buildMmlNoteInsertionAtCaret(model.getValue(), pos.lineNumber, pos.column, midiNote);
     if (!insertion) return;
 
-    ed.executeEdits('mml-insert', [{
-      range: {
-        startLineNumber: pos.lineNumber,
-        startColumn: pos.column,
-        endLineNumber: pos.lineNumber,
-        endColumn: pos.column,
-      },
-      text: insertion.text,
-      forceMoveMarkers: true,
-    }]);
-    // 1 音単位で Undo 履歴を区切る (Ctrl+Z で 1 音ずつ戻せる)
-    ed.pushUndoStop();
+    // 挿入由来の content change を NOTE PREVIEW の集計対象から除外する
+    // (鍵盤押下では仮想キーボードの発音が鳴るため、自動部分再生は二重音になる)
+    isMmlInsertEditRef.current = true;
+    try {
+      ed.executeEdits('mml-insert', [{
+        range: {
+          startLineNumber: pos.lineNumber,
+          startColumn: pos.column,
+          endLineNumber: pos.lineNumber,
+          endColumn: pos.column,
+        },
+        text: insertion.text,
+        forceMoveMarkers: true,
+      }]);
+      // 1 音単位で Undo 履歴を区切る (Ctrl+Z で 1 音ずつ戻せる)
+      ed.pushUndoStop();
+    } finally {
+      isMmlInsertEditRef.current = false;
+    }
+
+    // 保留中の NOTE PREVIEW (直前の通常入力のデバウンスタイマー) があれば取り消す
+    if (notePreviewTimerRef.current !== null) {
+      window.clearTimeout(notePreviewTimerRef.current);
+      notePreviewTimerRef.current = null;
+    }
+    notePreviewChangedRangeRef.current = null;
   }, []);
 
   // 部分再生: キャレット位置から再生 (実行は App 側でコンパイル → 時間範囲解決 → プリシーク再生)
@@ -653,6 +669,8 @@ export function MmlEditor({
     // 入力停止後 250ms で入力範囲を部分再生する
     editorInstance.onDidChangeModelContent((e) => {
       if (!notePreviewEnabledRef.current) return;
+      // [MML INSERT] によるプログラム挿入は NOTE PREVIEW の対象外 (鍵盤発音と二重になるため)
+      if (isMmlInsertEditRef.current) return;
       for (const change of e.changes) {
         notePreviewChangedRangeRef.current = accumulatePreviewChange(
           notePreviewChangedRangeRef.current,

@@ -255,7 +255,7 @@ FlexboxおよびCSS Gridを活用し、解像度変化に追従するペイン�
         - **有効条件**: 発音コンテキストが `MMLエディタ` のときに **`Ctrl` キーを押下している間** かつ **キャレットがチャンネル行 (行頭トラック宣言行: `P1`〜`P6` / `N1`〜`N2` / `B1` / `F1`〜`F8`)** にあること。有効中はコントロールバー左端付近の `MML INSERT` バッジがシアン発光し、非押下時は薄いグレーの無効表示 + ツールチップで機能を案内する。
         - **挿入動作**: 有効中に鍵盤をクリック / ドラッグすると、押下鍵の音名 (`c` `c#` `d` … **音長なし**) が Monaco エディタのキャレット位置へ挿入される (発音は従来どおり併せて行う)。実機 DCSG 音域制限 (低音無効鍵) は発音のみの制約のため、音域外の鍵でも挿入は行われる。
         - **オクターブ相対指定の自動付与**: 押下鍵のオクターブとキャレット解析オクターブ (`parseMmlCaretContext`) の差分に応じて `<` / `>` を自動付与 (1 段 = 1 記号)。`#OCTAVE REVERSE` 指定時は方向を反転し、MML のオクターブ範囲 (o1〜o8) は正式パーサと同一条件でクランプ。挿入のたびにエディタの最新キャレットからオクターブを再解析するため、連続入力でも相対指定が正しく累積する。
-        - **Undo/Redo & NOTE PREVIEW 連動**: `executeEdits('mml-insert')` + `pushUndoStop` により 1 音単位で Undo 履歴が区切られる (Ctrl+Z で 1 音ずつ戻せる)。挿入は NOTE PREVIEW の自動部分再生 (0.5 秒デバウンス) にも通常の MML 入力と同様に乗る。
+        - **Undo/Redo 対応 & NOTE PREVIEW 非発火 (2026-09-09 修正)**: `executeEdits('mml-insert')` + `pushUndoStop` により 1 音単位で Undo 履歴が区切られる (Ctrl+Z で 1 音ずつ戻せる)。挿入による content change は NOTE PREVIEW (自動部分再生) の集計対象から除外し、保留中のデバウンスタイマー・蓄積範囲も取り消す (**鍵盤押下の仮想キーボード発音と二重になるため** / ユーザー確定)。通常タイピング / ペースト / Undo 等の NOTE PREVIEW は従来どおり動作。
         - **PC キーボードは無効のまま (ユーザー確定)**: MML モード時の PC キーボード演奏無効化 (エディタ文字入力との衝突防止) は本機能でも変更せず、鍵盤のマウスクリック / ドラッグのみで挿入する (Ctrl+A 全選択 / Ctrl+F 検索 / Ctrl+S 保存等のショートカットを保護)。
         - **ロジック分離**: 挿入ロジックは UI 非依存の純粋関数 `src/utils/mmlNoteInserter.ts` (`isMmlNoteInsertModeActive` / `buildMmlNoteInsertion` / `buildMmlNoteInsertionAtCaret`) に集約。キャレット行のトラック宣言判定は `MmlCaretContext.isTrackSpecLine` として `parseMmlCaretContext` (`src/utils/mmlCaretParser.ts`) が提供する。
       - **オクターブクイックジャンプ**: 行2の `JUMP:` `C1`〜`C7` ボタンで目的のオクターブへスムーズスクロール（MMLモード時はキャレットのオクターブがハイライト）。
