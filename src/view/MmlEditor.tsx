@@ -37,6 +37,13 @@ import { parseMmlCaretContext, type MmlCaretContext } from '../utils/mmlCaretPar
 import { collectUsedIds, findDefinitionAt, findDefinitionBlocks, nextAvailableId } from '../utils/mmlContextParser';
 import { resolvePlaybackPositions, type PlaybackMapInfo } from '../utils/mmlPlaybackTracker';
 import type { PlaybackRangeRequest } from '../utils/mmlSelectionResolver';
+import {
+  NOTE_PREVIEW_DEBOUNCE_MS,
+  accumulatePreviewChange,
+  expandToTokenStart,
+  hasPreviewChanges,
+  type PreviewChangedRange,
+} from '../utils/notePreview';
 import { MmlContextMenu, type MmlContextMenuEntry } from './MmlContextMenu';
 import type { FmToneData } from '../core/fm/FmTone';
 import { setupMmlLanguage, MML_LANGUAGE_ID, MML_THEME_NAME } from '../utils/mmlLanguage';
@@ -140,6 +147,9 @@ const BOTTOM_COLLAPSED_HEIGHT_PX = 28;
 /** 再生中にトランスポート各ボタン (PLAY / FROM CARET / SELECTION) へ適用する STOP 表示の共通スタイル (High-Impact Red) */
 const playingStopButtonClass = 'bg-red-950/60 text-red-300 border-red-500/70 shadow-[0_0_10px_rgba(239,68,68,0.35)] hover:bg-red-900/70 hover:text-red-200';
 
+/** NOTE PREVIEW (打鍵プレビュー) の ON/OFF 状態を永続化する localStorage キー (デフォルト ON) */
+const NOTE_PREVIEW_STORAGE_KEY = 'mz1500_note_preview_enabled';
+
 /** 他ボタンが再生停止を担当している間のトランスポートボタン無効化スタイル */
 const disabledTransportButtonClass = 'opacity-35 cursor-not-allowed text-zinc-500 bg-[#252730] border-transparent';
 
@@ -159,6 +169,8 @@ interface MmlEditorProps {
   isPlayFailed?: boolean;
   /** 部分再生要求 (キャレット位置から / 選択範囲のみ) を App へ通知する */
   onPlayRangeRequest?: (request: PlaybackRangeRequest) => void;
+  /** NOTE PREVIEW (打鍵プレビュー) の部分再生要求を App へ通知する */
+  onNotePreviewPlay?: (request: PlaybackRangeRequest) => void;
   // バーチャルキーボード連携用 props
   activeTabContext?: ActiveTabContext;
   activeFmTone?: FmToneData;
@@ -217,6 +229,7 @@ export function MmlEditor({
   onStop,
   isPlayFailed = false,
   onPlayRangeRequest,
+  onNotePreviewPlay,
   activeTabContext = 'mml',
   activeFmTone,
   activePitchEnv,
@@ -310,7 +323,17 @@ export function MmlEditor({
 
   // 再生開始元トラッキング ('none' = 停止中 / App 側グローバルショートカット起点)。
   // 再生中は開始元ボタンのみ STOP 表示とし、他のトランスポートボタンを無効化する。
-  const [playSource, setPlaySource] = useState<'none' | 'main' | 'caret' | 'selection'>('none');
+  const [playSource, setPlaySource] = useState<'none' | 'main' | 'caret' | 'selection' | 'preview'>('none');
+
+  // NOTE PREVIEW (打鍵プレビュー) の有効状態 (デフォルト ON、localStorage で永続化)
+  const [notePreviewEnabled, setNotePreviewEnabled] = useState<boolean>(() => {
+    if (typeof localStorage === 'undefined') return true;
+    return localStorage.getItem(NOTE_PREVIEW_STORAGE_KEY) !== '0';
+  });
+
+  // NOTE PREVIEW デバウンス管理 (タイピング停止後 250ms で入力範囲を部分再生する)
+  const notePreviewTimerRef = useRef<number | null>(null);
+  const notePreviewChangedRangeRef = useRef<PreviewChangedRange | null>(null);
 
   // 再生停止時に開始元をリセット (Ctrl+Enter・自然終了・別ボタンからの停止を含む)
   useEffect(() => {
@@ -318,6 +341,44 @@ export function MmlEditor({
       setPlaySource('none');
     }
   }, [isPlaying]);
+
+  // NOTE PREVIEW トグル状態の永続化 & mount 時登録ハンドラ (onDidChangeModelContent) 用 ref 同期
+  const notePreviewEnabledRef = useRef(notePreviewEnabled);
+  useEffect(() => {
+    notePreviewEnabledRef.current = notePreviewEnabled;
+    try {
+      localStorage.setItem(NOTE_PREVIEW_STORAGE_KEY, notePreviewEnabled ? '1' : '0');
+    } catch {
+      // ストレージが使用できない環境では永続化せずメモリ上の状態のみで継続
+    }
+  }, [notePreviewEnabled]);
+
+  // NOTE PREVIEW を OFF にした場合は未発火のデバウンスタイマーと入力集計を破棄する
+  useEffect(() => {
+    if (!notePreviewEnabled && notePreviewTimerRef.current !== null) {
+      window.clearTimeout(notePreviewTimerRef.current);
+      notePreviewTimerRef.current = null;
+      notePreviewChangedRangeRef.current = null;
+    }
+  }, [notePreviewEnabled]);
+
+  // ファイル (タブ) 切替時もデバウンスタイマーと入力集計を破棄する (旧ファイルの範囲で発音しない)
+  useEffect(() => {
+    if (notePreviewTimerRef.current !== null) {
+      window.clearTimeout(notePreviewTimerRef.current);
+      notePreviewTimerRef.current = null;
+    }
+    notePreviewChangedRangeRef.current = null;
+  }, [activeFileId]);
+
+  // unmount 時にデバウンスタイマーを破棄する
+  useEffect(() => {
+    return () => {
+      if (notePreviewTimerRef.current !== null) {
+        window.clearTimeout(notePreviewTimerRef.current);
+      }
+    };
+  }, []);
 
   const editorContainerRef = useRef<HTMLDivElement>(null);
   const isUpdatingFromExternalRef = useRef<boolean>(false);
@@ -340,6 +401,8 @@ export function MmlEditor({
   const onAppendLogRef = useRef(onAppendLog);
   // 部分再生要求用 ref (stale closure 回避)
   const onPlayRangeRequestRef = useRef(onPlayRangeRequest);
+  // NOTE PREVIEW 部分再生要求用 ref (stale closure 回避)
+  const onNotePreviewPlayRef = useRef(onNotePreviewPlay);
   // Ctrl+S 保存用 ref (stale closure 回避)
   const saveFileRef = useRef<(() => Promise<void>) | null>(null);
 
@@ -354,6 +417,7 @@ export function MmlEditor({
   useEffect(() => { onCaretContextChangeRef.current = onCaretContextChange; }, [onCaretContextChange]);
   useEffect(() => { onAppendLogRef.current = onAppendLog; }, [onAppendLog]);
   useEffect(() => { onPlayRangeRequestRef.current = onPlayRangeRequest; }, [onPlayRangeRequest]);
+  useEffect(() => { onNotePreviewPlayRef.current = onNotePreviewPlay; }, [onNotePreviewPlay]);
 
   // 部分再生実行時の視覚フィードバック (パルス発光)
   const triggerPartialPlayFeedback = useCallback((mode: 'caret' | 'selection') => {
@@ -362,6 +426,45 @@ export function MmlEditor({
     partialPlayTimerRef.current = window.setTimeout(() => {
       setPartialPlayMode('none');
     }, 1500);
+  }, []);
+
+  /**
+   * NOTE PREVIEW デバウンス発火: 入力停止後に蓄積した変更範囲を
+   * 音符・休符トークン開始位置へ拡張し、部分再生要求 (SELECTION と同一経路) として App へ通知する。
+   */
+  const fireNotePreview = useCallback(() => {
+    notePreviewTimerRef.current = null;
+    const ed = monacoEditorRef.current;
+    const model = ed?.getModel();
+    const changed = notePreviewChangedRangeRef.current;
+    notePreviewChangedRangeRef.current = null;
+    if (!ed || !model || !changed || !hasPreviewChanges(changed)) return;
+
+    const text = model.getValue();
+    const startOffset = expandToTokenStart(text, changed.startOffset);
+    const endOffset = Math.min(changed.endOffset, text.length);
+    const startPos = model.getPositionAt(startOffset);
+    const endPos = model.getPositionAt(endOffset);
+    if (!startPos || !endPos) return;
+
+    // プレビュー演奏中は PLAY ボタンを STOP 表示へフォールバックさせるため開始元を記録する
+    setPlaySource('preview');
+    onNotePreviewPlayRef.current?.({
+      kind: 'selection',
+      startLine: startPos.lineNumber,
+      startColumn: startPos.column,
+      endLine: endPos.lineNumber,
+      endColumn: endPos.column,
+    });
+  }, []);
+
+  // mount 時登録の onDidChangeModelContent から参照するため ref 経由にする (stale closure 回避)
+  const fireNotePreviewRef = useRef(fireNotePreview);
+  useEffect(() => { fireNotePreviewRef.current = fireNotePreview; }, [fireNotePreview]);
+
+  /** NOTE PREVIEW トグルボタン押下 */
+  const handleToggleNotePreview = useCallback(() => {
+    setNotePreviewEnabled(prev => !prev);
   }, []);
 
   // 部分再生: キャレット位置から再生 (実行は App 側でコンパイル → 時間範囲解決 → プリシーク再生)
@@ -512,6 +615,20 @@ export function MmlEditor({
           endColumn: selection.endColumn,
         });
       }
+    });
+
+    // NOTE PREVIEW: テキスト変更 (タイピング / ペースト / Undo 等) を集計し、
+    // 入力停止後 250ms で入力範囲を部分再生する
+    editorInstance.onDidChangeModelContent((e) => {
+      if (!notePreviewEnabledRef.current) return;
+      for (const change of e.changes) {
+        notePreviewChangedRangeRef.current = accumulatePreviewChange(
+          notePreviewChangedRangeRef.current,
+          { rangeOffset: change.rangeOffset, rangeLength: change.rangeLength, textLength: change.text.length },
+        );
+      }
+      if (notePreviewTimerRef.current !== null) window.clearTimeout(notePreviewTimerRef.current);
+      notePreviewTimerRef.current = window.setTimeout(() => fireNotePreviewRef.current(), NOTE_PREVIEW_DEBOUNCE_MS);
     });
 
     // 初期マウント時のカーソル位置・選択範囲解析
@@ -1210,9 +1327,10 @@ export function MmlEditor({
   }, [files, activeFileId, onChangeSongMetadata, onSelectError]);
 
   // 再生中に STOP 表示を担う開始元ボタン (null = 停止中)。
-  // App 側グローバル Ctrl+Enter 等の外部起点 ('none') は PLAY ボタン扱いへフォールバック。
+  // App 側グローバル Ctrl+Enter 等の外部起点 ('none') と NOTE PREVIEW 起点 ('preview') は
+  // PLAY ボタン扱いへフォールバック (プレビュー演奏中も PLAY ボタンで停止できる)。
   const stopSource: 'main' | 'caret' | 'selection' | null = isPlaying
-    ? (playSource === 'none' ? 'main' : playSource)
+    ? (playSource === 'none' || playSource === 'preview' ? 'main' : playSource)
     : null;
   const isMainStopActive = stopSource === 'main';
   const isCaretStopActive = stopSource === 'caret';
@@ -1408,6 +1526,24 @@ export function MmlEditor({
 
             {/* 区切り線 */}
             <div className="h-4 w-px bg-[#363842] mx-0.5" />
+
+            {/* NOTE PREVIEW トグル (打鍵入力の自動部分再生 / デフォルト ON) */}
+            <button
+              onClick={handleToggleNotePreview}
+              className={`h-6 px-2 rounded text-[11px] font-medium border flex items-center gap-1.5 transition-all select-none shrink-0 cursor-pointer ${
+                notePreviewEnabled
+                  ? 'bg-[#00A8FF]/20 text-[#00A8FF] border-[#00A8FF]/60 shadow-[0_0_8px_rgba(0,168,255,0.25)]'
+                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-[#333540] border-[#3E404C]'
+              }`}
+              title={
+                notePreviewEnabled
+                  ? 'NOTE PREVIEW: ON - MML 入力の停止後 (0.25秒)、入力した音符を本来の音長で自動再生します (クリックで OFF)'
+                  : 'NOTE PREVIEW: OFF - MML 入力の自動再生を無効にしています (クリックで ON)'
+              }
+            >
+              <Music className="w-3.5 h-3.5 shrink-0" />
+              <span className="text-[10px] hidden sm:inline">NOTE PREVIEW</span>
+            </button>
 
             {/* 右ペイン開閉トグルボタン */}
             <button

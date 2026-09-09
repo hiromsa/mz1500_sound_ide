@@ -6,8 +6,8 @@
 ---
 
 ## 1. 現在のステータス概要
-- **バージョン**: `v0.0.1-beta.114`（コミット通番＋短縮ハッシュ ハイブリッド方式）
-- **テスト通過状況**: 全 38 テストファイル / 518 件パス + 1 skip（`npm test` / Vitest）
+- **バージョン**: `v0.0.1-beta.116`（コミット通番＋短縮ハッシュ ハイブリッド方式）
+- **テスト通過状況**: 全 39 テストファイル / 543 件パス + 1 skip（`npm test` / Vitest）
 - **型検査状況**: エラー 0 件（`npx tsc -b`）
 - **主要機能の稼働状況**:
   - Web ネイティブ MML コンパイラ（9ch / 17ch / ワークトラック W1〜W99 対応）
@@ -53,6 +53,17 @@
 ---
 
 ## 3. 直近の完了作業（最新）
+
+- **NOTE PREVIEW (打鍵プレビュー) を MML エディタへ新設: 入力停止後 250ms で入力した音符を本来の音長で自動部分再生 (`src/utils/notePreview.ts`, `src/utils/__tests__/notePreview.test.ts`, `src/view/MmlEditor.tsx`, `src/app/App.tsx`, `src/config/version.ts`, [`docs/specification/ui.md`](./specification/ui.md), [`docs/specification/partial_playback.md`](./specification/partial_playback.md))** (2026-09-09):
+  - **背景・ユーザー要望**: 「PLAY ボタン付近(HIDE の左)にチェックボックス(音符アイコン)「NOTE PREVIEW」を追加したい。キャレットの位置に応じた v や o、@PE、@VE などで、キーボードで「cdefgab+#-」を入力したときに、その時点の音を鳴らしてくれる機能。c+ の場合は c でも鳴って + でもなる。c4 の場合は c でも鳴って 4 でもなる。デフォルトON」
+  - **ユーザー確定仕様 (デバウンス方式)**: 打鍵のたびに即発音するのではなく、**入力が一旦停止して 250ms 経過した時点**で、デバウンス期間中に入力された音符・休符トークンを **MML 本来の音長 (Tick ベース)** で 1 回だけ演奏 (例: 0.4 秒間隔で `c4.defga` と打つと全部打ち込んでから `c4. d e f g a` が鳴りだす)。**既存の SELECTION (範囲再生) ロジックを可能な限り流用**。**曲再生中はプレビューしない**。
+  - **対応内容**:
+    1. **ロジック層 (`src/utils/notePreview.ts` 新規・純粋関数)**: Monaco 変更集計 `accumulatePreviewChange` (挿入 / 削除を包含する最小区間へ合算)、トークン開始後方拡張 `expandToTokenStart` (`c4` の `4` 等のトークン継続部分 (臨時記号 / 音長数字 / 付点) のみの入力では始点を音符・休符トークン先頭へ戻し `c4` 全体を演奏。空白 / コマンド数値 (`o4` / `v10` / `@VE1` / `D-8` 等・大文字は音符でない) / 行頭 / コメント開始 (`;` / `/`) を跨がない。テキスト範囲外の異常オフセットは拡張せずクランプ)、定数 `NOTE_PREVIEW_DEBOUNCE_MS = 250`。
+    2. **`MmlEditor.tsx`**: Row 1 トランスポートバーの `HIDE` 左に `🎵 NOTE PREVIEW` トグル新設 (`Music` アイコン + ラベル、**デフォルト ON**、localStorage `mz1500_note_preview_enabled` で永続化・ON 時シアン発光)。Monaco `onDidChangeModelContent` で変更を蓄積し 250ms デバウンス発火 → `expandToTokenStart` で始点補正 → 新 props `onNotePreviewPlay` で App へ通知 (`kind: 'selection'` 要求)。`playSource` へ `'preview'` を追加し、プレビュー演奏中は既存フォールバック機構により **PLAY ボタンが STOP 表示** (押下で停止可・FROM CARET / SELECTION は無効化)。タブ切替 / トグル OFF / unmount 時に未発火タイマー・蓄積を破棄。
+    3. **`App.tsx`**: `handleNotePreviewPlay` 新設 (**サイレント実行**: コンパイル → `resolvePlaybackRange` → `Player` 部分再生。CONSOLE ログ / PROBLEMS 更新 / FAILED 演出なし)。**他の開始元 (PLAY / FROM CARET / SELECTION) 演奏中は無視** (打鍵で演奏を止めない)、プレビュー演奏中の連続発音は前を止めて上書き開始 (`isNotePreviewPlayingRef`・終了時は `isPlaying` 変化で自動リセット)。入力途中のコンパイルエラー・範囲内に音符・休符が無い場合 (コマンド入力のみ等) は無音で何もしない。
+  - **テスト (+24)**: `notePreview.test.ts` (新規) — デバウンス時間 250ms 固定、変更集計 (単一挿入 / 削除 / 複数合算 / 元テキスト長を含む拡張 / null・幅 0 の扱い)、トークン拡張 (`c4` の `4` → `c` / `c+` の `+` → `c` / `c+4.` の `.` → `c` / `r8` の `8` → `r` / 挿入済み音符直後はトークン開始へ拡張 / 空白直後・`v10` / `o4` / `@VE1` / `D-8` の数値は拡張なし / コメント内・行頭・改行・範囲外クランプ・空テキスト)。
+  - **検証**: `npx tsc -b` エラーゼロ / `npm test` 全 39 ファイル・543 件合格 + 1 skip (+24) / `npm run lint` エラーゼロ (既存警告 10 は変更なし) / `npm run build` 成功。
+  - **制限・補足**: 大文字入力 (CapsLock 等) は発音対象外 (MML 仕様上音符は小文字 a-g のみ・大文字 `D` はディチューン等のコマンド)。連符内音符は SELECTION 解決に準拠しトークン先頭単位で判定。プレビュー演奏は範囲終端で消音・停止するためループ (`L` / `[` `]`) は 1 周分のみ再生。
 
 - **TRACK MONITOR のトラックミュート解除後に音量が初期より小さくなる問題を修正: 音量とミュートの独立管理へ分離 (`src/core/player/AudioFrameMixer.ts`, `src/core/player/AudioEngine.ts`, `src/core/player/Player.ts`, `src/app/App.tsx`, `src/core/player/__tests__/AudioFrameMixer.test.ts`, `src/core/player/__tests__/Player.test.ts`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-09):
   - **背景・ユーザー報告**: 「TRACK MONITORを何も操作していない場合の初期音量と、一回ミュートしてから再度ONにした場合とで音量が異なります。前者の方が大きい音です。」

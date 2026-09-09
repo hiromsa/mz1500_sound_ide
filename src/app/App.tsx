@@ -492,6 +492,45 @@ function App() {
     appendLog('[AUDIO] Playback stopped.');
   }, [appendLog]);
 
+  // NOTE PREVIEW (打鍵プレビュー) 再生中フラグ。プレビュー演奏中の再発音は上書き開始し、
+  // 他の開始元 (PLAY / FROM CARET / SELECTION) の演奏中はプレビューしない。
+  const isNotePreviewPlayingRef = useRef(false);
+  useEffect(() => {
+    if (!isPlaying) {
+      isNotePreviewPlayingRef.current = false;
+    }
+  }, [isPlaying]);
+
+  // NOTE PREVIEW ハンドラ (入力停止後の自動部分再生。サイレント実行: ログ / PROBLEMS / FAILED 演出なし)
+  const handleNotePreviewPlay = useCallback(async (request: PlaybackRangeRequest) => {
+    // 曲再生中 (プレビュー以外の開始元) は打鍵で演奏を止めない
+    if (isPlayingRef.current && !isNotePreviewPlayingRef.current) return;
+
+    const { source } = mmlSourceRef.current;
+    const result = new MmlCompiler().compile(source);
+    // 入力途中のコンパイルエラーは静かに無視する (PROBLEMS / CONSOLE を更新しない)
+    if (!result.success || result.musicData === null || result.map === null) return;
+
+    // 入力範囲をトークン単位の時間範囲へ解決 (SELECTION と同一経路)。含まれるイベントが無ければ無音
+    const range = resolvePlaybackRange(result.map, request, source);
+    if (range === null) return;
+
+    const player = ensurePlayer();
+    try {
+      if (isNotePreviewPlayingRef.current) {
+        // 前のプレビューが鳴り終わる前に次の発音が来たら上書き開始する
+        player.stop();
+      }
+      isNotePreviewPlayingRef.current = true;
+      await player.play(result.musicData, isLoopEnabled, playbackMode, range);
+      setPlaybackInfo({ map: result.map, source });
+      setIsPlaying(true);
+    } catch {
+      // プレビュー失敗も静かに無視する
+      isNotePreviewPlayingRef.current = false;
+    }
+  }, [ensurePlayer, isLoopEnabled, playbackMode]);
+
   // PLAY/STOP トグルハンドラ (再生中なら停止、停止中なら再生)
   const handleTogglePlay = useCallback(() => {
     if (isPlayingRef.current) {
@@ -707,6 +746,7 @@ function App() {
             onStop={handleStop}
             isPlayFailed={isPlayFailed}
             onPlayRangeRequest={(request) => { void handlePlay(request); }}
+            onNotePreviewPlay={(request) => { void handleNotePreviewPlay(request); }}
             activeTabContext={activeTabContext}
             activeFmTone={activeFmTone}
             activePitchEnv={activePitchEnv}
