@@ -140,6 +140,9 @@ const BOTTOM_COLLAPSED_HEIGHT_PX = 28;
 /** 再生中にトランスポート各ボタン (PLAY / FROM CARET / SELECTION) へ適用する STOP 表示の共通スタイル (High-Impact Red) */
 const playingStopButtonClass = 'bg-red-950/60 text-red-300 border-red-500/70 shadow-[0_0_10px_rgba(239,68,68,0.35)] hover:bg-red-900/70 hover:text-red-200';
 
+/** 他ボタンが再生停止を担当している間のトランスポートボタン無効化スタイル */
+const disabledTransportButtonClass = 'opacity-35 cursor-not-allowed text-zinc-500 bg-[#252730] border-transparent';
+
 interface MmlEditorProps {
   songMetadata: SongMetadata;
   onChangeSongMetadata: (metadata: SongMetadata) => void;
@@ -305,6 +308,17 @@ export function MmlEditor({
   const [partialPlayMode, setPartialPlayMode] = useState<'none' | 'caret' | 'selection'>('none');
   const partialPlayTimerRef = useRef<number | null>(null);
 
+  // 再生開始元トラッキング ('none' = 停止中 / App 側グローバルショートカット起点)。
+  // 再生中は開始元ボタンのみ STOP 表示とし、他のトランスポートボタンを無効化する。
+  const [playSource, setPlaySource] = useState<'none' | 'main' | 'caret' | 'selection'>('none');
+
+  // 再生停止時に開始元をリセット (Ctrl+Enter・自然終了・別ボタンからの停止を含む)
+  useEffect(() => {
+    if (!isPlaying) {
+      setPlaySource('none');
+    }
+  }, [isPlaying]);
+
   const editorContainerRef = useRef<HTMLDivElement>(null);
   const isUpdatingFromExternalRef = useRef<boolean>(false);
 
@@ -321,7 +335,6 @@ export function MmlEditor({
   const onRequestNewToneRef = useRef(onRequestNewTone);
   const onRequestNewVolEnvRef = useRef(onRequestNewVolEnv);
   const onRequestNewPitchEnvRef = useRef(onRequestNewPitchEnv);
-  const onTogglePlayRef = useRef(onTogglePlay);
   const onFocusEditorRef = useRef(onFocusEditor);
   const onCaretContextChangeRef = useRef(onCaretContextChange);
   const onAppendLogRef = useRef(onAppendLog);
@@ -337,7 +350,6 @@ export function MmlEditor({
   useEffect(() => { onRequestNewToneRef.current = onRequestNewTone; }, [onRequestNewTone]);
   useEffect(() => { onRequestNewVolEnvRef.current = onRequestNewVolEnv; }, [onRequestNewVolEnv]);
   useEffect(() => { onRequestNewPitchEnvRef.current = onRequestNewPitchEnv; }, [onRequestNewPitchEnv]);
-  useEffect(() => { onTogglePlayRef.current = onTogglePlay; }, [onTogglePlay]);
   useEffect(() => { onFocusEditorRef.current = onFocusEditor; }, [onFocusEditor]);
   useEffect(() => { onCaretContextChangeRef.current = onCaretContextChange; }, [onCaretContextChange]);
   useEffect(() => { onAppendLogRef.current = onAppendLog; }, [onAppendLog]);
@@ -386,12 +398,45 @@ export function MmlEditor({
     });
   }, [triggerPartialPlayFeedback]);
 
-  const playFromCaretRef = useRef(handlePlayFromCaret);
-  const playSelectionRef = useRef(handlePlaySelection);
+  /** PLAY ボタン / Monaco 内 Ctrl+Enter 起点: 再生開始 (開始元を記録) または再生停止 */
+  const handleMainPlayToggle = useCallback(() => {
+    if (isPlaying) {
+      onStop?.();
+      return;
+    }
+    setPlaySource('main');
+    onTogglePlay?.();
+  }, [isPlaying, onTogglePlay, onStop]);
+
+  /** FROM CARET ボタン / Alt+Enter 起点: キャレット位置からの部分再生開始 (開始元を記録) または再生停止 */
+  const handleCaretPlayToggle = useCallback(() => {
+    if (isPlaying) {
+      onStop?.();
+      return;
+    }
+    setPlaySource('caret');
+    handlePlayFromCaret();
+  }, [isPlaying, onStop, handlePlayFromCaret]);
+
+  /** SELECTION ボタン / Ctrl+Shift+Enter 起点: 選択範囲の部分再生開始 (開始元を記録) または再生停止 */
+  const handleSelectionPlayToggle = useCallback(() => {
+    if (isPlaying) {
+      onStop?.();
+      return;
+    }
+    setPlaySource('selection');
+    handlePlaySelection();
+  }, [isPlaying, onStop, handlePlaySelection]);
+
+  // Monaco addCommand 登録用の ref (stale closure 回避・マウント時に1回のみ登録されるため)
+  const mainPlayToggleRef = useRef(handleMainPlayToggle);
+  const caretPlayToggleRef = useRef(handleCaretPlayToggle);
+  const selectionPlayToggleRef = useRef(handleSelectionPlayToggle);
   useEffect(() => {
-    playFromCaretRef.current = handlePlayFromCaret;
-    playSelectionRef.current = handlePlaySelection;
-  }, [handlePlayFromCaret, handlePlaySelection]);
+    mainPlayToggleRef.current = handleMainPlayToggle;
+    caretPlayToggleRef.current = handleCaretPlayToggle;
+    selectionPlayToggleRef.current = handleSelectionPlayToggle;
+  }, [handleMainPlayToggle, handleCaretPlayToggle, handleSelectionPlayToggle]);
 
 
   // MMLキャレットコンテキスト変更を親コンポーネント (App) へ通知
@@ -411,9 +456,9 @@ export function MmlEditor({
     playbackHighlighterRef.current = new MmlPlaybackHighlighter(editorInstance);
     onEditorMount?.(editorInstance);
 
-    // Ctrl + Enter で再生/停止トグル (ref経由で最新のハンドラを実行して確実に停止可能に)
+    // Ctrl + Enter で再生/停止トグル (開始元を PLAY ボタンとして記録。ref経由で最新のハンドラを実行して確実に停止可能に)
     editorInstance.addCommand(_monaco.KeyMod.CtrlCmd | _monaco.KeyCode.Enter, () => {
-      onTogglePlayRef.current?.();
+      mainPlayToggleRef.current();
     });
 
     // Ctrl + S で保存 (ref経由で最新の handleSaveFile を実行)
@@ -421,16 +466,16 @@ export function MmlEditor({
       void saveFileRef.current?.();
     });
 
-    // Alt + Enter でキャレット位置から再生
+    // Alt + Enter でキャレット位置から再生 (開始元を FROM CARET ボタンとして記録)
     editorInstance.addCommand(_monaco.KeyMod.Alt | _monaco.KeyCode.Enter, () => {
-      playFromCaretRef.current?.();
+      caretPlayToggleRef.current();
     });
 
-    // Ctrl + Shift + Enter で選択範囲のみ再生
+    // Ctrl + Shift + Enter で選択範囲のみ再生 (開始元を SELECTION ボタンとして記録)
     editorInstance.addCommand(
       _monaco.KeyMod.CtrlCmd | _monaco.KeyMod.Shift | _monaco.KeyCode.Enter,
       () => {
-        playSelectionRef.current?.();
+        selectionPlayToggleRef.current();
       },
     );
 
@@ -656,14 +701,14 @@ export function MmlEditor({
       ? ed.getModel()!.getValueInRange(activeSelection).length
       : 0;
 
-    // 1. 部分再生 (キャレット位置から再生 / 選択範囲のみ再生)
+    // 1. 部分再生 (キャレット位置から再生 / 選択範囲のみ再生) ※開始元ボタンを記録して再生中は STOP 表示に切替
     entries.push(
       {
         id: 'play-from-caret',
         label: 'キャレット位置から再生',
         icon: Play,
         shortcut: 'Alt+Enter',
-        onSelect: () => handlePlayFromCaret(),
+        onSelect: () => caretPlayToggleRef.current(),
       },
       {
         id: 'play-selection',
@@ -673,7 +718,7 @@ export function MmlEditor({
         icon: TextSelect,
         shortcut: 'Ctrl+Shift+Enter',
         disabled: !isSelectionActive,
-        onSelect: () => handlePlaySelection(),
+        onSelect: () => selectionPlayToggleRef.current(),
       },
     );
     entries.push({ type: 'separator' });
@@ -762,7 +807,7 @@ export function MmlEditor({
     );
 
     setContextMenu({ x: e.clientX, y: e.clientY, entries });
-  }, [handleCut, handleCopy, handlePaste, handlePlayFromCaret, handlePlaySelection]);
+  }, [handleCut, handleCopy, handlePaste]);
 
   const activeFile = files.find(f => f.id === activeFileId) || files[0];
 
@@ -1164,6 +1209,15 @@ export function MmlEditor({
     onSelectError?.(item);
   }, [files, activeFileId, onChangeSongMetadata, onSelectError]);
 
+  // 再生中に STOP 表示を担う開始元ボタン (null = 停止中)。
+  // App 側グローバル Ctrl+Enter 等の外部起点 ('none') は PLAY ボタン扱いへフォールバック。
+  const stopSource: 'main' | 'caret' | 'selection' | null = isPlaying
+    ? (playSource === 'none' ? 'main' : playSource)
+    : null;
+  const isMainStopActive = stopSource === 'main';
+  const isCaretStopActive = stopSource === 'caret';
+  const isSelectionStopActive = stopSource === 'selection';
+
   return (
 
     <div ref={editorContainerRef} className="flex flex-col h-full w-full bg-[#090a0f] overflow-hidden relative">
@@ -1251,83 +1305,101 @@ export function MmlEditor({
 
           {/* トランスポートアクション群 (右寄せ) */}
           <div className="flex items-center gap-1.5 ml-auto shrink-0 pr-1">
-            {/* PLAY / STOP トグルボタン (再生中は STOP 表示に切替 / Ctrl+Enter 連動) */}
+            {/* PLAY / STOP トグルボタン (再生中は開始元が本ボタンの場合のみ STOP 表示 / Ctrl+Enter 連動) */}
             <button
-              onClick={onTogglePlay}
-              className={`h-6 px-2.5 rounded text-[11px] font-semibold border transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
-                isPlayFailed
-                  ? 'bg-red-950/70 text-red-300 border-red-500 shadow-[0_0_12px_rgba(239,68,68,0.5)] animate-shake'
-                  : isPlaying
+              onClick={handleMainPlayToggle}
+              disabled={stopSource !== null && !isMainStopActive}
+              className={`h-6 px-2.5 rounded text-[11px] font-semibold border transition-all flex items-center gap-1.5 shrink-0 ${
+                stopSource !== null && !isMainStopActive
+                  ? disabledTransportButtonClass
+                  : isMainStopActive
                     ? playingStopButtonClass
-                    : 'bg-[#2A2C35] hover:bg-[#343640] active:bg-[#404250] text-[#00A8FF] hover:text-[#33BFFF] border-[#3E404C] hover:border-[#00A8FF]/40'
+                    : isPlayFailed
+                      ? 'bg-red-950/70 text-red-300 border-red-500 shadow-[0_0_12px_rgba(239,68,68,0.5)] animate-shake cursor-pointer'
+                      : 'bg-[#2A2C35] hover:bg-[#343640] active:bg-[#404250] text-[#00A8FF] hover:text-[#33BFFF] border-[#3E404C] hover:border-[#00A8FF]/40 cursor-pointer'
               }`}
-              title={isPlayFailed ? "ビルドまたは再生に失敗しました" : isPlaying ? "停止 (Ctrl+Enter)" : "MMLをビルドして再生 (Ctrl+Enter)"}
+              title={
+                stopSource !== null && !isMainStopActive
+                  ? '再生中 (再生を開始したボタンで停止できます)'
+                  : isMainStopActive
+                    ? '停止 (Ctrl+Enter)'
+                    : isPlayFailed
+                      ? 'ビルドまたは再生に失敗しました'
+                      : 'MMLをビルドして再生 (Ctrl+Enter)'
+              }
             >
-              {isPlayFailed ? (
-                <AlertCircle className="w-3 h-3 text-red-400 shrink-0" />
-              ) : isPlaying ? (
+              {isMainStopActive ? (
                 <Square className="w-3 h-3 fill-current" />
+              ) : isPlayFailed ? (
+                <AlertCircle className="w-3 h-3 text-red-400 shrink-0" />
               ) : (
                 <Play className="w-3 h-3 fill-current" />
               )}
-              <span>{isPlayFailed ? 'FAILED' : isPlaying ? 'STOP' : 'PLAY'}</span>
+              <span>{isMainStopActive ? 'STOP' : isPlayFailed ? 'FAILED' : 'PLAY'}</span>
             </button>
 
             {/* 区切り線 */}
             <div className="h-4 w-px bg-[#363842] mx-0.5" />
 
-            {/* FROM CARET ボタン (部分再生 / 再生中は STOP に切替) */}
+            {/* FROM CARET ボタン (部分再生 / 再生中は開始元が本ボタンの場合のみ STOP 表示) */}
             <button
-              onClick={isPlaying ? onStop : handlePlayFromCaret}
-              className={`h-6 px-2 rounded text-[11px] font-medium border flex items-center gap-1.5 transition-all cursor-pointer select-none shrink-0 ${
-                isPlaying
-                  ? playingStopButtonClass
-                  : partialPlayMode === 'caret'
-                    ? 'bg-[#00A8FF]/25 text-[#00A8FF] border-[#00A8FF] shadow-[0_0_8px_rgba(0,168,255,0.4)] animate-pulse'
-                    : 'bg-[#2A2C35] hover:bg-[#343640] text-zinc-300 hover:text-white border-[#3E404C] hover:border-[#00A8FF]/50'
+              onClick={handleCaretPlayToggle}
+              disabled={stopSource !== null && !isCaretStopActive}
+              className={`h-6 px-2 rounded text-[11px] font-medium border flex items-center gap-1.5 transition-all select-none shrink-0 ${
+                stopSource !== null && !isCaretStopActive
+                  ? disabledTransportButtonClass
+                  : isCaretStopActive
+                    ? playingStopButtonClass
+                    : partialPlayMode === 'caret'
+                      ? 'bg-[#00A8FF]/25 text-[#00A8FF] border-[#00A8FF] shadow-[0_0_8px_rgba(0,168,255,0.4)] animate-pulse cursor-pointer'
+                      : 'bg-[#2A2C35] hover:bg-[#343640] text-zinc-300 hover:text-white border-[#3E404C] hover:border-[#00A8FF]/50 cursor-pointer'
               }`}
               title={
-                isPlaying
-                  ? '再生を停止'
-                  : 'キャレット位置から再生 (Alt+Enter) - キャレット直前までの設定コマンドを適用して再生'
+                stopSource !== null && !isCaretStopActive
+                  ? '再生中 (再生を開始したボタンで停止できます)'
+                  : isCaretStopActive
+                    ? '再生を停止'
+                    : 'キャレット位置から再生 (Alt+Enter) - キャレット直前までの設定コマンドを適用して再生'
               }
             >
-              {isPlaying ? (
+              {isCaretStopActive ? (
                 <Square className="w-3 h-3 fill-current" />
               ) : (
                 <Play className={`w-3 h-3 fill-current ${partialPlayMode === 'caret' ? 'text-[#00A8FF]' : 'text-zinc-400'}`} />
               )}
-              <span>{isPlaying ? 'STOP' : 'FROM CARET'}</span>
+              <span>{isCaretStopActive ? 'STOP' : 'FROM CARET'}</span>
             </button>
 
-            {/* SELECTION ボタン (部分再生 / 再生中は STOP に切替し未選択でも押下可能) */}
+            {/* SELECTION ボタン (部分再生 / 再生中は開始元が本ボタンの場合のみ STOP 表示) */}
             <button
-              onClick={isPlaying ? onStop : handlePlaySelection}
-              disabled={!isPlaying && !hasSelection}
+              onClick={handleSelectionPlayToggle}
+              disabled={(stopSource !== null && !isSelectionStopActive) || (!isPlaying && !hasSelection)}
               className={`h-6 px-2 rounded text-[11px] font-medium border flex items-center gap-1.5 transition-all select-none shrink-0 ${
-                isPlaying
+                isSelectionStopActive
                   ? playingStopButtonClass
-                  : !hasSelection
-                    ? 'opacity-35 cursor-not-allowed text-zinc-500 bg-[#252730] border-transparent'
+                  : (stopSource !== null && !isSelectionStopActive) || (!isPlaying && !hasSelection)
+                    ? disabledTransportButtonClass
                     : partialPlayMode === 'selection'
                       ? 'bg-emerald-500/25 text-emerald-400 border-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)] animate-pulse cursor-pointer'
                       : 'bg-[#2A2C35] hover:bg-[#343640] text-zinc-300 hover:text-white border-[#3E404C] hover:border-emerald-500/50 cursor-pointer'
               }`}
               title={
-                isPlaying
-                  ? '再生を停止'
-                  : hasSelection
-                    ? `選択範囲のみ再生 (Ctrl+Shift+Enter) - ${selectionSummary?.charCount ?? 0}文字選択中`
-                    : '選択範囲のみ再生 (Ctrl+Shift+Enter) - テキストを選択してください'
+                stopSource !== null && !isSelectionStopActive
+                  ? '再生中 (再生を開始したボタンで停止できます)'
+                  : isSelectionStopActive
+                    ? '再生を停止'
+                    : hasSelection
+                      ? `選択範囲のみ再生 (Ctrl+Shift+Enter) - ${selectionSummary?.charCount ?? 0}文字選択中`
+                      : '選択範囲のみ再生 (Ctrl+Shift+Enter) - テキストを選択してください'
               }
             >
-              {isPlaying ? (
+              {isSelectionStopActive ? (
                 <Square className="w-3 h-3 fill-current" />
               ) : (
                 <TextSelect className={`w-3 h-3 shrink-0 ${hasSelection ? 'text-emerald-400' : 'text-zinc-500'}`} />
               )}
-              <span>{isPlaying ? 'STOP' : 'SELECTION'}</span>
-              {!isPlaying && hasSelection && selectionSummary && (
+              <span>{isSelectionStopActive ? 'STOP' : 'SELECTION'}</span>
+              {!isSelectionStopActive && hasSelection && selectionSummary && (
                 <span className="text-[9px] px-1 rounded bg-emerald-950/70 text-emerald-300 border border-emerald-700/50 font-mono">
                   {selectionSummary.charCount}
                 </span>

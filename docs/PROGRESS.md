@@ -6,7 +6,7 @@
 ---
 
 ## 1. 現在のステータス概要
-- **バージョン**: `v0.0.1-beta.112`（コミット通番＋短縮ハッシュ ハイブリッド方式）
+- **バージョン**: `v0.0.1-beta.113`（コミット通番＋短縮ハッシュ ハイブリッド方式）
 - **テスト通過状況**: 全 38 テストファイル / 515 件パス + 1 skip（`npm test` / Vitest）
 - **型検査状況**: エラー 0 件（`npx tsc -b`）
 - **主要機能の稼働状況**:
@@ -53,6 +53,15 @@
 ---
 
 ## 3. 直近の完了作業（最新）
+
+- **トランスポート開始元限定 STOP 化: 再生中は開始元ボタンのみ STOP 表示、他は無効化 (`src/view/MmlEditor.tsx`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-09):
+  - **背景・ユーザー要望**: 「PLAY ボタンを押したときは、PLAYボタンのみSTOPに変化し、他は無効にしてください。」「STOPが3つ並ぶと少しうるさい感じがします。」「FROM CARET、SELECTIONも同様です。」
+  - **対応内容**:
+    - **再生開始元トラッキング**: `playSource` state (`'none' | 'main' | 'caret' | 'selection'`) を新設。PLAY / FROM CARET / SELECTION の各ボタン押下、Monaco 内ショートカット (`Ctrl+Enter` / `Alt+Enter` / `Ctrl+Shift+Enter`)、右クリックコンテキストメニューの全経路で開始元を記録 (`handleMainPlayToggle` / `handleCaretPlayToggle` / `handleSelectionPlayToggle` を新設し ref 経由で Monaco `addCommand` に接続)。再生停止 (`isPlaying` → false: `Ctrl+Enter`・自然終了・開始元ボタン押下含む) で自動リセット。
+    - **表示ロジック**: `stopSource` 計算 (`return` 直前) により、**再生中は開始元ボタンのみ `■ STOP` 表示 (赤系 `playingStopButtonClass`) となり押下で停止、他の 2 ボタンは薄暗グレー無効化スタイル (`disabledTransportButtonClass` 新設・SELECTION 未選択時と共通化) + `disabled` 属性**で押下不可。STOP が 3 つ並ぶ冗長表示を解消。
+    - **フォールバック**: App 側グローバル `Ctrl+Enter` (window keydown) 等のエディタ外起点 (`playSource === 'none'`) は **PLAY ボタンを STOP 表示**にフォールバックし停止可能を保証。
+    - **整理**: 旧 `onTogglePlayRef` を削除 (Monaco `Ctrl+Enter` は `mainPlayToggleRef` に接続)。右クリックメニューの部分再生項目も開始元記録対応ハンドラへ接続。
+  - **テスト**: `npx tsc -b` エラーゼロ / `npm test` 全 515 件合格 + 1 skip / `npm run lint` エラーゼロ (既存 UI 警告 10 のみ) / `npm run build` 成功。
 
 - **トランスポートボタン整理: ヘッダーの LOOP / PLAY / STOP を廃止し MML エディタへ一元化、PLAY / FROM CARET / SELECTION を再生中 STOP トグル化 (`src/app/App.tsx`, `src/view/MmlEditor.tsx`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-09):
   - **背景・ユーザー要望**:
