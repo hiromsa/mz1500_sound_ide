@@ -65,7 +65,7 @@ Monaco と同一の 1-based 行 / 列座標系で部分再生要求を受け取�
 - `App.handlePlay(request?)` が 1 回のコンパイルで「エラー診断 → MmlMap 時間範囲解決 → Player 再生」までを実行する。部分再生でも都度再コンパイルするため、編集直後のソースに対して常に正確な位置解決が行われる。
 - 実行ログ例: `[AUDIO] Playback started (Z80 DRIVER / Web Audio / PARTIAL 1.00s - 2.50s (8 events))`。
 - 再生中の MML ハイライト (`mmlPlaybackTracker`) は `getTrackOffset` ベースのため、部分再生中もそのまま動作する。
-- **NOTE PREVIEW (打鍵プレビュー / 2026-09-09 新設)**: MML エディタへの入力が停止してから 250ms 経過した時点で、デバウンス期間中に編集されたオフセット区間を `src/utils/notePreview.ts` の `expandToTokenStart` により音符・休符トークン開始位置へ後方拡張し、`kind: 'selection'` として同一の解決・再生経路へ渡す。サイレント実行 (CONSOLE ログ / PROBLEMS 更新 / FAILED 演出なし)。他の開始元 (PLAY / FROM CARET / SELECTION) の演奏中は発火せず、プレビュー演奏中の連続発音は上書き開始する。範囲集計 (`accumulatePreviewChange`) と拡張 (`expandToTokenStart`) は純粋関数として `src/utils/__tests__/notePreview.test.ts` (24 ケース) で検証。UI 仕様は [`ui.md`](./ui.md) §エディタ内トランスポート参照。
+- **NOTE PREVIEW (打鍵プレビュー / 2026-09-09 新設・同日強化)**: MML エディタへの入力が停止してから 500ms 経過した時点で、デバウンス期間中に編集されたオフセット区間を `src/utils/notePreview.ts` の `expandToTokenStart` により音符・休符トークン開始位置へ後方拡張し、`kind: 'note-preview'` (+ 入力トークンの所属トラック名 `trackName`) として同一の解決・再生経路へ渡す。**入力チャンネルのみ発音** (`resolvePlaybackRange` 内 `resolveNotePreviewRange` で `MmlMapTrack.id` 一致トラックのみ解決し、他チャンネルの同時刻イベントはプリシークのみで発音しない)。**空白のみの変更 (スペース・タブ・改行の挿入) は実質変更として扱わず無音** (`accumulatePreviewChange` の `hasContentChange`)。サイレント実行 (CONSOLE ログ / PROBLEMS 更新 / FAILED 演出なし)。他の開始元 (PLAY / FROM CARET / SELECTION) の演奏中は発火せず、プレビュー演奏中の連続発音は上書き開始する。範囲集計・拡張は純粋関数として `src/utils/__tests__/notePreview.test.ts` (26 ケース)、`note-preview` 経路は `src/utils/__tests__/mmlSelectionResolver.test.ts` (4 ケース) で検証。UI 仕様は [`ui.md`](./ui.md) §エディタ内トランスポート参照。
 
 ## 4. 制限事項・将来拡張
 

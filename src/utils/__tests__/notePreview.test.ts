@@ -9,32 +9,47 @@ import {
 /** NOTE PREVIEW (打鍵プレビュー) ロジックの検証。 */
 
 describe('NOTE_PREVIEW_DEBOUNCE_MS', () => {
-  it('デバウンス時間は 250ms (ユーザー確定仕様)', () => {
-    expect(NOTE_PREVIEW_DEBOUNCE_MS).toBe(250);
+  it('デバウンス時間は 500ms (ユーザー確定仕様)', () => {
+    expect(NOTE_PREVIEW_DEBOUNCE_MS).toBe(500);
   });
 });
 
 describe('accumulatePreviewChange', () => {
-  it('初回の挿入変更から区間を生成する', () => {
-    const range = accumulatePreviewChange(null, { rangeOffset: 10, rangeLength: 0, textLength: 2 });
-    expect(range).toEqual({ startOffset: 10, endOffset: 12 });
+  it('初回の挿入変更から区間を生成する (実質変更あり)', () => {
+    const range = accumulatePreviewChange(null, { rangeOffset: 10, rangeLength: 0, text: 'c4' });
+    expect(range).toEqual({ startOffset: 10, endOffset: 12, hasContentChange: true });
   });
 
-  it('初回の削除変更 (textLength 0) から区間を生成する', () => {
-    const range = accumulatePreviewChange(null, { rangeOffset: 5, rangeLength: 3, textLength: 0 });
-    expect(range).toEqual({ startOffset: 5, endOffset: 8 });
+  it('初回の削除変更 (空テキスト) から区間を生成する (実質変更あり)', () => {
+    const range = accumulatePreviewChange(null, { rangeOffset: 5, rangeLength: 3, text: '' });
+    expect(range).toEqual({ startOffset: 5, endOffset: 8, hasContentChange: true });
   });
 
-  it('複数変更を包含する最小区間へ合算する', () => {
-    let range = accumulatePreviewChange(null, { rangeOffset: 20, rangeLength: 0, textLength: 1 });
-    range = accumulatePreviewChange(range, { rangeOffset: 12, rangeLength: 0, textLength: 3 });
-    expect(range).toEqual({ startOffset: 12, endOffset: 21 });
+  it('空白のみの挿入は実質変更として扱わない (c4 の後にスペースを入れても鳴らさない)', () => {
+    const range = accumulatePreviewChange(null, { rangeOffset: 8, rangeLength: 0, text: ' ' });
+    expect(range.hasContentChange).toBe(false);
   });
 
-  it('削除を挟む変更でも元テキスト長を含めて区間を拡張する', () => {
-    let range = accumulatePreviewChange(null, { rangeOffset: 8, rangeLength: 0, textLength: 1 });
-    range = accumulatePreviewChange(range, { rangeOffset: 10, rangeLength: 4, textLength: 0 });
-    expect(range).toEqual({ startOffset: 8, endOffset: 14 });
+  it('タブ・改行のみの挿入も実質変更として扱わない', () => {
+    const range = accumulatePreviewChange(null, { rangeOffset: 8, rangeLength: 0, text: ' \t\n' });
+    expect(range.hasContentChange).toBe(false);
+  });
+
+  it('置換 (削除を含む変更) は挿入テキストが空白でも実質変更として扱う', () => {
+    const range = accumulatePreviewChange(null, { rangeOffset: 8, rangeLength: 2, text: ' ' });
+    expect(range.hasContentChange).toBe(true);
+  });
+
+  it('複数変更を包含する最小区間へ合算し、実質変更は保持される', () => {
+    let range = accumulatePreviewChange(null, { rangeOffset: 20, rangeLength: 0, text: ' ' });
+    range = accumulatePreviewChange(range, { rangeOffset: 12, rangeLength: 0, text: 'e' });
+    expect(range).toEqual({ startOffset: 12, endOffset: 21, hasContentChange: true });
+  });
+
+  it('実質変更なしの変更のみの場合は hasContentChange が false のまま', () => {
+    let range = accumulatePreviewChange(null, { rangeOffset: 20, rangeLength: 0, text: '  ' });
+    range = accumulatePreviewChange(range, { rangeOffset: 12, rangeLength: 0, text: '\n' });
+    expect(range).toEqual({ startOffset: 12, endOffset: 22, hasContentChange: false });
   });
 });
 
@@ -43,12 +58,12 @@ describe('hasPreviewChanges', () => {
     expect(hasPreviewChanges(null)).toBe(false);
   });
 
-  it('幅 0 の区間は変更なしとして扱う', () => {
-    expect(hasPreviewChanges({ startOffset: 5, endOffset: 5 })).toBe(false);
+  it('実質変更 (非空白の挿入 / 削除・置換) を含む区間は発音対象', () => {
+    expect(hasPreviewChanges({ startOffset: 5, endOffset: 7, hasContentChange: true })).toBe(true);
   });
 
-  it('幅のある区間は変更ありとして扱う', () => {
-    expect(hasPreviewChanges({ startOffset: 5, endOffset: 6 })).toBe(true);
+  it('実質変更を含まない区間 (空白のみの挿入) は発音対象としない', () => {
+    expect(hasPreviewChanges({ startOffset: 5, endOffset: 6, hasContentChange: false })).toBe(false);
   });
 });
 

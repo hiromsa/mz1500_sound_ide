@@ -16,6 +16,69 @@ function compileMap(mml: string): MmlMap {
   return result.map!;
 }
 
+describe('resolvePlaybackRange (note-preview / NOTE PREVIEW 打鍵プレビュー)', () => {
+  it('指定トラックのイベントのみを解決する (他チャンネルの同時刻イベントは含めない)', () => {
+    // 列位置: c=10 (1-based) / c のトークン区間 [10, 11)
+    const map = compileMap('P1 o4 l4 c\nP2 o4 l4 c');
+
+    const range = resolvePlaybackRange(map, {
+      kind: 'note-preview',
+      trackName: 'P1',
+      startLine: 1,
+      startColumn: 10,
+      endLine: 1,
+      endColumn: 11,
+    });
+    expect(range).not.toBeNull();
+    expect(range!.startFrame).toBe(0);
+    expect(range!.endFrame).toBe(30); // c (l4 = 1拍 = 30 フレーム / t120 既定) の終端
+    expect(range!.eventCount).toBe(1); // P1 の c のみ (P2 の同時刻 c は含まれない)
+  });
+
+  it('範囲を含まない隣接トークン (次の音符) は対象外', () => {
+    // 列位置: c=10, d=12 (1-based)
+    const map = compileMap('P1 o4 l4 c d');
+    // c4 の 4 を入力 → 始点を c のトークン開始へ拡張した状態を想定 (範囲は c トークンまで)
+    const range = resolvePlaybackRange(map, {
+      kind: 'note-preview',
+      trackName: 'P1',
+      startLine: 1,
+      startColumn: 10,
+      endLine: 1,
+      endColumn: 11,
+    });
+    expect(range).not.toBeNull();
+    expect(range!.startFrame).toBe(0);
+    expect(range!.endFrame).toBe(30);
+    expect(range!.eventCount).toBe(1); // d (startColumn 12) は含まれない
+  });
+
+  it('指定トラックが MmlMap に存在しない場合は null (W トラック等)', () => {
+    const map = compileMap('P1 o4 l4 c');
+    const range = resolvePlaybackRange(map, {
+      kind: 'note-preview',
+      trackName: 'W1',
+      startLine: 1,
+      startColumn: 10,
+      endLine: 1,
+      endColumn: 11,
+    });
+    expect(range).toBeNull();
+  });
+
+  it('trackName 未指定なら全トラックが対象 (selection 互換)', () => {
+    const map = compileMap('P1 o4 l4 c\nP2 o4 l4 c');
+    const range = resolvePlaybackRange(map, {
+      kind: 'note-preview',
+      startLine: 1,
+      startColumn: 10,
+      endLine: 2,
+      endColumn: 11,
+    });
+    expect(range!.eventCount).toBe(2); // P1 と P2 の両方
+  });
+});
+
 describe('resolvePlaybackRange', () => {
   it('starts from the event at the caret column and plays to the end', () => {
     // 列位置: c=10, d=12, e=14 (1-based) / l4 = 30 フレーム (t120 既定)

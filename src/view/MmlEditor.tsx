@@ -447,10 +447,14 @@ export function MmlEditor({
     const endPos = model.getPositionAt(endOffset);
     if (!startPos || !endPos) return;
 
+    // 入力トークンが属するトラック (行頭トラック宣言の追跡) に発音を限定する
+    const trackName = parseMmlCaretContext(text, startPos.lineNumber, startPos.column).trackName;
+
     // プレビュー演奏中は PLAY ボタンを STOP 表示へフォールバックさせるため開始元を記録する
     setPlaySource('preview');
     onNotePreviewPlayRef.current?.({
-      kind: 'selection',
+      kind: 'note-preview',
+      trackName,
       startLine: startPos.lineNumber,
       startColumn: startPos.column,
       endLine: endPos.lineNumber,
@@ -624,7 +628,7 @@ export function MmlEditor({
       for (const change of e.changes) {
         notePreviewChangedRangeRef.current = accumulatePreviewChange(
           notePreviewChangedRangeRef.current,
-          { rangeOffset: change.rangeOffset, rangeLength: change.rangeLength, textLength: change.text.length },
+          { rangeOffset: change.rangeOffset, rangeLength: change.rangeLength, text: change.text },
         );
       }
       if (notePreviewTimerRef.current !== null) window.clearTimeout(notePreviewTimerRef.current);
@@ -1537,7 +1541,7 @@ export function MmlEditor({
               }`}
               title={
                 notePreviewEnabled
-                  ? 'NOTE PREVIEW: ON - MML 入力の停止後 (0.25秒)、入力した音符を本来の音長で自動再生します (クリックで OFF)'
+                  ? 'NOTE PREVIEW: ON - MML 入力の停止後 (0.5秒)、入力した音符を入力トラックのみ本来の音長で自動再生します (クリックで OFF)'
                   : 'NOTE PREVIEW: OFF - MML 入力の自動再生を無効にしています (クリックで ON)'
               }
             >

@@ -11,12 +11,14 @@
  */
 
 /** デバウンス発火までの待機時間 (ms)。入力停止からこの時間経過した時点でプレビュー演奏する。 */
-export const NOTE_PREVIEW_DEBOUNCE_MS = 250;
+export const NOTE_PREVIEW_DEBOUNCE_MS = 500;
 
 /** デバウンス期間中に編集されたソース上のオフセット区間 (半開区間 [startOffset, endOffset))。 */
 export interface PreviewChangedRange {
   startOffset: number;
   endOffset: number;
+  /** 発音につながる実質的な変更 (非空白の挿入 / 削除・置換) が含まれるかどうか。 */
+  hasContentChange: boolean;
 }
 
 /** Monaco の 1 変更 (`IModelContentChange` 相当) の最小情報。 */
@@ -25,35 +27,40 @@ export interface PreviewModelContentChange {
   rangeOffset: number;
   /** 変更で置き換えられた元テキストの長さ (削除時のみ > 0)。 */
   rangeLength: number;
-  /** 挿入されたテキストの長さ (削除時は 0)。 */
-  textLength: number;
+  /** 挿入されたテキスト (削除時は空文字)。 */
+  text: string;
 }
 
 /**
  * 1 変更をデバウンス期間中の変更区間へ合算する。
  *
- * - 挿入: rangeOffset 〜 rangeOffset + textLength
+ * - 挿入: rangeOffset 〜 rangeOffset + text.length
  * - 削除: rangeOffset 〜 rangeOffset + rangeLength
  * を全て包含するよう現在の区間を拡張する (複数変更・Undo 等にも対応)。
+ *
+ * 空白のみの挿入 (`c4 ` のスペース入力等) は発音対象の実質変更として扱わない
+ * (削除・置換は消えた内容を判別できないため常に実質変更)。
  */
 export function accumulatePreviewChange(
   current: PreviewChangedRange | null,
   change: PreviewModelContentChange,
 ): PreviewChangedRange {
   const changeStart = change.rangeOffset;
-  const changeEnd = change.rangeOffset + Math.max(change.rangeLength, change.textLength);
+  const changeEnd = change.rangeOffset + Math.max(change.rangeLength, change.text.length);
+  const significant = change.rangeLength > 0 || /\S/.test(change.text);
   if (current === null) {
-    return { startOffset: changeStart, endOffset: changeEnd };
+    return { startOffset: changeStart, endOffset: changeEnd, hasContentChange: significant };
   }
   return {
     startOffset: Math.min(current.startOffset, changeStart),
     endOffset: Math.max(current.endOffset, changeEnd),
+    hasContentChange: current.hasContentChange || significant,
   };
 }
 
-/** 変更区間が有効 (幅 > 0) かどうか。 */
+/** 発音対象の変更区間かどうか (実質的な変更 (非空白の挿入 / 削除・置換) を含むこと)。 */
 export function hasPreviewChanges(range: PreviewChangedRange | null): boolean {
-  return range !== null && range.endOffset > range.startOffset;
+  return range !== null && range.hasContentChange;
 }
 
 /** 音符 (音名) または休符トークンの開始文字かどうか (MML は小文字のみ有効・正式パーサ準拠)。 */

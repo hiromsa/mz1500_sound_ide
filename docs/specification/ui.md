@@ -180,8 +180,10 @@ FlexboxおよびCSS Gridを活用し、解像度変化に追従するペイン�
       - **再生中**: 本ボタンから再生した場合のみ `■ STOP` に変わり押下で再生停止。他のボタン起点の再生中は無効化。
     - **`🎵 NOTE PREVIEW` トグル (打鍵プレビュー / 2026-09-09 新設)**:
       - **位置・外観**: `SELECTION` と右ペイン開閉トグル (`HIDE`) の間の区切り線右に配置。音符アイコン (`Music` / `w-3.5 h-3.5`) + `NOTE PREVIEW` ラベル。**デフォルト ON**。ON 時はシアン発光 (`bg-[#00A8FF]/20 text-[#00A8FF] border-[#00A8FF]/60` + 弱いグロー)、OFF 時はダークグレー。ON/OFF 状態は localStorage (`mz1500_note_preview_enabled`) に永続化され次回起動時も維持。
-      - **動作 (デバウンス自動部分再生)**: MML 入力中は発音せず、**最後のテキスト変更から 250ms 経過した時点**で、デバウンス期間中に編集された範囲に含まれる音符・休符トークン列を **MML 本来の音長 (Tick ベース)** で 1 回だけ演奏する。既存 SELECTION (選択範囲再生) と同一の解決・再生経路 (`resolvePlaybackRange` → `Player` 部分再生) を流用 (`kind: 'selection'` 要求として通知)。
+      - **動作 (デバウンス自動部分再生)**: MML 入力中は発音せず、**最後のテキスト変更から 500ms 経過した時点**で、デバウンス期間中に編集された範囲に含まれる音符・休符トークン列を **MML 本来の音長 (Tick ベース)** で 1 回だけ演奏する。既存 SELECTION (選択範囲再生) と同一の解決・再生経路 (`resolvePlaybackRange` → `Player` 部分再生) を流用 (`kind: 'note-preview'` 要求として通知)。
       - **トークン開始拡張**: `c4` の `4` のようにトークン継続部分 (臨時記号 `+` `#` `-` / 音長数字 / 付点 `.`) のみがデバウンス期間に入った場合は、範囲始点を音符・休符トークン開始位置へ後方拡張するため `c4` 全体が演奏される (`src/utils/notePreview.ts` `expandToTokenStart`)。空白・コマンド数値 (`o4` / `v10` / `@VE1` / `D-8` 等・大文字は音符でない) を跨いだ拡張は行わない。コメント内 (`;` / `/` 以降) も拡張しない。テキスト範囲外の異常オフセット (削除等の位置ずれ) は拡張せずクランプ。
+      - **入力チャンネル限定 (2026-09-09 同日強化)**: 入力トークンが属するトラック (行頭トラック宣言の追跡 = `parseMmlCaretContext` の `trackName`) に発音を限定 (`PlaybackRangeRequest` へ `kind: 'note-preview'` + `trackName` を追加し、`resolvePlaybackRange` 内 `resolveNotePreviewRange` で MmlMap の `MmlMapTrack.id` 一致トラックのみ解決)。**他チャンネルの同一時間帯のイベントはプリシークのみで発音しない**。trackName 未指定時は selection 互換 (全トラック)。
+      - **空白のみの変更は無音**: `c4 ` のように音符の直後にスペース (空白 / タブ / 改行) を入れた場合はデバウンス期間中に実質変更 (非空白の挿入 / 削除・置換) が無いため発音しない (`accumulatePreviewChange` の `hasContentChange` 判定)。
       - **演奏開始元 (`playSource: 'preview'`)**: プレビュー演奏中は **PLAY ボタンを `■ STOP` 表示へフォールバック** (押下で停止、FROM CARET / SELECTION は無効化)。**他の開始元 (PLAY / FROM CARET / SELECTION) の演奏中はプレビューしない** (打鍵で演奏を止めない)。プレビュー演奏中に次の発音が来た場合は前のプレビューを停止して上書き開始。
       - **サイレント実行**: コンパイルエラー (入力途中) / 範囲内に音符・休符が無い場合 (コマンド入力のみ等) は無音で何もしない。`CONSOLE` ログ・`PROBLEMS` パネル更新・`FAILED` 演出は一切行わない (発音が頻発するため)。
       - **集計対象**: Monaco `onDidChangeModelContent` の変更を蓄積するためタイピング以外 (ペースト / Undo) でも動作する。ファイル (タブ) 切替時・トグル OFF 時・unmount 時は未発火のデバウンスタイマーと入力集計を破棄。

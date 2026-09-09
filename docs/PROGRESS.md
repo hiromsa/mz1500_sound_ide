@@ -6,8 +6,8 @@
 ---
 
 ## 1. 現在のステータス概要
-- **バージョン**: `v0.0.1-beta.116`（コミット通番＋短縮ハッシュ ハイブリッド方式）
-- **テスト通過状況**: 全 39 テストファイル / 543 件パス + 1 skip（`npm test` / Vitest）
+- **バージョン**: `v0.0.1-beta.117`（コミット通番＋短縮ハッシュ ハイブリッド方式）
+- **テスト通過状況**: 全 39 テストファイル / 550 件パス + 1 skip（`npm test` / Vitest）
 - **型検査状況**: エラー 0 件（`npx tsc -b`）
 - **主要機能の稼働状況**:
   - Web ネイティブ MML コンパイラ（9ch / 17ch / ワークトラック W1〜W99 対応）
@@ -53,6 +53,15 @@
 ---
 
 ## 3. 直近の完了作業（最新）
+
+- **NOTE PREVIEW の調整: 発音チャンネルを入力トラックに限定・デバウンス 500ms 化・空白入力は無音化 (`src/utils/notePreview.ts`, `src/utils/__tests__/notePreview.test.ts`, `src/utils/mmlSelectionResolver.ts`, `src/utils/__tests__/mmlSelectionResolver.test.ts`, `src/view/MmlEditor.tsx`, `src/config/version.ts`, [`docs/specification/ui.md`](./specification/ui.md), [`docs/specification/partial_playback.md`](./specification/partial_playback.md))** (2026-09-09):
+  - **背景・ユーザー指摘**: 「入力した音のチャンネルだけなるようにしたい。」「デバウンスは 500ms にします。」「c4 の場合 c4 の後にスペースを入れた時も鳴ってしまいます。」
+  - **対応内容**:
+    1. **発音チャンネルの限定**: `PlaybackRangeRequest` へ `kind: 'note-preview'` + `trackName` (発音対象に限定するトラック名) を新設し、`resolvePlaybackRange` 内に `resolveNotePreviewRange` を追加 (selection と同一のトークン交差判定を流用しつつ `MmlMapTrack.id` 一致トラックのイベントのみ解決)。`MmlEditor.fireNotePreview` は `parseMmlCaretContext` で入力トークンの所属トラック (行頭トラック宣言の追跡) を特定して要求へ設定。**他チャンネルの同一時間帯のイベントはプリシークのみで発音しない**。trackName 未指定時は selection 互換 (全トラック)。
+    2. **デバウンス 500ms**: `NOTE_PREVIEW_DEBOUNCE_MS` を 250 → 500 に変更 (ボタン title も 0.5 秒表記に更新)。
+    3. **空白のみの変更は無音**: `PreviewModelContentChange` を `textLength` (長さのみ) から `text` (挿入テキスト本体) へ変更し、`PreviewChangedRange` に `hasContentChange` (非空白の挿入 / 削除・置換が含まれるか) を新設。`c4 ` のスペース・タブ・改行のみの挿入は実質変更として扱わず発音しない。
+  - **テスト (+6 / 更新)**: `notePreview.test.ts` (26 ケース) — デバウンス 500ms 固定・空白 / タブ / 改行のみの挿入は `hasContentChange: false`・置換 (削除を含む変更) は常に実質変更・実質変更なし区間は発音対象外 等。`mmlSelectionResolver.test.ts` (+4) — note-preview で指定トラックのみ解決 (他チャンネルの同時刻イベントを除外)・隣接トークン (次の音符) は対象外・存在しないトラック (W1) は null・trackName 未指定は全トラック。
+  - **検証**: `npx tsc -b` エラーゼロ / `npm test` 全 39 ファイル・550 件合格 + 1 skip / `npm run lint` エラーゼロ (既存警告 10 は変更なし) / `npm run build` 成功。
 
 - **NOTE PREVIEW (打鍵プレビュー) を MML エディタへ新設: 入力停止後 250ms で入力した音符を本来の音長で自動部分再生 (`src/utils/notePreview.ts`, `src/utils/__tests__/notePreview.test.ts`, `src/view/MmlEditor.tsx`, `src/app/App.tsx`, `src/config/version.ts`, [`docs/specification/ui.md`](./specification/ui.md), [`docs/specification/partial_playback.md`](./specification/partial_playback.md))** (2026-09-09):
   - **背景・ユーザー要望**: 「PLAY ボタン付近(HIDE の左)にチェックボックス(音符アイコン)「NOTE PREVIEW」を追加したい。キャレットの位置に応じた v や o、@PE、@VE などで、キーボードで「cdefgab+#-」を入力したときに、その時点の音を鳴らしてくれる機能。c+ の場合は c でも鳴って + でもなる。c4 の場合は c でも鳴って 4 でもなる。デフォルトON」

@@ -11,7 +11,7 @@ import type { PlaybackRange } from '../core/player/PlaybackRange';
 import { parseMmlCaretContext } from './mmlCaretParser';
 
 /** 部分再生の要求種別。 */
-export type PlaybackRequestKind = 'caret' | 'selection';
+export type PlaybackRequestKind = 'caret' | 'selection' | 'note-preview';
 
 /**
  * エディタ上の部分再生要求。
@@ -26,11 +26,17 @@ export interface PlaybackRangeRequest {
 
   readonly startColumn: number;
 
-  /** 選択範囲の終端行 (kind = 'selection' のみ使用)。 */
+  /** 選択範囲の終端行 (kind = 'selection' / 'note-preview' で使用)。 */
   readonly endLine?: number;
 
-  /** 選択範囲の終端列・排他的 (kind = 'selection' のみ使用)。 */
+  /** 選択範囲の終端列・排他的 (kind = 'selection' / 'note-preview' で使用)。 */
   readonly endColumn?: number;
+
+  /**
+   * 発音対象に限定するトラック名 (kind = 'note-preview' のみ使用)。
+   * MmlMap の `MmlMapTrack.id` と一致比較する。未指定時は全トラックが対象。
+   */
+  readonly trackName?: string;
 }
 
 /** 部分再生範囲の解決結果 (秒表記はコンソールログ / UI 表示用)。 */
@@ -92,7 +98,61 @@ export function resolvePlaybackRange(
     }
   }
 
+  if (request.kind === 'note-preview') {
+    return resolveNotePreviewRange(map, request);
+  }
+
   return resolveByTokenPosition(map, request);
+}
+
+/**
+ * NOTE PREVIEW (打鍵プレビュー) の時間範囲を解決する。
+ *
+ * 選択範囲再生と同一のトークン交差判定 (`buildEventSpans` / `containsSpan`) を使いつつ、
+ * `request.trackName` が指定された場合はそのトラック (MmlMap の `id` 一致) のイベントのみを
+ * 対象とする。入力したチャンネル以外の同一時間帯のイベントは時間範囲に含めないため、
+ * プリシーク経由でも発音しない。
+ *
+ * @returns 対象トラック内に範囲と交差するイベントが無い場合は null
+ */
+function resolveNotePreviewRange(map: MmlMap, request: PlaybackRangeRequest): ResolvedPlaybackRange | null {
+  const endLine = request.endLine ?? request.startLine;
+  const endColumn = request.endColumn ?? request.startColumn;
+
+  const targetTracks = request.trackName === undefined
+    ? map.tracks
+    : map.tracks.filter((track) => track.id === request.trackName);
+
+  let startFrame = Number.POSITIVE_INFINITY;
+  let endFrameMax = -1;
+  let eventCount = 0;
+
+  for (const track of targetTracks) {
+    const spans = buildEventSpans(track.events);
+
+    for (let i = 0; i < track.events.length; i++) {
+      if (!containsSpan(request, false, endLine, endColumn, spans[i])) {
+        continue;
+      }
+
+      const event = track.events[i];
+      eventCount++;
+      startFrame = Math.min(startFrame, event.startFrame);
+      endFrameMax = Math.max(endFrameMax, event.startFrame + event.durationFrames);
+    }
+  }
+
+  if (eventCount === 0 || !Number.isFinite(startFrame)) {
+    return null;
+  }
+
+  return {
+    startFrame,
+    endFrame: endFrameMax,
+    startSeconds: framesToSeconds(startFrame),
+    endSeconds: framesToSeconds(endFrameMax),
+    eventCount,
+  };
 }
 
 /**
