@@ -6,8 +6,8 @@
 ---
 
 ## 1. 現在のステータス概要
-- **バージョン**: `v0.0.1-beta.117`（コミット通番＋短縮ハッシュ ハイブリッド方式）
-- **テスト通過状況**: 全 39 テストファイル / 550 件パス + 1 skip（`npm test` / Vitest）
+- **バージョン**: `v0.0.1-beta.118`（コミット通番＋短縮ハッシュ ハイブリッド方式）
+- **テスト通過状況**: 全 40 テストファイル / 569 件パス + 1 skip（`npm test` / Vitest）
 - **型検査状況**: エラー 0 件（`npx tsc -b`）
 - **主要機能の稼働状況**:
   - Web ネイティブ MML コンパイラ（9ch / 17ch / ワークトラック W1〜W99 対応）
@@ -53,6 +53,16 @@
 ---
 
 ## 3. 直近の完了作業（最新）
+
+- **仮想キーボード [MML INSERT] モード — Ctrl 押下中の鍵盤入力で MML 音符をキャレット位置へ挿入・オクターブ差分は < > 自動付与 (`src/utils/mmlNoteInserter.ts` (新規), `src/utils/__tests__/mmlNoteInserter.test.ts` (新規), `src/utils/mmlCaretParser.ts`, `src/utils/__tests__/mmlCaretParser.test.ts`, `src/view/VirtualKeyboard.tsx`, `src/view/MmlEditor.tsx`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-09):
+  - **背景・ユーザー要望**: 「仮想キーボードについて、MML Editor モードのばあい、P1～F8 などのチャンネル行にキャレットがあり、Ctrl キーを押下していると [MML INSERT]みたいな文字が有効になり、その間はキーボードを押下すると cdefgab が挿入されるようにしたいです。オクターブが異なる場合は相対指定で > < が自動的にはいるようにしたいです。音長は無視で大丈夫です。」
+  - **対応内容**:
+    1. `src/utils/mmlNoteInserter.ts` (新規・UI 非依存の純粋関数) に挿入ロジックを集約: 有効判定 `isMmlNoteInsertModeActive` (MML エディタ & Ctrl 押下中 & キャレットがチャンネル行の 3 条件) / MIDI ノート → MML 音名・オクターブ変換 (`midiNoteToMmlNoteName` / `midiNoteToMmlOctave`) / 挿入テキスト生成 `buildMmlNoteInsertion` (オクターブ差分を 1 段 = 1 記号の `<` / `>` で表現、#OCTAVE REVERSE 時は方向反転、正式パーサ準拠で o1〜o8 にクランプ、音長なし) / キャレット解析込み `buildMmlNoteInsertionAtCaret` (チャンネル行外は null)。
+    2. `mmlCaretParser.ts`: `MmlCaretContext` へ `isTrackSpecLine` (キャレット行が行頭トラック宣言行か) を新設し `detectTrackSpecAtLineStart` を流用して `parseMmlCaretContext` 内で判定。あわせて `#OCTAVE REVERSE` 判定を `isReverseOctaveDirective` としてエクスポート化 (mmlNoteInserter と共有)。
+    3. `VirtualKeyboard.tsx`: Ctrl 押下状態を capture フェーズの keydown/keyup で追跡 (blur 時リセット)。`[MML INSERT]` バッジをコントロールバーへ新設 (有効時シアン発光 / Ctrl 非押下時は薄い無効表示 + ツールチップ案内)。`handleNoteOn` 冒頭で MML INSERT モード中の鍵盤押下 (クリック / ドラッグ) を `onInsertMmlNote` へ通知 (実機 DCSG 音域制限は発音のみの制約のため音域外の鍵でも挿入可)。**PC キーボードは MML モード時無効のまま** (Ctrl+A/F/S 等のショートカット保護・ユーザー確定)。
+    4. `MmlEditor.tsx`: `handleInsertMmlNote` を新設。挿入のたびに Monaco の最新キャレットから `parseMmlCaretContext` を再解析するため、`<` / `>` 挿入後のオクターブ状態が連続入力でも正しく累積。`executeEdits('mml-insert')` + `pushUndoStop` で 1 音単位の Undo 履歴 (Ctrl+Z で 1 音ずつ戻せる)。挿入は NOTE PREVIEW の自動部分再生にも通常入力と同様に乗る。
+  - **テスト**: `mmlNoteInserter.test.ts` (新規・16 件) — 音名・オクターブ変換 / 3 条件有効判定 / 同一・上下オクターブの相対指定 / 複数段 / REVERSE 反転 / 1-8 クランプ / チャンネル行・継続行・マクロ定義行・ディレクティブ行・#OCTAVE REVERSE・コメント行の挿入判定。`mmlCaretParser.test.ts` (+3) — `isTrackSpecLine` の行種別判定。
+  - **検証**: `npx tsc -b` エラーゼロ / `npm test` 全 40 ファイル・569 件合格 + 1 skip (+19) / `npm run lint` エラーゼロ (既存警告 10 は変更なし) / `npm run build` 成功。
 
 - **NOTE PREVIEW の調整: 発音チャンネルを入力トラックに限定・デバウンス 500ms 化・空白入力は無音化 (`src/utils/notePreview.ts`, `src/utils/__tests__/notePreview.test.ts`, `src/utils/mmlSelectionResolver.ts`, `src/utils/__tests__/mmlSelectionResolver.test.ts`, `src/view/MmlEditor.tsx`, `src/config/version.ts`, [`docs/specification/ui.md`](./specification/ui.md), [`docs/specification/partial_playback.md`](./specification/partial_playback.md))** (2026-09-09):
   - **背景・ユーザー指摘**: 「入力した音のチャンネルだけなるようにしたい。」「デバウンスは 500ms にします。」「c4 の場合 c4 の後にスペースを入れた時も鳴ってしまいます。」

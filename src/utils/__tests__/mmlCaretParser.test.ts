@@ -220,4 +220,24 @@ describe('parseMmlCaretContext', () => {
       expect(parseMmlCaretContext('P3 o4 c', 1, 8).noiseIntegrate).toBe(0);
     });
   });
+
+  describe('isTrackSpecLine (キャレット行のトラック宣言判定)', () => {
+    it('行頭にトラック宣言がある行は true', () => {
+      expect(parseMmlCaretContext('P1 c d e', 1, 5).isTrackSpecLine).toBe(true);
+      expect(parseMmlCaretContext('F1,F2 c', 1, 5).isTrackSpecLine).toBe(true);
+      expect(parseMmlCaretContext('B1 c', 1, 4).isTrackSpecLine).toBe(true);
+    });
+
+    it('継続行・マクロ定義行・ディレクティブ行は false', () => {
+      const content = ['P1 c', ' d e', '@VE1 = { v15 }', '#TITLE Test'].join('\n');
+      expect(parseMmlCaretContext(content, 2, 3).isTrackSpecLine).toBe(false);
+      expect(parseMmlCaretContext(content, 3, 8).isTrackSpecLine).toBe(false);
+      expect(parseMmlCaretContext(content, 4, 8).isTrackSpecLine).toBe(false);
+    });
+
+    it('行の途中にキャレットがあっても行頭宣言の有無で判定する', () => {
+      const content = 'P1 o4 v10 c d e f g a b';
+      expect(parseMmlCaretContext(content, 1, content.length + 1).isTrackSpecLine).toBe(true);
+    });
+  });
 });

@@ -7,6 +7,7 @@ import {
   type VirtualKeyboardChipMode,
 } from '../utils/keyboardChipMode';
 import type { MmlCaretContext } from '../utils/mmlCaretParser';
+import { isMmlNoteInsertModeActive } from '../utils/mmlNoteInserter';
 import { findDefinitionBlocks } from '../utils/mmlContextParser';
 import { loadFmToneDefinition, loadPitchEnvDefinition, loadVolEnvDefinition } from '../utils/mmlDefinitionLoader';
 import { DcsgChip } from '../core/chips/DcsgChip';
@@ -128,6 +129,8 @@ interface VirtualKeyboardProps {
   activeVolEnvRelease?: number;
   testMidiNote?: number;
   onChangeTestMidiNote?: (note: number) => void;
+  /** [MML INSERT] モード中の鍵盤押下で MML エディタのキャレット位置へ音符を挿入するコールバック */
+  onInsertMmlNote?: (midiNote: number) => void;
 }
 
 export function VirtualKeyboard({
@@ -142,6 +145,7 @@ export function VirtualKeyboard({
   activeVolEnvRelease,
   testMidiNote,
   onChangeTestMidiNote,
+  onInsertMmlNote,
 }: VirtualKeyboardProps) {
   // 手動オーバーライド設定 ('psg_tone3' = CHIP「PSG P3/P6 (@IN)」モードの明示選択)
   const [manualEngine, setManualEngine] = useState<VirtualKeyboardChipMode>('auto');
@@ -203,6 +207,34 @@ export function VirtualKeyboard({
   const [pressedNotes, setPressedNotes] = useState<Set<number>>(new Set());
   const isMouseDownRef = useRef<boolean>(false);
   const keyboardScrollRef = useRef<HTMLDivElement>(null);
+
+  // [MML INSERT] モード用: Ctrl キー押下状態の追跡 (capture フェーズで Monaco エディタ内のキー操作も捕捉)
+  const [isControlKeyHeld, setIsControlKeyHeld] = useState(false);
+  useEffect(() => {
+    const handleCtrlKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Control') setIsControlKeyHeld(true);
+    };
+    const handleCtrlKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Control') setIsControlKeyHeld(false);
+    };
+    // ウィンドウからフォーカスが外れたらリセット (Alt+Tab 等での keyup 取りこぼし対策)
+    const handleWindowBlur = () => setIsControlKeyHeld(false);
+    window.addEventListener('keydown', handleCtrlKeyDown, true);
+    window.addEventListener('keyup', handleCtrlKeyUp, true);
+    window.addEventListener('blur', handleWindowBlur);
+    return () => {
+      window.removeEventListener('keydown', handleCtrlKeyDown, true);
+      window.removeEventListener('keyup', handleCtrlKeyUp, true);
+      window.removeEventListener('blur', handleWindowBlur);
+    };
+  }, []);
+
+  // [MML INSERT] モードの有効判定 (MML エディタ & Ctrl 押下中 & キャレットがチャンネル行)
+  const isMmlInsertMode = isMmlNoteInsertModeActive({
+    isMmlEditorMode: activeTabContext === 'mml',
+    isControlKeyHeld,
+    isTrackSpecLine: mmlContext?.isTrackSpecLine,
+  });
 
   // PCキーボードタイピング演奏用の基準オクターブ (初期値 4 = C4基準)
   const [typingOctave, setTypingOctave] = useState<number>(() => mmlContext?.octave ?? 4);
@@ -398,6 +430,11 @@ export function VirtualKeyboard({
 
   // ノート発音ハンドラ
   const handleNoteOn = useCallback((midiNote: number) => {
+    // [MML INSERT] モード中は押下鍵を MML 音符としてキャレット位置へ挿入する
+    // (実機 DCSG 音域制限は発音のみの制約のため、音域外の鍵でも挿入は行う)
+    if (isMmlInsertMode) {
+      onInsertMmlNote?.(midiNote);
+    }
     // DCSG (PSG) 実機レジスタで出せない低音域は発音しない (鍵盤クリック・ドラッグ・タイピング共通)
     if (effectiveEngine === 'psg' && midiNote < DcsgChip.LowestMidiNote) {
       return;
@@ -444,6 +481,8 @@ export function VirtualKeyboard({
 
     virtualSynth.noteOn(midiNote, options);
   }, [
+    isMmlInsertMode,
+    onInsertMmlNote,
     effectiveEngine,
     effectiveVolume,
     effectiveNoiseType,
@@ -589,6 +628,24 @@ export function VirtualKeyboard({
               {activeTabContext === 'vol_envelope' && 'VOL ENV EDITOR'}
             </span>
           </div>
+
+          {/* [MML INSERT] バッジ: Ctrl 押下中にチャンネル行キャレットへ鍵盤入力で MML 音符を挿入 */}
+          {activeTabContext === 'mml' && (
+            <div
+              className={`flex items-center px-2 py-0.5 rounded border text-[10px] font-bold ${
+                isMmlInsertMode
+                  ? 'bg-cyan-500/20 border-cyan-400/70 text-cyan-200 shadow-[0_0_8px_rgba(34,211,238,0.35)]'
+                  : 'bg-zinc-900/80 border-white/[0.08] text-zinc-600'
+              }`}
+              title={
+                isMmlInsertMode
+                  ? '[MML INSERT] ON - 鍵盤を押すと cdefgab をキャレット位置へ挿入します (オクターブ差分は < > を自動付与)'
+                  : 'Ctrl キー押下中にキャレットがチャンネル行 (P1-F8 / N1-N2 / B1 等) にあるとき、鍵盤押下で MML 音符をキャレット位置へ挿入できます'
+              }
+            >
+              MML INSERT
+            </div>
+          )}
 
           {/* 1) 音源切替セレクタ (CHIP) */}
           <div className="flex items-center gap-1">

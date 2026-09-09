@@ -18,6 +18,8 @@ export interface MmlCaretContext {
   noiseIntegrate?: number;
   /** FM 専用音量 (@v コマンド、0-127、127 = 最大)。FM トラックのみ更新される。 */
   fmVolume: number;
+  /** キャレット行が行頭トラック宣言行 (P1-F8 / N1-N2 / B1 等) か (仮想キーボード [MML INSERT] の有効条件) */
+  isTrackSpecLine: boolean;
 }
 
 /** トラックごとに保持される演奏状態 (キャレット位置までのコマンド適用結果) */
@@ -200,6 +202,8 @@ export class MmlCaretContextTracker {
       trackName,
       engine: resolveEngineFromTrackName(trackName),
       ...this.getOrCreateState(trackName),
+      // キャレット行のトラック宣言判定は parseMmlCaretContext が上書きする
+      isTrackSpecLine: false,
     };
   }
 
@@ -280,6 +284,11 @@ export class MmlCaretContextTracker {
   }
 }
 
+/** #OCTAVE REVERSE ディレクティブの判定 (ヘッダー指定時は < > の方向が反転する) */
+export function isReverseOctaveDirective(content: string): boolean {
+  return /#OCTAVE\s+REVERSE\b/i.test(content);
+}
+
 /**
  * MML 文字列とキャレット位置 (1-indexed の行・列) から、その位置での演奏コンテキストを解析する。
  *
@@ -296,12 +305,19 @@ export function parseMmlCaretContext(content: string, lineNumber: number, column
     targetLines[caretLine] = targetLines[caretLine].slice(0, Math.max(0, column - 1));
   }
 
-  // #OCTAVE REVERSE 判定 (ヘッダーディレクティブ)
-  const isReverseOctave = /#OCTAVE\s+REVERSE\b/i.test(content);
+  const isReverseOctave = isReverseOctaveDirective(content);
 
   const tracker = new MmlCaretContextTracker(isReverseOctave);
   for (const line of targetLines) {
     tracker.feedLine(line);
   }
-  return tracker.getSnapshot();
+  const snapshot = tracker.getSnapshot();
+
+  // キャレット行の行頭がトラック宣言か (仮想キーボード [MML INSERT] の有効条件)
+  // 判定は行頭の宣言の有無のみで行うため、列で切り詰めた targetLines ではなく生の行を用いる
+  const caretLineText = lines[lineNumber - 1] ?? '';
+  return {
+    ...snapshot,
+    isTrackSpecLine: detectTrackSpecAtLineStart(stripLineComment(caretLineText)) !== null,
+  };
 }

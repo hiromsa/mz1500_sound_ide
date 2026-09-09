@@ -34,6 +34,7 @@ import { MmlPlaybackHighlighter } from './MmlPlaybackHighlighter';
 import type { SongMetadata } from './SongSetupPanel';
 import { VirtualKeyboard, type ActiveTabContext } from './VirtualKeyboard';
 import { parseMmlCaretContext, type MmlCaretContext } from '../utils/mmlCaretParser';
+import { buildMmlNoteInsertionAtCaret } from '../utils/mmlNoteInserter';
 import { collectUsedIds, findDefinitionAt, findDefinitionBlocks, nextAvailableId } from '../utils/mmlContextParser';
 import { resolvePlaybackPositions, type PlaybackMapInfo } from '../utils/mmlPlaybackTracker';
 import type { PlaybackRangeRequest } from '../utils/mmlSelectionResolver';
@@ -469,6 +470,33 @@ export function MmlEditor({
   /** NOTE PREVIEW トグルボタン押下 */
   const handleToggleNotePreview = useCallback(() => {
     setNotePreviewEnabled(prev => !prev);
+  }, []);
+
+  /**
+   * 仮想キーボード [MML INSERT] モード: 押下 MIDI ノートをキャレット位置へ MML 音符として挿入する。
+   * 挿入のたびに Monaco の最新キャレットからオクターブを再解析するため、連続入力でも相対指定 (< / >) が正しく累積する。
+   */
+  const handleInsertMmlNote = useCallback((midiNote: number) => {
+    const ed = monacoEditorRef.current;
+    const model = ed?.getModel();
+    const pos = ed?.getPosition();
+    if (!ed || !model || !pos) return;
+
+    const insertion = buildMmlNoteInsertionAtCaret(model.getValue(), pos.lineNumber, pos.column, midiNote);
+    if (!insertion) return;
+
+    ed.executeEdits('mml-insert', [{
+      range: {
+        startLineNumber: pos.lineNumber,
+        startColumn: pos.column,
+        endLineNumber: pos.lineNumber,
+        endColumn: pos.column,
+      },
+      text: insertion.text,
+      forceMoveMarkers: true,
+    }]);
+    // 1 音単位で Undo 履歴を区切る (Ctrl+Z で 1 音ずつ戻せる)
+    ed.pushUndoStop();
   }, []);
 
   // 部分再生: キャレット位置から再生 (実行は App 側でコンパイル → 時間範囲解決 → プリシーク再生)
@@ -1804,6 +1832,7 @@ export function MmlEditor({
                 activeVolEnvRelease={activeVolEnvRelease}
                 testMidiNote={testMidiNote}
                 onChangeTestMidiNote={onChangeTestMidiNote}
+                onInsertMmlNote={handleInsertMmlNote}
               />
             )}
 
