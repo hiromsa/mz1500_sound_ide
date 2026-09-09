@@ -14,6 +14,7 @@ describe('Player', () => {
 
     expect(() => player.stop()).toThrow();
     expect(() => player.setTrackVolume(0, 1, false)).toThrow();
+    expect(() => player.setTrackMuted(0, false)).toThrow();
     expect(() => player.setMasterVolume(1)).toThrow();
     expect(player.getTrackOffset(0)).toBe(-1);
     expect(player.getTrackLevel(0)).toBe(0);

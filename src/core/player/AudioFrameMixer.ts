@@ -29,7 +29,11 @@ export class AudioFrameMixer {
 
   private sequencer: FrameDriver | null = null;
 
-  private readonly trackGains = new Array<number>(MzsdSong.TrackCount).fill(0.8);
+  /** UI ミキサーのトラック音量 (0-1)。既定値 1 (無調整、チップ側の既定ゲインと整合)。 */
+  private readonly trackGains = new Array<number>(MzsdSong.TrackCount).fill(1);
+
+  /** UI ミキサーのトラックミュート (プレビュー OFF)。音量とは独立に保持する。 */
+  private readonly trackMuted = new Array<boolean>(MzsdSong.TrackCount).fill(false);
 
   private readonly trackLevels = new Array<number>(MzsdSong.TrackCount).fill(0);
 
@@ -46,6 +50,11 @@ export class AudioFrameMixer {
     this.sampleRate = sampleRate;
     this.samplesPerFrame = sampleRate / FrameRate;
     this.chips.fm.initialize(sampleRate);
+    // UI 既定ゲイン (1) をチップ側チャンネルゲインへも明示反映し、
+    // ミュート解除後の音量が初期状態と完全一致するようにする
+    for (let trackIndex = 0; trackIndex < MzsdSong.TrackCount; trackIndex++) {
+      this.applyTrackGain(trackIndex);
+    }
   }
 
   /** 駆動する FrameDriver を設定する (null = 停止中)。 */
@@ -53,20 +62,35 @@ export class AudioFrameMixer {
     this.sequencer = driver;
   }
 
-  /** UI ミキサーのトラックゲイン (0-1) を設定する (チップ側のチャンネルゲインにも反映)。 */
+  /** UI ミキサーのトラック音量 (0-1) を設定する (ミュート状態は変更しない)。 */
   setTrackGain(trackIndex: number, gain: number): void {
-    const clamped = Math.min(Math.max(gain, 0), 1);
-    this.trackGains[trackIndex] = clamped;
+    this.trackGains[trackIndex] = Math.min(Math.max(gain, 0), 1);
+    this.applyTrackGain(trackIndex);
+  }
+
+  /** トラックのミュート (プレビュー OFF) を設定する (音量設定は不変)。 */
+  setTrackMuted(trackIndex: number, muted: boolean): void {
+    this.trackMuted[trackIndex] = muted;
+    this.applyTrackGain(trackIndex);
+  }
+
+  /** 実効ゲイン (音量 × ミュート) をチップ側のチャンネルゲインへ反映する。 */
+  private applyTrackGain(trackIndex: number): void {
+    const gain = this.effectiveTrackGain(trackIndex);
 
     if (trackIndex <= 3) {
-      this.chips.psg1.setChannelGain(trackIndex, clamped);
+      this.chips.psg1.setChannelGain(trackIndex, gain);
     } else if (trackIndex <= 7) {
-      this.chips.psg2.setChannelGain(trackIndex - 4, clamped);
+      this.chips.psg2.setChannelGain(trackIndex - 4, gain);
     } else if (trackIndex === 8) {
-      this.chips.beep.setChannelGain(clamped);
+      this.chips.beep.setChannelGain(gain);
     } else {
-      this.chips.setFmGain(trackIndex - 9, clamped);
+      this.chips.setFmGain(trackIndex - 9, gain);
     }
+  }
+
+  private effectiveTrackGain(trackIndex: number): number {
+    return this.trackMuted[trackIndex] ? 0 : this.trackGains[trackIndex];
   }
 
   getMasterVolume(): number {
@@ -137,7 +161,7 @@ export class AudioFrameMixer {
 
   private updateTrackLevels(): void {
     for (let t = 0; t < MzsdSong.TrackCount; t++) {
-      this.trackLevels[t] = this.trackChipLevel(t) * this.trackGains[t];
+      this.trackLevels[t] = this.trackChipLevel(t) * this.effectiveTrackGain(t);
     }
   }
 

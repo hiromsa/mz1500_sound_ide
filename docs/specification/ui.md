@@ -378,7 +378,8 @@ FlexboxおよびCSS Gridを活用し、解像度変化に追従するペイン�
 #### 2.1) Player との実データ連携 (Phase 5)
 - **データ取得**: `App` が `Player`（演奏ファサード）を所有し、`getTrackLevel` / `getMasterLevel` の取得関数を props 経由で渡す。TrackMonitor は `Player` を直接参照しない（UI とロジックの疎結合）。
 - **ポーリング**: 100ms 間隔の `setInterval` で VU を更新。停止中は同値チェック付きでメーターを沈静化（不要な再レンダリングを回避）。
-- **プレビューミュート連携**: 各トラックのスピーカートグル / `ALL ON` / `MUTE` は `onTrackMuteChange` → `Player.setTrackVolume`（音量 0.8 固定、ミュートフラグのみ切替）に接続。**プレビュー専用パラメータであり MML コンパイル・エクスポートには影響しない**。
+- **プレビューミュート連携**: 各トラックのスピーカートグル / `ALL ON` / `MUTE` は `onTrackMuteChange` → `Player.setTrackMuted`（ミュートフラグのみ切替・トラック音量は不変）に接続。**プレビュー専用パラメータであり MML コンパイル・エクスポートには影響しない**。ミュート解除後の音量は初期状態と完全一致する。
+  - ※ 2026-09-09 修正: 従来の `Player.setTrackVolume(index, 0.8, muted)` 方式は、Player 内部の 2 乗知覚カーブ適用によりチップゲインが `0.8 × 0.8 = 0.64` に上書きされ、「ミュート → 解除で初期音量より小さくなる」不具合の原因だった。音量とミュートを独立管理 (`AudioFrameMixer.setTrackMuted`) に分離して解消。
 - **マスター音量**: スライダー / `MUTE` は `onMasterVolumeChange` → `App` state（一元管理）→ `Player.setMasterVolume` と `virtualSynth.setMasterVolume` の双方に接続（プレビュー専用）。
 
 #### 3) マスターボリューム (プレビュー専用)

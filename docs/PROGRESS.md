@@ -54,6 +54,20 @@
 
 ## 3. 直近の完了作業（最新）
 
+- **TRACK MONITOR のトラックミュート解除後に音量が初期より小さくなる問題を修正: 音量とミュートの独立管理へ分離 (`src/core/player/AudioFrameMixer.ts`, `src/core/player/AudioEngine.ts`, `src/core/player/Player.ts`, `src/app/App.tsx`, `src/core/player/__tests__/AudioFrameMixer.test.ts`, `src/core/player/__tests__/Player.test.ts`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-09):
+  - **背景・ユーザー報告**: 「TRACK MONITORを何も操作していない場合の初期音量と、一回ミュートしてから再度ONにした場合とで音量が異なります。前者の方が大きい音です。」
+  - **原因**:
+    - `AudioFrameMixer.trackGains` の初期値は 0.8 (実音はチップ側チャンネルゲイン既定 1.0 で鳴っていた)。
+    - 一方、スピーカートグル時に `App.handleTrackMuteChange` → `Player.setTrackVolume(index, 0.8, muted)` が呼ばれ、Player 内部の 2 乗知覚カーブ (`gain = volume²`) によりチップゲインが `0.8 × 0.8 = 0.64` に上書きされていた。
+    - 結果、ミュート解除後の実効ゲインが 0.8 → 0.64 に低下し、初期状態より音が小さくなっていた。
+  - **対応内容**:
+    1. `AudioFrameMixer` に `trackMuted` (ミュート状態) を新設し、`setTrackMuted(trackIndex, muted)` を追加。音量 (`trackGains`) とミュートを独立管理とし、チップ側チャンネルゲインへは実効ゲイン (`muted ? 0 : 音量`) を反映する private `applyTrackGain` / `effectiveTrackGain` へ集約。
+    2. コンストラクタで全トラックの既定ゲイン (1) をチップへ明示反映し、ミュート解除後の音量が初期状態と完全一致することを保証。
+    3. VU レベル (`updateTrackLevels`) も実効ゲイン基準に変更 (ミュート中は VU も 0)。
+    4. `AudioEngine` / `Player` に `setTrackMuted` を追加。既存 `setTrackVolume` は音量設定用 API として維持。
+    5. `App.handleTrackMuteChange` を `setTrackMuted(trackIndex, muted)` 呼び出しに変更 (音量 0.8 ハードコードを廃止)。
+  - **検証**: `npx tsc -b` エラーゼロ / `npm run lint` 警告増加なし・エラーゼロ / `npm test` 全テスト合格 (ミュート→無音・解除→初期と同一レベルへ復帰の回帰テストを追加)。
+
 - **FROM CARET が曲先頭から再生される問題を修正: キャレット所属トラック基準のアンカー解決 (`src/utils/mmlSelectionResolver.ts`, `src/app/App.tsx`, `src/utils/__tests__/mmlSelectionResolver.test.ts`, [`docs/specification/partial_playback.md`](./specification/partial_playback.md), [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-09):
   - **背景・ユーザー報告**: 「FROM CARETで P1の3行目にキャレットがあっても 1行目から再生されてしまいます。」(P1 の 3 行目 `P1 g r l8 ...` にキャレットがある状態で、P1 の 1 行目 `P1 o4 @VE1 @PE1 l16 e f` から鳴ってしまう)
   - **原因**: キャレット再生の時間範囲解決が「全トラックの**テキスト上キャレット以降**に書かれたイベント」の `startFrame` 最小値を採る設計だったため、キャレット行より後ろにソースが書かれた P2 のイベント (演奏時刻は曲先頭 0 フレーム付近) が採用され、開始位置が曲先頭へ引き戻されていた。

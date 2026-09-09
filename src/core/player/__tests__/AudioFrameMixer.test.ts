@@ -77,6 +77,27 @@ describe('AudioFrameMixer', () => {
     expect(mixer.getTrackLevel(0)).toBe(0);
   });
 
+  it('mutes a track to silence and restores the exact initial volume on unmute', () => {
+    const mixer = new AudioFrameMixer(48000);
+    const builder = new SongBuilder();
+    builder.addTrack(0, SongBuilder.note(69, 100, 100), SongBuilder.trackEnd());
+    attach(builder, false, mixer);
+
+    mixer.read(new Float32Array(800 * 2));
+    const initialLevel = mixer.getTrackLevel(0);
+    expect(initialLevel).toBeGreaterThan(0);
+
+    // ミュート: 実音 / VU とも無音
+    mixer.setTrackMuted(0, true);
+    mixer.read(new Float32Array(800 * 2));
+    expect(mixer.getTrackLevel(0)).toBe(0);
+
+    // 解除: ミュート前 (初期) と同一の音量へ復帰する (既定音量が低下しないこと)
+    mixer.setTrackMuted(0, false);
+    mixer.read(new Float32Array(800 * 2));
+    expect(mixer.getTrackLevel(0)).toBeCloseTo(initialLevel, 9);
+  });
+
   it('resets the levels', () => {
     const mixer = new AudioFrameMixer(48000);
     const builder = new SongBuilder();

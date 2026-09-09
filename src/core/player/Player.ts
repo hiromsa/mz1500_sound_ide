@@ -77,6 +77,15 @@ export class Player {
     this.engine.setTrackGain(trackIndex, gain);
   }
 
+  /**
+   * トラックのミュート (プレビュー ON/OFF) のみを切り替える (音量設定は不変)。
+   * TRACK MONITOR のスピーカートグル用。解除時に初期音量へ正確に復帰する。
+   */
+  setTrackMuted(trackIndex: number, muted: boolean): void {
+    this.throwIfDisposed();
+    this.engine.setTrackMuted(trackIndex, muted);
+  }
+
   setMasterVolume(volume: number): void {
     this.throwIfDisposed();
     this.engine.setMasterVolume(volume * volume);

@@ -175,6 +175,11 @@ export class AudioEngine {
     this.mixer.setTrackGain(trackIndex, gain);
   }
 
+  /** UI ミキサーのトラックミュート (プレビュー ON/OFF) を設定する (音量設定は不変)。 */
+  setTrackMuted(trackIndex: number, muted: boolean): void {
+    this.mixer.setTrackMuted(trackIndex, muted);
+  }
+
   setMasterVolume(volume: number): void {
     this.mixer.setMasterVolume(volume);
   }

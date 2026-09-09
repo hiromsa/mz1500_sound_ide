@@ -513,9 +513,9 @@ function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleTogglePlay]);
 
-  // トラックのプレビューミュートを Player に反映 (プレビュー専用・コンパイル非連動)
+  // トラックのプレビューミュートを Player に反映 (ミュートフラグのみ切替・音量は不変)
   const handleTrackMuteChange = useCallback((trackIndex: number, muted: boolean) => {
-    playerRef.current?.setTrackVolume(trackIndex, 0.8, muted);
+    playerRef.current?.setTrackMuted(trackIndex, muted);
   }, []);
 
   // TRACK MONITOR のマスター音量 / ミュート変更を App state へ反映 (一元管理)
