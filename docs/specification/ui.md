@@ -361,7 +361,7 @@ FlexboxおよびCSS Gridを活用し、解像度変化に追従するペイン�
 - **データ取得**: `App` が `Player`（演奏ファサード）を所有し、`getTrackLevel` / `getMasterLevel` の取得関数を props 経由で渡す。TrackMonitor は `Player` を直接参照しない（UI とロジックの疎結合）。
 - **ポーリング**: 100ms 間隔の `setInterval` で VU を更新。停止中は同値チェック付きでメーターを沈静化（不要な再レンダリングを回避）。
 - **プレビューミュート連携**: 各トラックのスピーカートグル / `ALL ON` / `MUTE` は `onTrackMuteChange` → `Player.setTrackVolume`（音量 0.8 固定、ミュートフラグのみ切替）に接続。**プレビュー専用パラメータであり MML コンパイル・エクスポートには影響しない**。
-- **マスター音量**: スライダー / `MUTE` は `onMasterVolumeChange` → `Player.setMasterVolume` に接続（プレビュー専用）。
+- **マスター音量**: スライダー / `MUTE` は `onMasterVolumeChange` → `App` state（一元管理）→ `Player.setMasterVolume` と `virtualSynth.setMasterVolume` の双方に接続（プレビュー専用）。
 
 #### 3) マスターボリューム (プレビュー専用)
 - ヘッダー右上に配置。
@@ -370,6 +370,10 @@ FlexboxおよびCSS Gridを活用し、解像度変化に追従するペイン�
   - 一括MUTEボタン (トグルで赤色発光)
   - Master L/R ミニステレオVUメーター (`Player.getMasterLevel` の実測値を表示)
 - **仕様**: ブラウザ上のプレビュー試聴専用パラメータであり、**MMLコンパイル・エクスポート結果には一切影響しない**（UI上に `PREVIEW ONLY` / `(No effect on compile)` の注記を明示）。
+- **影響範囲 (2026-09-09 拡張)**: 音量 / ミュート state は `App` で一元管理され、以下の **2 つのプレビュー経路の双方**へ同一レベルが反映される:
+  1. **演奏プレビュー (PLAY)**: `Player.setMasterVolume` — 知覚カーブ（2 乗曲線）を適用。
+  2. **仮想キーボード発音 (鍵盤プレビュー)**: `virtualSynth.setMasterVolume` — 同一の知覚カーブ (`perceptualMasterGain`) を適用。スライダー変更は**発音中のノートへも即時反映**される。
+- **値の保持**: マスター音量 / ミュートを `App` state で保持するため、TRACK MONITOR タブを離れて戻っても設定値はリセットされない。
 
 #### 4) トラック一括操作
 - カラムヘッダー（FM音源側、DCSG&BEEP側）にそれぞれ `ALL ON` / `MUTE` ボタンを備え、チップ系統ごとのソロ試聴・ミュートが可能。

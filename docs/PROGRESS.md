@@ -6,7 +6,7 @@
 ---
 
 ## 1. 現在のステータス概要
-- **バージョン**: `v0.0.1-beta.103`（コミット通番＋短縮ハッシュ ハイブリッド方式）
+- **バージョン**: `v0.0.1-beta.104`（コミット通番＋短縮ハッシュ ハイブリッド方式）
 - **テスト通過状況**: 全 35 テストファイル / 476 件パス + 1 skip（`npm test` / Vitest）
 - **型検査状況**: エラー 0 件（`npx tsc -b`）
 - **主要機能の稼働状況**:
@@ -53,6 +53,19 @@
 ---
 
 ## 3. 直近の完了作業（最新）
+
+- **仮想キーボードの発音を MASTER VOLUME の影響下に統合 (`src/utils/virtualSynth.ts`, `src/view/TrackMonitor.tsx`, `src/app/App.tsx`, `src/utils/__tests__/virtualSynth.test.ts`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-09):
+  - **背景・ユーザー要望**: 「仮想キーボードの発音についても、MASTER VOLUMEの影響を受けるようにしてください。」
+  - **従来の問題**:
+    - TRACK MONITOR の MASTER VOL は `Player.setMasterVolume`（演奏プレビュー専用）にのみ接続されており、仮想キーボード（`virtualSynth` / Web Audio 直結）の発音には無関係だった。
+    - さらにマスター音量 state が `TrackMonitor` コンポーネント内部に閉じていたため、右ペインタブを離れると値が破棄され初期値 80% に戻る潜在問題もあった。
+  - **対応内容**:
+    1. `VirtualSynthEngine` に `setMasterVolume(volume)` を新設 (0-1 クランプ + `Player.setMasterVolume` と同一の 2 乗知覚カーブ `perceptualMasterGain`)。発音中の全ボイスの masterGain へ `setValueAtTime` で即時反映、新規 `noteOn` 時も現在のマスター音量で発音する。
+    2. マスター音量 / ミュート state を `TrackMonitor` 内部から `App` へ持ち上げ一元管理。`TrackMonitor` は controlled props (`masterVolume` / `masterMuted`) 化し、スライダー / MUTE の変更は `onMasterVolumeChange` で App へ通知する構造へ改修。
+    3. `App` の `useEffect` で `Player.setMasterVolume`（演奏）と `virtualSynth.setMasterVolume`（鍵盤）の双方へ同一レベルを反映。`ensurePlayer` の Player 遅延生成時も `masterLevelRef` 経由で現在値を引き継ぐため、音量設定の取りこぼしがない。
+    4. 副次効果: TRACK MONITOR タブを離れて戻ってもマスター音量 / ミュート設定が保持されるようになった。
+  - **テスト**: `perceptualMasterGain` の知覚カーブ（2 乗）と 0-1 クランプ規約のテストを `virtualSynth.test.ts` に追加。
+  - **検証**: `npx tsc -b` エラーゼロ / `npm test` 全 35 ファイル・481 件合格 + 1 skip。
 
 - **非連動ノイズの音名 3 段階シフトレート対応 — c/e/g が同じ音になる問題を修正 (`src/core/chips/DcsgChip.ts`, `src/core/player/TrackSequencer.ts`, `src/utils/virtualSynth.ts`, `driver/mzsd_driver.asm`, テスト 3 件・仕様書 2 件更新)** (2026-09-09):
   - **背景・ユーザー指摘**: 「psg_noise_basic.mml に記載のノイズについて c e g のノイズの種類の変化が発音されません。同じ音になっています。仮想キーボード、PLAY ボタン両方。」

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { sustainEnvelopeIndex } from '../virtualSynth';
+import { perceptualMasterGain, sustainEnvelopeIndex } from '../virtualSynth';
 
 /**
  * sustainEnvelopeIndex (仮想キーボードの @VE サステイン区間インデックス算出) のテスト。
@@ -41,5 +41,25 @@ describe('sustainEnvelopeIndex', () => {
   it('treats an out-of-range release as absent', () => {
     expect(sustainEnvelopeIndex(9, length, 3, 255)).toBe(3);
     expect(sustainEnvelopeIndex(9, length, 3, -1)).toBe(3);
+  });
+});
+
+/**
+ * perceptualMasterGain (仮想キーボードのマスター音量ゲイン算出) のテスト。
+ * Player.setMasterVolume と同一の知覚カーブ (2 乗) / クランプ規約を固定する。
+ */
+describe('perceptualMasterGain', () => {
+  it('applies the perceptual square curve identical to Player.setMasterVolume', () => {
+    expect(perceptualMasterGain(0)).toBe(0);
+    expect(perceptualMasterGain(0.5)).toBeCloseTo(0.25, 12);
+    expect(perceptualMasterGain(0.8)).toBeCloseTo(0.64, 12);
+    expect(perceptualMasterGain(1)).toBe(1);
+  });
+
+  it('clamps out-of-range volumes into the 0-1 range', () => {
+    expect(perceptualMasterGain(-1)).toBe(0);
+    expect(perceptualMasterGain(-0.001)).toBe(0);
+    expect(perceptualMasterGain(1.001)).toBe(1);
+    expect(perceptualMasterGain(2)).toBe(1);
   });
 });

@@ -31,6 +31,7 @@ import type { MmlDiagnostic } from '../core/mml/TrackId';
 import { DiagnosticSeverity } from '../core/mml/TrackId';
 import { AudioEngineMode } from '../core/player/AudioEngine';
 import { Player } from '../core/player/Player';
+import { virtualSynth } from '../utils/virtualSynth';
 import { Z80DriverImage } from '../core/player/Z80DriverImage';
 import { buildQuickDiskImage } from '../core/export/QdfImageBuilder';
 import type { FmToneData } from '../core/fm/FmTone';
@@ -111,6 +112,14 @@ function App() {
   // テスト発音・プレビュー用MIDIノート番号 (デフォルト: 60 = C4)
   // バーチャルキーボードおよび各エディタの TEST NOTE コントロールで双方向同期
   const [testMidiNote, setTestMidiNote] = useState<number>(60);
+
+  // マスター音量 / ミュート (プレビュー専用・コンパイル非連動)。
+  // TRACK MONITOR の MASTER VOL を App で一元管理し、演奏プレビュー (Player) と
+  // 仮想キーボード発音 (virtualSynth) の双方へ反映する (タブ切替でも値を保持)。
+  const [masterVolume, setMasterVolume] = useState<number>(80);
+  const [masterMuted, setMasterMuted] = useState<boolean>(false);
+  // Player 遅延生成 (ensurePlayer) 時に現在値を引き継ぐための最新マスター音量
+  const masterLevelRef = useRef<number>(0.8);
 
   // バーチャルキーボードの発音コンテキスト判定:
   // - 左ペイン (MMLエディタ等) 選択中 / 右ペイン非表示 / 右ペインがエディタ以外のタブ → MMLキャレットコンテキスト
@@ -407,6 +416,8 @@ function App() {
         setIsPlaying(false);
         appendLog('[AUDIO] Playback finished.');
       };
+      // Player は遅延生成のため、既に設定済みのマスター音量を引き継ぐ
+      player.setMasterVolume(masterLevelRef.current);
       playerRef.current = player;
     }
 
@@ -494,10 +505,20 @@ function App() {
     playerRef.current?.setTrackVolume(trackIndex, 0.8, muted);
   }, []);
 
-  // マスター音量 / ミュートを Player に反映 (プレビュー専用・コンパイル非連動)
+  // TRACK MONITOR のマスター音量 / ミュート変更を App state へ反映 (一元管理)
   const handleMasterVolumeChange = useCallback((volume: number, muted: boolean) => {
-    playerRef.current?.setMasterVolume(muted ? 0 : volume);
+    setMasterVolume(Math.round(volume * 100));
+    setMasterMuted(muted);
   }, []);
+
+  // マスター音量 / ミュートを Player (演奏プレビュー) と仮想キーボード発音 (virtualSynth) の
+  // 双方へ反映する (プレビュー専用パラメータ、コンパイル・エクスポートには影響しない)
+  useEffect(() => {
+    const masterLevel = masterMuted ? 0 : masterVolume / 100;
+    masterLevelRef.current = masterLevel;
+    playerRef.current?.setMasterVolume(masterLevel);
+    virtualSynth.setMasterVolume(masterLevel);
+  }, [masterVolume, masterMuted]);
 
   // EXPORT ハンドラ (.qdf エクスポート: コンパイル ➜ QuickDisk イメージ生成 ➜ ダウンロード)
   const handleExport = useCallback(() => {
@@ -896,6 +917,8 @@ function App() {
                 <TrackMonitor
                   enableYM2151={enableYM2151}
                   isPlaying={isPlaying}
+                  masterVolume={masterVolume}
+                  masterMuted={masterMuted}
                   getTrackLevel={(trackIndex) => playerRef.current?.getTrackLevel(trackIndex) ?? 0}
                   getMasterLevel={() => playerRef.current?.getMasterLevel() ?? 0}
                   onTrackMuteChange={handleTrackMuteChange}

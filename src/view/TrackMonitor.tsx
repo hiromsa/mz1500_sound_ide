@@ -165,9 +165,13 @@ interface TrackMonitorProps {
   getTrackLevel?: (trackIndex: number) => number;
   /** マスターの VU レベル取得 (0-1)。 */
   getMasterLevel?: () => number;
+  /** マスター音量 (0-100)。App で一元管理し、演奏プレビューと仮想キーボード発音の双方へ反映される。 */
+  masterVolume?: number;
+  /** マスターのミュート状態。 */
+  masterMuted?: boolean;
   /** トラックのプレビュー ON/OFF (ミュート) を Player へ反映する。 */
   onTrackMuteChange?: (trackIndex: number, muted: boolean) => void;
-  /** マスター音量 / ミュートを Player へ反映する (プレビュー専用・コンパイル非連動)。 */
+  /** マスター音量 / ミュートの変更を App へ通知する (プレビュー専用・コンパイル非連動)。 */
   onMasterVolumeChange?: (volume: number, muted: boolean) => void;
 }
 
@@ -176,12 +180,12 @@ export function TrackMonitor({
   isPlaying = false,
   getTrackLevel,
   getMasterLevel,
+  masterVolume = 80,
+  masterMuted = false,
   onTrackMuteChange,
   onMasterVolumeChange,
 }: TrackMonitorProps) {
   const [channels, setChannels] = useState<ChannelState[]>(generateInitialChannels());
-  const [masterVolume, setMasterVolume] = useState<number>(80);
-  const [isMuted, setIsMuted] = useState<boolean>(false);
   const [masterVU, setMasterVU] = useState<{ l: number; r: number }>({ l: 0, r: 0 });
 
   // ポーリング内で参照する最新 props (stale closure 回避)
@@ -189,11 +193,6 @@ export function TrackMonitor({
   useEffect(() => {
     providersRef.current = { isPlaying, getTrackLevel, getMasterLevel };
   });
-
-  // マスター音量 / ミュートを Player へ反映 (プレビュー専用パラメータ、コンパイル・エクスポートには影響しない)
-  useEffect(() => {
-    onMasterVolumeChange?.(masterVolume / 100, isMuted);
-  }, [masterVolume, isMuted, onMasterVolumeChange]);
 
   // VU を Player からポーリングして反映 (100ms 間隔)
   useEffect(() => {
@@ -286,15 +285,15 @@ export function TrackMonitor({
 
           {/* MUTE ボタン */}
           <button
-            onClick={() => setIsMuted(prev => !prev)}
+            onClick={() => onMasterVolumeChange?.(masterVolume / 100, !masterMuted)}
             className={`h-5.5 px-2 text-[10px] font-medium rounded border transition-colors cursor-pointer ${
-              isMuted
+              masterMuted
                 ? 'bg-[#3A3A3A] text-red-400 border-red-500/60 shadow-xs font-bold'
                 : 'bg-[#2E2E2E] text-zinc-400 border-[#404040] hover:text-zinc-200 hover:bg-[#383838]'
             }`}
             title="Mute Preview Output"
           >
-            {isMuted ? 'MUTED' : 'MUTE'}
+            {masterMuted ? 'MUTED' : 'MUTE'}
           </button>
 
           {/* スライダー */}
@@ -303,13 +302,13 @@ export function TrackMonitor({
               type="range"
               min="0"
               max="100"
-              value={isMuted ? 0 : masterVolume}
-              disabled={isMuted}
-              onChange={(e) => setMasterVolume(Number(e.target.value))}
+              value={masterMuted ? 0 : masterVolume}
+              disabled={masterMuted}
+              onChange={(e) => onMasterVolumeChange?.(Number(e.target.value) / 100, masterMuted)}
               className="w-20 h-1.5 bg-[#181818] rounded-lg appearance-none cursor-pointer accent-[#00A8FF] disabled:opacity-25"
             />
             <span className="w-8 text-right text-xs font-semibold text-zinc-200 font-mono">
-              {isMuted ? '0%' : `${masterVolume}%`}
+              {masterMuted ? '0%' : `${masterVolume}%`}
             </span>
           </div>
 

@@ -124,14 +124,38 @@ interface ActiveVoice {
   midiNote: number;
   engine: SoundEngineType;
   stop: () => void;
+  /** マスター音量変更を発音中のボイスへ即時反映する。 */
+  setVolume: (volume: number) => void;
   /** @VE リリース定義がある場合のキーオフ遷移 (false = リリースなしで即停止)。 */
   triggerRelease?: () => boolean;
+}
+
+/**
+ * マスター音量の知覚カーブ (Player.setMasterVolume と同一の 2 乗曲線)。
+ * 0-1 外の入力はクランプする。
+ */
+export function perceptualMasterGain(volume: number): number {
+  const clamped = Math.min(Math.max(volume, 0), 1);
+  return clamped * clamped;
 }
 
 export class VirtualSynthEngine {
   private ctx: AudioContext | null = null;
   private activeVoices: Map<number, ActiveVoice> = new Map();
   private noiseBuffer: AudioBuffer | null = null;
+
+  /** マスター音量 (知覚カーブ適用済み 0-1)。TRACK MONITOR の MASTER VOL と共有する。 */
+  private masterVolume = 1;
+
+  /**
+   * マスター音量を設定する (0-1 / 知覚カーブ適用)。
+   * TRACK MONITOR の MASTER VOL から呼ばれ、仮想キーボードの発音音量を制御する。
+   * 発音中のボイスへも即時反映する。
+   */
+  public setMasterVolume(volume: number): void {
+    this.masterVolume = perceptualMasterGain(volume);
+    this.activeVoices.forEach(voice => voice.setVolume(this.masterVolume));
+  }
 
   private getAudioContext(): AudioContext {
     if (!this.ctx) {
@@ -165,6 +189,7 @@ export class VirtualSynthEngine {
 
     const baseFreq = midiNoteToFrequency(midiNote, options.detune || 0);
     const masterGain = ctx.createGain();
+    masterGain.gain.setValueAtTime(this.masterVolume, ctx.currentTime);
     masterGain.connect(ctx.destination);
 
     // ボリューム計算 (0〜15 ➜ 0.0〜0.25)
@@ -472,6 +497,11 @@ export class VirtualSynthEngine {
     this.activeVoices.set(midiNote, {
       midiNote,
       engine: options.engine,
+      setVolume: (volume) => {
+        try {
+          masterGain.gain.setValueAtTime(volume, ctx.currentTime);
+        } catch { /* ignore */ }
+      },
       triggerRelease,
       stop: () => {
         if (releaseStopTimer !== null) {
