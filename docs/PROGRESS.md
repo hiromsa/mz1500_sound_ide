@@ -6,7 +6,7 @@
 ---
 
 ## 1. 現在のステータス概要
-- **バージョン**: `v0.0.1-beta.111`（コミット通番＋短縮ハッシュ ハイブリッド方式）
+- **バージョン**: `v0.0.1-beta.112`（コミット通番＋短縮ハッシュ ハイブリッド方式）
 - **テスト通過状況**: 全 38 テストファイル / 515 件パス + 1 skip（`npm test` / Vitest）
 - **型検査状況**: エラー 0 件（`npx tsc -b`）
 - **主要機能の稼働状況**:
@@ -53,6 +53,19 @@
 ---
 
 ## 3. 直近の完了作業（最新）
+
+- **トランスポートボタン整理: ヘッダーの LOOP / PLAY / STOP を廃止し MML エディタへ一元化、PLAY / FROM CARET / SELECTION を再生中 STOP トグル化 (`src/app/App.tsx`, `src/view/MmlEditor.tsx`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-09):
+  - **背景・ユーザー要望**:
+    - 「右上EXPORT 付近の LOOP、PLAY、STOPは廃止してください。」
+    - 「MML エディタの STOP は廃止してください。 PLAY→STOP とトグルに変わればいいです。Playingとかの文字表示は不要です。」
+    - 「FROM CARET、SELECTIONについても再生中はSTOPに変わり、押せるようにしたいです。」
+  - **対応内容**:
+    - **ヘッダー (`App.tsx`)**: `🔁 LOOP` / `▶ PLAY` / `■ STOP` の 3 ボタンを廃止 (`EXPORT PLAYER (.qdf)` / `IMPORT MIDI` は維持)。未使用となる `Play` / `Square` / `Repeat` / `AlertCircle` アイコン import を削除。ループ内部ステート `isLoopEnabled` はトグル UI 廃止により `const [isLoopEnabled] = useState<boolean>(true)` の常時 ON として維持 (`player.play` 引数として使用・将来 SETTINGS 移設を検討)。`Ctrl+Enter` グローバル / Monaco 内再生・停止トグルショートカットは従来どおり有効。
+    - **MML エディタ (`MmlEditor.tsx`)**: Row 1 トランスポートバーから `🔁 LOOP` / 独立 `■ STOP` ボタンを廃止し、props から `isLoopEnabled` / `onToggleLoop` を削除 (`Repeat` import も削除)。
+      - `▶ PLAY` ボタン: **再生中は `■ STOP` (`Square` アイコン + `STOP` ラベル) に変わり押下で即停止**。旧来の `STOP / PLAYING` 状態テキスト表記は廃止。
+      - `▶ FROM CARET` / `▶ SELECTION` ボタン: **再生中は `■ STOP` に変わり押下で再生停止**。SELECTION は再生中に `disabled` を解除し**未選択でも押下可能**。
+      - 再生中 3 ボタン共通の STOP スタイルとしてモジュール定数 `playingStopButtonClass` (High-Impact Red: `bg-red-950/60 text-red-300 border-red-500/70` + 赤グロー) を新設し重複を集約。`FAILED` 表示・`PROBLEMS` 自動遷移等の既存フィードバックは維持。
+  - **テスト**: `npx tsc -b` エラーゼロ / `npm test` 全 515 件合格 + 1 skip / `npm run lint` エラーゼロ (既存 UI 警告 10 のみ) / `npm run build` 成功。
 
 - **MMLエディタの「キャレット位置から再生」「選択範囲のみ再生」を本実装 (プリシーク + Tick ベース部分再生) (`src/core/mml/parser/MmlParserTypes.ts`, `src/core/mml/parser/MmlParser.ts`, `src/utils/mmlSelectionResolver.ts` (新規), `src/core/player/PlaybackRange.ts` (新規), `src/core/player/MzsdSequencer.ts`, `src/core/player/Z80DriverPlayback.ts`, `src/core/player/AudioEngine.ts`, `src/core/player/Player.ts`, `src/core/player/TrackSequencer.ts`, `src/core/chips/ChipBank.ts`, `src/view/MmlEditor.tsx`, `src/app/App.tsx`, `docs/specification/partial_playback.md` (新規), [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-09):
   - **背景・ユーザー要望**: フェーズ 1 (UI モック・コミット `e8bd4b0`) の合意をもとに、フェーズ 2 (詳細設計・実装) を実施。「文字列を強引に切り出すアプローチではなく、トークン単位・Tick ベースのアプローチで。全パートにおいて曲の先頭から開始 Tick までは発音させずに内部状態のみを高速シミュレートし、開始 Tick に到達した時点から実際の同期再生を開始する」という指定の解決方針に準拠。

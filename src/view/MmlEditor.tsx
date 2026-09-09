@@ -22,7 +22,6 @@ import {
   Circle,
   Play,
   TextSelect,
-  Repeat,
   Square,
   Code2
 } from 'lucide-react';
@@ -138,6 +137,9 @@ export type BottomTab = 'problems' | 'console' | 'keyboard';
 /** 折りたたみ時に下部エリアへ残すタブバーの高さ (px)。 */
 const BOTTOM_COLLAPSED_HEIGHT_PX = 28;
 
+/** 再生中にトランスポート各ボタン (PLAY / FROM CARET / SELECTION) へ適用する STOP 表示の共通スタイル (High-Impact Red) */
+const playingStopButtonClass = 'bg-red-950/60 text-red-300 border-red-500/70 shadow-[0_0_10px_rgba(239,68,68,0.35)] hover:bg-red-900/70 hover:text-red-200';
+
 interface MmlEditorProps {
   songMetadata: SongMetadata;
   onChangeSongMetadata: (metadata: SongMetadata) => void;
@@ -151,8 +153,6 @@ interface MmlEditorProps {
   onSelectError?: (error: CompileErrorItem) => void;
   onTogglePlay?: () => void;
   onStop?: () => void;
-  isLoopEnabled?: boolean;
-  onToggleLoop?: () => void;
   isPlayFailed?: boolean;
   /** 部分再生要求 (キャレット位置から / 選択範囲のみ) を App へ通知する */
   onPlayRangeRequest?: (request: PlaybackRangeRequest) => void;
@@ -212,8 +212,6 @@ export function MmlEditor({
   onSelectError,
   onTogglePlay,
   onStop,
-  isLoopEnabled = true,
-  onToggleLoop,
   isPlayFailed = false,
   onPlayRangeRequest,
   activeTabContext = 'mml',
@@ -1253,92 +1251,83 @@ export function MmlEditor({
 
           {/* トランスポートアクション群 (右寄せ) */}
           <div className="flex items-center gap-1.5 ml-auto shrink-0 pr-1">
-            {/* LOOP トグル */}
-            <button
-              onClick={onToggleLoop}
-              className={`h-6 px-2 rounded text-[11px] font-semibold border transition-all flex items-center gap-1 cursor-pointer shrink-0 ${
-                isLoopEnabled
-                  ? 'bg-[#00A8FF]/15 text-[#00A8FF] border-[#00A8FF]/60 hover:bg-[#00A8FF]/25 shadow-[0_0_8px_rgba(0,168,255,0.25)]'
-                  : 'bg-[#2A2C35] hover:bg-[#343640] text-zinc-500 hover:text-zinc-300 border-[#3E404C]'
-              }`}
-              title={`Lコマンド 無限ループ: ${isLoopEnabled ? 'ON' : 'OFF'} (クリックで切替)`}
-            >
-              <Repeat className={`w-3 h-3 ${isLoopEnabled ? 'text-[#00A8FF]' : 'text-zinc-500'}`} />
-              <span className="text-[10px] font-bold">LOOP</span>
-              <span className={`w-1.5 h-1.5 rounded-full ${isLoopEnabled ? 'bg-[#00A8FF] shadow-[0_0_5px_#00A8FF]' : 'bg-zinc-600'}`} />
-            </button>
-
-            {/* PLAY ボタン */}
+            {/* PLAY / STOP トグルボタン (再生中は STOP 表示に切替 / Ctrl+Enter 連動) */}
             <button
               onClick={onTogglePlay}
               className={`h-6 px-2.5 rounded text-[11px] font-semibold border transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
                 isPlayFailed
                   ? 'bg-red-950/70 text-red-300 border-red-500 shadow-[0_0_12px_rgba(239,68,68,0.5)] animate-shake'
-                  : isPlaying 
-                    ? 'bg-[#00A8FF]/25 text-[#00A8FF] border-[#00A8FF] shadow-[0_0_12px_rgba(0,168,255,0.45)] hover:bg-[#00A8FF]/35' 
+                  : isPlaying
+                    ? playingStopButtonClass
                     : 'bg-[#2A2C35] hover:bg-[#343640] active:bg-[#404250] text-[#00A8FF] hover:text-[#33BFFF] border-[#3E404C] hover:border-[#00A8FF]/40'
               }`}
               title={isPlayFailed ? "ビルドまたは再生に失敗しました" : isPlaying ? "停止 (Ctrl+Enter)" : "MMLをビルドして再生 (Ctrl+Enter)"}
             >
               {isPlayFailed ? (
                 <AlertCircle className="w-3 h-3 text-red-400 shrink-0" />
+              ) : isPlaying ? (
+                <Square className="w-3 h-3 fill-current" />
               ) : (
-                <Play className={`w-3 h-3 fill-current ${isPlaying ? 'animate-pulse text-[#00A8FF]' : ''}`} />
+                <Play className="w-3 h-3 fill-current" />
               )}
-              <span>{isPlayFailed ? 'FAILED' : isPlaying ? 'STOP / PLAYING' : 'PLAY'}</span>
-            </button>
-
-            {/* STOP ボタン */}
-            <button
-              onClick={onStop}
-              className={`h-6 px-2 rounded text-[11px] font-semibold border transition-colors flex items-center gap-1 cursor-pointer shrink-0 ${
-                isPlaying 
-                  ? 'bg-[#2A2C35] text-amber-300 hover:text-white border-amber-500/50 hover:bg-[#343640]' 
-                  : 'bg-[#2A2C35] hover:bg-[#343640] text-zinc-400 hover:text-zinc-200 border-[#3E404C]'
-              }`}
-              title="再生停止 (Stop)"
-            >
-              <Square className="w-2.5 h-2.5 fill-current" />
-              <span>STOP</span>
+              <span>{isPlayFailed ? 'FAILED' : isPlaying ? 'STOP' : 'PLAY'}</span>
             </button>
 
             {/* 区切り線 */}
             <div className="h-4 w-px bg-[#363842] mx-0.5" />
 
-            {/* FROM CARET ボタン */}
+            {/* FROM CARET ボタン (部分再生 / 再生中は STOP に切替) */}
             <button
-              onClick={handlePlayFromCaret}
+              onClick={isPlaying ? onStop : handlePlayFromCaret}
               className={`h-6 px-2 rounded text-[11px] font-medium border flex items-center gap-1.5 transition-all cursor-pointer select-none shrink-0 ${
-                partialPlayMode === 'caret'
-                  ? 'bg-[#00A8FF]/25 text-[#00A8FF] border-[#00A8FF] shadow-[0_0_8px_rgba(0,168,255,0.4)] animate-pulse'
-                  : 'bg-[#2A2C35] hover:bg-[#343640] text-zinc-300 hover:text-white border-[#3E404C] hover:border-[#00A8FF]/50'
-              }`}
-              title="キャレット位置から再生 (Alt+Enter) - キャレット直前までの設定コマンドを適用して再生"
-            >
-              <Play className={`w-3 h-3 fill-current ${partialPlayMode === 'caret' ? 'text-[#00A8FF]' : 'text-zinc-400'}`} />
-              <span>FROM CARET</span>
-            </button>
-
-            {/* SELECTION ボタン */}
-            <button
-              onClick={handlePlaySelection}
-              disabled={!hasSelection}
-              className={`h-6 px-2 rounded text-[11px] font-medium border flex items-center gap-1.5 transition-all select-none shrink-0 ${
-                !hasSelection
-                  ? 'opacity-35 cursor-not-allowed text-zinc-500 bg-[#252730] border-transparent'
-                  : partialPlayMode === 'selection'
-                    ? 'bg-emerald-500/25 text-emerald-400 border-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)] animate-pulse cursor-pointer'
-                    : 'bg-[#2A2C35] hover:bg-[#343640] text-zinc-300 hover:text-white border-[#3E404C] hover:border-emerald-500/50 cursor-pointer'
+                isPlaying
+                  ? playingStopButtonClass
+                  : partialPlayMode === 'caret'
+                    ? 'bg-[#00A8FF]/25 text-[#00A8FF] border-[#00A8FF] shadow-[0_0_8px_rgba(0,168,255,0.4)] animate-pulse'
+                    : 'bg-[#2A2C35] hover:bg-[#343640] text-zinc-300 hover:text-white border-[#3E404C] hover:border-[#00A8FF]/50'
               }`}
               title={
-                hasSelection
-                  ? `選択範囲のみ再生 (Ctrl+Shift+Enter) - ${selectionSummary?.charCount ?? 0}文字選択中`
-                  : '選択範囲のみ再生 (Ctrl+Shift+Enter) - テキストを選択してください'
+                isPlaying
+                  ? '再生を停止'
+                  : 'キャレット位置から再生 (Alt+Enter) - キャレット直前までの設定コマンドを適用して再生'
               }
             >
-              <TextSelect className={`w-3 h-3 shrink-0 ${hasSelection ? 'text-emerald-400' : 'text-zinc-500'}`} />
-              <span>SELECTION</span>
-              {hasSelection && selectionSummary && (
+              {isPlaying ? (
+                <Square className="w-3 h-3 fill-current" />
+              ) : (
+                <Play className={`w-3 h-3 fill-current ${partialPlayMode === 'caret' ? 'text-[#00A8FF]' : 'text-zinc-400'}`} />
+              )}
+              <span>{isPlaying ? 'STOP' : 'FROM CARET'}</span>
+            </button>
+
+            {/* SELECTION ボタン (部分再生 / 再生中は STOP に切替し未選択でも押下可能) */}
+            <button
+              onClick={isPlaying ? onStop : handlePlaySelection}
+              disabled={!isPlaying && !hasSelection}
+              className={`h-6 px-2 rounded text-[11px] font-medium border flex items-center gap-1.5 transition-all select-none shrink-0 ${
+                isPlaying
+                  ? playingStopButtonClass
+                  : !hasSelection
+                    ? 'opacity-35 cursor-not-allowed text-zinc-500 bg-[#252730] border-transparent'
+                    : partialPlayMode === 'selection'
+                      ? 'bg-emerald-500/25 text-emerald-400 border-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)] animate-pulse cursor-pointer'
+                      : 'bg-[#2A2C35] hover:bg-[#343640] text-zinc-300 hover:text-white border-[#3E404C] hover:border-emerald-500/50 cursor-pointer'
+              }`}
+              title={
+                isPlaying
+                  ? '再生を停止'
+                  : hasSelection
+                    ? `選択範囲のみ再生 (Ctrl+Shift+Enter) - ${selectionSummary?.charCount ?? 0}文字選択中`
+                    : '選択範囲のみ再生 (Ctrl+Shift+Enter) - テキストを選択してください'
+              }
+            >
+              {isPlaying ? (
+                <Square className="w-3 h-3 fill-current" />
+              ) : (
+                <TextSelect className={`w-3 h-3 shrink-0 ${hasSelection ? 'text-emerald-400' : 'text-zinc-500'}`} />
+              )}
+              <span>{isPlaying ? 'STOP' : 'SELECTION'}</span>
+              {!isPlaying && hasSelection && selectionSummary && (
                 <span className="text-[9px] px-1 rounded bg-emerald-950/70 text-emerald-300 border border-emerald-700/50 font-mono">
                   {selectionSummary.charCount}
                 </span>

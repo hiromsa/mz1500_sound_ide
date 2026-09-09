@@ -1,7 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { 
-  Play, 
-  Square, 
   Download, 
   Sliders, 
   AudioWaveform, 
@@ -10,8 +8,6 @@ import {
   Music,
   Music2,
   Settings,
-  Repeat,
-  AlertCircle,
   Wand2
 } from 'lucide-react';
 import { MidiRouterModal } from '../view/MidiRouterModal';
@@ -300,8 +296,9 @@ function App() {
   // 再生ステート (PLAY / STOP 連動)
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
 
-  // 無限ループ (Lコマンド) 有効/無効ステート (デフォルト ON)
-  const [isLoopEnabled, setIsLoopEnabled] = useState<boolean>(true);
+  // 無限ループ (Lコマンド) 有効ステート (ヘッダー/エディタの LOOP トグル UI は廃止済みのため常時 ON。
+  // player.play への引数として内部利用する。将来 SETTINGS への移設を検討)
+  const [isLoopEnabled] = useState<boolean>(true);
 
   // 演奏エンジン (既定 = Z80Driver: 内蔵 Z80 コアでドライバ実行 / SourceInterpreter = リファレンス実装)
   const [playbackMode, setPlaybackMode] = useState<AudioEngineMode>(AudioEngineMode.Z80Driver);
@@ -654,58 +651,10 @@ function App() {
           </div>
         </div>
 
-        {/* Header Actions (Transport Controls) */}
+        {/* Header Actions */}
         <div className="flex items-center gap-2 font-mono shrink-0 ml-4">
-          {/* Transport: LOOP TOGGLE (無限ループ有効/無効、デフォルトON) */}
-          <button
-            onClick={() => setIsLoopEnabled(prev => !prev)}
-            className={`h-7 px-2.5 rounded text-xs font-semibold border transition-all flex items-center gap-1.5 cursor-pointer shadow-xs shrink-0 ${
-              isLoopEnabled
-                ? 'bg-[#00A8FF]/15 text-[#00A8FF] border-[#00A8FF]/60 hover:bg-[#00A8FF]/25 shadow-[0_0_8px_rgba(0,168,255,0.25)]'
-                : 'bg-[#2E2E2E] hover:bg-[#383838] text-zinc-500 hover:text-zinc-300 border-[#404040]'
-            }`}
-            title={`Lコマンド 無限ループ: ${isLoopEnabled ? 'ON (無限ループする)' : 'OFF (1周で終了)'} (クリックで切替)`}
-          >
-            <Repeat className={`w-3.5 h-3.5 ${isLoopEnabled ? 'text-[#00A8FF]' : 'text-zinc-500'}`} />
-            <span className="text-[11px] font-bold tracking-tight">LOOP</span>
-            <span className={`w-1.5 h-1.5 rounded-full ${isLoopEnabled ? 'bg-[#00A8FF] shadow-[0_0_5px_#00A8FF]' : 'bg-zinc-600'}`} />
-          </button>
-
-          {/* Transport: PLAY (ビルド＆再生、再生中に押すと停止、Ctrl+Enter連動) */}
-          <button 
-            onClick={handleTogglePlay}
-            className={`h-7 px-3.5 rounded text-xs font-semibold border transition-all flex items-center gap-1.5 cursor-pointer shadow-xs shrink-0 ${
-              isPlayFailed
-                ? 'bg-red-950/70 text-red-300 border-red-500 shadow-[0_0_12px_rgba(239,68,68,0.5)] animate-shake'
-                : isPlaying 
-                  ? 'bg-[#00A8FF]/25 text-[#00A8FF] border-[#00A8FF] shadow-[0_0_12px_rgba(0,168,255,0.45)] hover:bg-[#00A8FF]/35' 
-                  : 'bg-[#383838] hover:bg-[#444444] active:bg-[#505050] text-[#00A8FF] hover:text-[#33BFFF] border-[#484848] hover:border-[#00A8FF]/40'
-            }`}
-            title={isPlayFailed ? "ビルドまたは再生に失敗しました (PROBLEMS パネルを確認してください)" : isPlaying ? "クリックまたは Ctrl+Enter で停止" : "MMLをビルドして再生 (Ctrl+Enter)"}
-          >
-            {isPlayFailed ? (
-              <AlertCircle className="w-3.5 h-3.5 text-red-400 shrink-0" />
-            ) : (
-              <Play className={`w-3.5 h-3.5 fill-current ${isPlaying ? 'animate-pulse text-[#00A8FF]' : ''}`} />
-            )}
-            <span>{isPlayFailed ? 'FAILED' : isPlaying ? 'STOP / PLAYING' : 'PLAY'}</span>
-          </button>
-
-          {/* Transport: STOP */}
-          <button 
-            onClick={handleStop}
-            className={`h-7 px-3 rounded text-xs font-semibold border transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs shrink-0 ${
-              isPlaying 
-                ? 'bg-[#383838] text-amber-300 hover:text-white border-amber-500/50 hover:bg-[#444444]' 
-                : 'bg-[#383838] hover:bg-[#444444] active:bg-[#505050] text-zinc-400 hover:text-zinc-200 border-[#484848]'
-            }`}
-            title="再生停止 (Stop)"
-          >
-            <Square className="w-3 h-3 fill-current" />
-            <span>STOP</span>
-          </button>
-
           {/* Special Action: EXPORT PLAYER (.qdf) */}
+          {/* ※ トランスポート (PLAY / STOP / LOOP) はヘッダーから廃止し、MML エディタのトランスポートバーへ一元化 */}
           <button 
             onClick={handleExport}
             className="h-7 px-3 rounded text-xs font-semibold bg-[#383838] hover:bg-[#444444] active:bg-[#505050] text-zinc-300 hover:text-white border border-[#484848] transition-colors ml-1 flex items-center gap-1.5 cursor-pointer shadow-xs shrink-0"
@@ -756,8 +705,6 @@ function App() {
             }}
             onTogglePlay={handleTogglePlay}
             onStop={handleStop}
-            isLoopEnabled={isLoopEnabled}
-            onToggleLoop={() => setIsLoopEnabled(prev => !prev)}
             isPlayFailed={isPlayFailed}
             onPlayRangeRequest={(request) => { void handlePlay(request); }}
             activeTabContext={activeTabContext}
