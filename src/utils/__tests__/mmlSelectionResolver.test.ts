@@ -94,10 +94,13 @@ describe('resolvePlaybackRange', () => {
     const mml = ['P1 o4 l4 c d e', 'P2 o5 l4 r r g'].join('\n');
     const map = compileMap(mml);
 
-    // 2 行目の g (列 14) → P1 は 2 行目以降にイベントを持たない、P2 の g (startFrame 60) のみ
-    const range = resolvePlaybackRange(map, { kind: 'caret', startLine: 2, startColumn: 14 });
+    // 2 行目 (P2) の g (列 14) → キャレット所属トラック P2 の g (startFrame 60) をアンカーにする
+    // (P2 より前のイベントはプリシークで無音スキップ)
+    const range = resolvePlaybackRange(map, { kind: 'caret', startLine: 2, startColumn: 14 }, mml);
     expect(range!.startFrame).toBe(60);
     expect(range!.endFrame).toBeNull();
+    // アンカー以降に発音する全トラックのイベント: P1 の e (startFrame 60) + P2 の g (startFrame 60)
+    expect(range!.eventCount).toBe(2);
   });
 
   it('supports multi-line selections', () => {
@@ -156,5 +159,40 @@ describe('resolvePlaybackRange', () => {
     const range = resolvePlaybackRange(map, { kind: 'caret', startLine: 1, startColumn: 4 });
     expect(range!.startFrame).toBe(0);
     expect(range!.eventCount).toBe(1);
+  });
+
+  it('falls back to source-position resolution when the caret track has no map track', () => {
+    // W1 は MmlMap に存在しないため、テキスト位置ベースの解決へフォールバックする
+    const mml = ['W1 c d e', 'P1 o4 c'].join('\n');
+    const map = compileMap(mml);
+
+    const range = resolvePlaybackRange(map, { kind: 'caret', startLine: 1, startColumn: 4 }, mml);
+    expect(range!.startFrame).toBe(0);
+    expect(range!.eventCount).toBe(1);
+  });
+
+  it('anchors caret playback on the caret track even when later tracks start earlier in time', () => {
+    // 回帰: ソース後方に書かれた P2 のイベント (演奏時刻は曲先頭付近) に開始位置を
+    // 引きずられて、キャレット位置と無関係に曲先頭から再生される問題の修正
+    const mml = ['P1 o4 l4 c d', 'P1 e f', '', 'P2 o5 l4 g g g g'].join('\n');
+    const map = compileMap(mml);
+
+    // 2 行目 (P1 継続行) の e の直前 (列 4) → P1 の e (startFrame 60) をアンカーにする
+    const range = resolvePlaybackRange(map, { kind: 'caret', startLine: 2, startColumn: 4 }, mml);
+    expect(range!.startFrame).toBe(60);
+    expect(range!.endFrame).toBeNull();
+    // アンカー以降に発音する全トラックのイベント: P1 e / f + P2 後半 2 音 (startFrame 60 / 90)
+    expect(range!.eventCount).toBe(4);
+  });
+
+  it('starts from the caret track end when the caret is after its last event', () => {
+    const mml = ['P1 o4 l4 c d', 'P2 o5 l4 g g g g g'].join('\n');
+    const map = compileMap(mml);
+
+    // 1 行目末尾 (P1 の d の直後) → P1 に以降イベントが無いため d の終端 (frame 60) を
+    // アンカーにし、P2 の残り 3 音 (startFrame 60 / 90 / 120) が同期再生される
+    const range = resolvePlaybackRange(map, { kind: 'caret', startLine: 1, startColumn: 13 }, mml);
+    expect(range!.startFrame).toBe(60);
+    expect(range!.eventCount).toBe(3);
   });
 });

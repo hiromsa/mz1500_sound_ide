@@ -456,7 +456,7 @@ function App() {
     // 部分再生要求: MmlMap (イベント ↔ ソース位置 ↔ 演奏フレーム対応) から時間範囲を解決する
     let range: ResolvedPlaybackRange | null = null;
     if (request !== undefined) {
-      range = result.map === null ? null : resolvePlaybackRange(result.map, request);
+      range = result.map === null ? null : resolvePlaybackRange(result.map, request, source);
       if (range === null) {
         appendLog(
           `[PLAY] ${request.kind === 'caret' ? 'キャレット以降' : '選択範囲内'}に再生可能な音符・休符がありません。`,

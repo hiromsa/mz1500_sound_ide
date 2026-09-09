@@ -6,8 +6,8 @@
 ---
 
 ## 1. 現在のステータス概要
-- **バージョン**: `v0.0.1-beta.113`（コミット通番＋短縮ハッシュ ハイブリッド方式）
-- **テスト通過状況**: 全 38 テストファイル / 515 件パス + 1 skip（`npm test` / Vitest）
+- **バージョン**: `v0.0.1-beta.114`（コミット通番＋短縮ハッシュ ハイブリッド方式）
+- **テスト通過状況**: 全 38 テストファイル / 518 件パス + 1 skip（`npm test` / Vitest）
 - **型検査状況**: エラー 0 件（`npx tsc -b`）
 - **主要機能の稼働状況**:
   - Web ネイティブ MML コンパイラ（9ch / 17ch / ワークトラック W1〜W99 対応）
@@ -53,6 +53,16 @@
 ---
 
 ## 3. 直近の完了作業（最新）
+
+- **FROM CARET が曲先頭から再生される問題を修正: キャレット所属トラック基準のアンカー解決 (`src/utils/mmlSelectionResolver.ts`, `src/app/App.tsx`, `src/utils/__tests__/mmlSelectionResolver.test.ts`, [`docs/specification/partial_playback.md`](./specification/partial_playback.md), [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-09):
+  - **背景・ユーザー報告**: 「FROM CARETで P1の3行目にキャレットがあっても 1行目から再生されてしまいます。」(P1 の 3 行目 `P1 g r l8 ...` にキャレットがある状態で、P1 の 1 行目 `P1 o4 @VE1 @PE1 l16 e f` から鳴ってしまう)
+  - **原因**: キャレット再生の時間範囲解決が「全トラックの**テキスト上キャレット以降**に書かれたイベント」の `startFrame` 最小値を採る設計だったため、キャレット行より後ろにソースが書かれた P2 のイベント (演奏時刻は曲先頭 0 フレーム付近) が採用され、開始位置が曲先頭へ引き戻されていた。
+  - **対応内容**:
+    - `resolvePlaybackRange(map, request, source?)` へ第 3 引数 `source` を追加し、キャレット再生時は `parseMmlCaretContext` (既存の行頭トラック宣言追跡ユーティリティ) でキャレット所属トラックを特定。そのトラックの「キャレット位置以降で最初のイベント」の `startFrame` をアンカーとする新経路 `resolveCaretAnchoredRange` を新設。
+    - アンカー以降は全トラックがプリシーク (無音シミュレート) して同期再生するため、設計ドキュメントの「曲の先頭から開始 Tick までは発音させずに内部状態のみを高速シミュレート」の意図どおりの挙動になる。`eventCount` はアンカー以降に発音する全トラックのイベント数 (部分再生ログ用)。
+    - キャレットが自トラックの全イベントより後ろの場合は最終イベントの終端フレームをアンカーにし他トラックの残りを継続再生。キャレットトラックが MmlMap に存在しない (W1〜W99 等) / アンカー以降に発音イベントが無い場合は従来のテキスト位置ベース解決 (`resolveByTokenPosition` に分離・既存ロジック温存) へフォールバック。選択範囲再生 (SELECTION) は無変更。
+    - `App.handlePlay` がコンパイル済みの同一 `source` を resolver へ渡すよう修正 (常に編集後の最新ソースでトラック判定)。
+  - **検証**: ユーザー報告の MML をそのまま使用したスクラッチ検証で、P1 3 行目キャレット → `startFrame = 20` (P1 3 行目の最初の `g` / 0.33 秒地点、修正前は `0`) を確認。`npx tsc -b` エラーゼロ / `npm test` 全 518 件合格 + 1 skip (回帰テスト 3 件追加: 後方トラック逆転ケース / 自トラック終端後ケース / W トラックフォールバック) / `npm run lint` エラーゼロ (既存 UI 警告 10 のみ) / `npm run build` 成功。
 
 - **トランスポート開始元限定 STOP 化: 再生中は開始元ボタンのみ STOP 表示、他は無効化 (`src/view/MmlEditor.tsx`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-09):
   - **背景・ユーザー要望**: 「PLAY ボタンを押したときは、PLAYボタンのみSTOPに変化し、他は無効にしてください。」「STOPが3つ並ぶと少しうるさい感じがします。」「FROM CARET、SELECTIONも同様です。」
