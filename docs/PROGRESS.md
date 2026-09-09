@@ -54,6 +54,13 @@
 
 ## 3. 直近の完了作業（最新）
 
+- **仮想キーボードの @IN セレクタを MML モード時 P3/P6 キャレット限定に変更 (`src/view/VirtualKeyboard.tsx`, `src/utils/mmlCaretParser.ts`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-09):
+  - **背景・ユーザー要望**: 「MMLエディタ 連動の場合で、@INは P3 / P6 の場合のみ有効にしてください。」(前回実装の @IN セレクタは実効音源が PSG なら P1/P2/P4/P5 キャレットでも有効だった)
+  - **対応内容**:
+    1. `mmlCaretParser.ts` の P3/P6 判定ヘルパーを `isDcsgTone3TrackName` としてエクスポート化 (`resolveEngineFromTrackName` と同一パターン)。
+    2. `VirtualKeyboard.tsx` の `isNoiseIntegrateActive` を **「実効音源が PSG かつ (エディタモード or キャレットトラックが P3/P6)」** に変更。MML モードで P1/P2/P4/P5 にキャレットがある場合は `N/A (P3/P6)` 無効バッジ表示となり、手動選択も不可 (MML 演奏へ反映されないため)。V-ENV / P-ENV エディタモードはトラック概念が無いため、PSG 選択時は従来どおり自由試聴として有効。
+  - **検証**: `npx tsc -b` エラーゼロ / `npm test` 全 35 ファイル・486 件合格 + 1 skip / `npm run lint` エラーゼロ (既存警告 10 は変更なし)。
+
 - **仮想キーボードのコントロール 2 行化（キーアサイン & オクターブ操作バー新設）と @IN / @WN セレクタ追加 (`src/view/VirtualKeyboard.tsx`, `src/utils/virtualSynth.ts`, `src/utils/mmlCaretParser.ts`, `src/utils/__tests__/mmlCaretParser.test.ts`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-09):
   - **背景・ユーザー要望**: 「仮想キーボードについて、オクターブ変更のボタンとキーアサインについては、行を追加して配置してほしい（鍵盤のエリアの高さがその分小さくなってもOK）。その上で、PITCHの右側あたりに @IN と @WN の設定を追加してほしい。@IN と @WN の有効・無効など連動については、他の設定と同様にうまく連動するようにしてほしい。」
   - **対応内容**:

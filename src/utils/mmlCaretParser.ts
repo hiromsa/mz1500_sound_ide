@@ -53,7 +53,7 @@ export function resolveEngineFromTrackName(trackName: string): SoundEngineType {
 }
 
 /** DCSG トーン 3 統合トラック (P3/P6) かどうか (@IN はこのトラックでのみ有効・正式パーサ準拠) */
-function isDcsgTone3Track(trackName: string): boolean {
+export function isDcsgTone3TrackName(trackName: string): boolean {
   return /^P[36]$/.test(trackName);
 }
 
@@ -249,7 +249,7 @@ export class MmlCaretContextTracker {
       // @IN: ノイズ統合モード (0 = 解除 / 1 = 周期ノイズ連動 / 2 = ホワイトノイズ連動)。
       // トーン 3 トラック (P3/P6) でのみ有効 (正式パーサ `processNoiseSync` 準拠)
       const mode = parseOptionalInt(upper.slice(3));
-      if (mode !== undefined && isDcsgTone3Track(trackName)) {
+      if (mode !== undefined && isDcsgTone3TrackName(trackName)) {
         state.noiseIntegrate = Math.max(0, Math.min(2, mode));
       }
     } else if (upper.startsWith('@FM')) {

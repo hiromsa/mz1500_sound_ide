@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Volume2, VolumeX } from 'lucide-react';
 import { virtualSynth, type SoundEngineType, type SynthPlayOptions } from '../utils/virtualSynth';
-import type { MmlCaretContext } from '../utils/mmlCaretParser';
+import { isDcsgTone3TrackName, type MmlCaretContext } from '../utils/mmlCaretParser';
 import { findDefinitionBlocks } from '../utils/mmlContextParser';
 import { loadFmToneDefinition, loadPitchEnvDefinition, loadVolEnvDefinition } from '../utils/mmlDefinitionLoader';
 import type { FmToneData } from '../core/fm/FmTone';
@@ -235,9 +235,13 @@ export function VirtualKeyboard({
       ? ((mmlContext?.noiseIntegrate ?? 0) as 0 | 1 | 2)
       : selectedNoiseIntegrate === 'in1' ? 1 : selectedNoiseIntegrate === 'in2' ? 2 : 0;
 
-  // @WN はノイズトラック (N1/N2) 専用 / @IN は PSG トラック専用コマンド (正式パーサ準拠の有効化条件)
+  // @WN はノイズトラック (N1/N2) 専用 / @IN はトーン 3 統合トラック (P3/P6) 専用コマンド (正式パーサ準拠)。
+  // MML モード時はキャレットトラックが P3/P6 のときのみ有効 (P3/P6 以外では MML 演奏へ反映されないため)。
+  // 各 ENV エディタモード時はトラック概念が無いため、PSG 選択時に試聴可能とする。
   const isNoiseWaveActive = effectiveEngine === 'noise';
-  const isNoiseIntegrateActive = effectiveEngine === 'psg';
+  const isNoiseIntegrateActive =
+    effectiveEngine === 'psg' &&
+    (activeTabContext !== 'mml' || isDcsgTone3TrackName(mmlContext?.trackName ?? ''));
 
   // 3. ピッチエンベロープ (@PE) の実効データ判定
   const effectivePitchEnvData = useMemo(() => {
@@ -678,9 +682,9 @@ export function VirtualKeyboard({
             ) : (
               <span
                 className="h-5 px-1.5 rounded bg-zinc-900 border border-white/[0.05] text-zinc-600 text-[10px] flex items-center"
-                title="@IN は PSG トラック (P3/P6) 専用コマンドのため、PSG 選択時のみ試聴できます"
+                title="@IN はトーン 3 トラック (P3/P6) 専用コマンドです。MML モードでは P3/P6 にキャレットがあるときのみ試聴できます"
               >
-                N/A (PSG)
+                N/A (P3/P6)
               </span>
             )}
           </div>
