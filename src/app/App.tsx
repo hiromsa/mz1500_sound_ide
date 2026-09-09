@@ -1007,6 +1007,7 @@ function App() {
               {activeRightTab === 'mml_tools' && (
                 <MmlTransformPanel 
                   enableYM2151={enableYM2151}
+                  sourceText={activeMmlSource}
                   onToggleEnableYM2151={() => {
                     const nextVal = !enableYM2151;
                     setEnableYM2151(nextVal);

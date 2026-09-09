@@ -154,8 +154,9 @@ describe('transpose', () => {
       targetTracks: ['P1'],
       semitones: 1,
     });
-    // b(71)+1 = o5c へ跨ぎ挿入。2 音目の c は挿入後の o5 状態を引き継ぐ (72+1 = c#)
-    expect(result.source).toBe('P1 o4 o5c c#');
+    // b(71)+1 = o5c へ跨ぎ挿入。2 音目の c は元テキスト上 o4 のままであるため
+    // 正式パーサ準拠の解釈 (c4) に従い c#4 へ移調し、出力上は o4 へ戻す o を再挿入する
+    expect(result.source).toBe('P1 o4 o5c o4c#');
     expect(result.changedCount).toBe(2);
   });
 
@@ -199,13 +200,15 @@ describe('transpose', () => {
   });
 
   it('continues the octave state across continuation lines (parser compatible)', () => {
-    // 継続行は直前行のオクターブ状態 (o6 へ跨ぎ済み) を引き継ぐ (正式パーサと同一の挙動)
+    // 継続行は元テキスト上のオクターブ状態 (o5) を引き継ぐ (正式パーサと同一の挙動)。
+    // 挿入した o6 は出力テキスト上の都合であり、後続音符の解釈には影響しない
     const result = applyMmlTransform('P1 o5 b\n b b', {
       kind: 'transpose',
       targetTracks: ['P1'],
       semitones: 1,
     });
-    expect(result.source).toBe('P1 o5 o6c\n o7c o8c');
+    // b5+1 = c6 (隣接音名)。継続行の b も元テキスト上 o5 のまま (正式パーサ準拠) であるため同様に c6 へ
+    expect(result.source).toBe('P1 o5 o6c\n c c');
   });
 });
 
@@ -281,6 +284,111 @@ describe('line scope resolution', () => {
     expect(scopes[0].trackNames).toEqual(['W1']);
     expect(scopes[1].trackNames).toEqual(['W1']);
   });
+
+  it('detects other dialect track declarations (A-Z single letters)', () => {
+    const scopes = resolveLineScopes('ABC @t1,86\nA c\n e\nB d');
+    expect(scopes[0].trackNames).toEqual(['A', 'B', 'C']);
+    expect(scopes[0].contentStart).toBe(4);
+    expect(scopes[1].trackNames).toEqual(['A']);
+    expect(scopes[2].trackNames).toEqual(['A']);
+    expect(scopes[3].trackNames).toEqual(['B']);
+  });
+
+  it('treats digit-suffixed letters as invalid declarations (parser compatible)', () => {
+    // A1 / Q5 は正式パーサの無効宣言 (P7 等) と同様に宣言扱いしない (継続行帰属)
+    const scopes = resolveLineScopes('P1 c\nA1 e\nQ5 f');
+    expect(scopes[0].trackNames).toEqual(['P1']);
+    expect(scopes[1].trackNames).toEqual(['P1']);
+    expect(scopes[2].trackNames).toEqual(['P1']);
+  });
+});
+
+describe('other tracks (A-Z single letter dialects)', () => {
+  /** ユーザー提供の他方言 MML 例 (PMD 系: A-Z 1 文字トラック)。 */
+  const DIALECT_MML = [
+    'ABC @t1,86',
+    '',
+    'A @1 @v0 o5 l8 q8',
+    'B @1 v12 o3 l16 @q0',
+    'C         o4 l8 @q2',
+    '',
+    'A o4v15',
+    'A La+12r12a+12a+12a+12a+12a+12>c12d12c12r12<a+12>',
+    'A f2r4d+12f12g12',
+    'C c d e',
+  ].join('\n');
+
+  it('remaps a dialect track and keeps other tracks untouched', () => {
+    const result = applyMmlTransform('A c\nB e', { kind: 'remapTracks', mappings: { A: 'C' } });
+    expect(result.source).toBe('C c\nB e');
+    expect(result.changedCount).toBe(1);
+  });
+
+  it('remaps part of consecutive declarations (ABC -> XBC)', () => {
+    const result = applyMmlTransform('ABC @t1,86', { kind: 'remapTracks', mappings: { A: 'X' } });
+    expect(result.source).toBe('XBC @t1,86');
+    expect(result.changedCount).toBe(1);
+  });
+
+  it('swaps dialect tracks without collision', () => {
+    const result = applyMmlTransform('A c\nB e', {
+      kind: 'remapTracks',
+      mappings: { A: 'B', B: 'A' },
+    });
+    expect(result.source).toBe('B c\nA e');
+    expect(result.changedCount).toBe(2);
+  });
+
+  it('moves a dialect track to a hardware track', () => {
+    const result = applyMmlTransform('A o5 c d e', { kind: 'remapTracks', mappings: { A: 'P1' } });
+    expect(result.source).toBe('P1 o5 c d e');
+    expect(result.changedCount).toBe(1);
+  });
+
+  it('transposes notes in dialect tracks including continuation lines', () => {
+    const result = applyMmlTransform(DIALECT_MML, { kind: 'transpose', targetTracks: ['A'], semitones: 2 });
+    const lines = result.source.split('\n');
+    // 対象外トラックとコマンド行は無変換
+    expect(lines[2]).toBe('A @1 @v0 o5 l8 q8');
+    expect(lines[3]).toBe('B @1 v12 o3 l16 @q0');
+    expect(lines[4]).toBe('C         o4 l8 @q2');
+    expect(lines[6]).toBe('A o4v15');
+    // 同音連打 (a+12 x7, o4) は全て c5 へ: 1 音目のみ o5 を挿入し以降は音名のみ
+    expect(lines[7]).toBe('A Lo5c12r12c12c12c12c12c12>o5d12e12d12r12<o5c12>');
+    // 行 7 末尾の `>` (元テキスト o5 相当) を引き継ぐため f5 起点で o5 を再挿入する
+    expect(lines[8]).toBe('A o5g2r4f12g12a12');
+    expect(lines[9]).toBe('C c d e');
+    expect(result.changedCount).toBe(14);
+  });
+
+  it('shifts octaves only in the targeted dialect tracks', () => {
+    const result = applyMmlTransform('A o5 c\nB o3 e', { kind: 'shiftOctave', targetTracks: ['A'], shift: -1 });
+    expect(result.source).toBe('A o4 c\nB o3 e');
+  });
+
+  it('scales PSG volumes in dialect tracks within the 0-15 range', () => {
+    const result = applyMmlTransform('B v12 c', { kind: 'scaleVolume', targetTracks: ['B'], add: 0, percent: 50 });
+    expect(result.source).toBe('B v6 c');
+  });
+
+  it('does not scale @v of dialect tracks as fm volume', () => {
+    // OTHER トラック行の @v は FM 音量 (0-127) 扱いにしない (PSG トラック同様 @v は保持)
+    const result = applyMmlTransform('A @v100 c', { kind: 'scaleVolume', targetTracks: ['A'], add: 0, percent: 50 });
+    expect(result.source).toBe('A @v100 c');
+    expect(result.changedCount).toBe(0);
+  });
+
+  it('applies remap and transpose sequentially to the user dialect example', () => {
+    let source = applyMmlTransform(DIALECT_MML, { kind: 'remapTracks', mappings: { A: 'D' } }).source;
+    expect(source.split('\n')[6]).toBe('D o4v15');
+    expect(source.split('\n')[7].startsWith('D L')).toBe(true);
+
+    source = applyMmlTransform(source, { kind: 'transpose', targetTracks: ['D'], semitones: -3 }).source;
+    // f2r4d+12f12g12 (o4) → d2r4c12d12e12
+    expect(source.split('\n')[8]).toBe('D d2r4c12d12e12');
+    expect(source.split('\n')[3]).toBe('B @1 v12 o3 l16 @q0');
+    expect(source.split('\n')[4]).toBe('C         o4 l8 @q2');
+  });
 });
 
 describe('integration with MmlCompiler', () => {
@@ -303,7 +411,7 @@ describe('integration with MmlCompiler', () => {
     const result = compile(transformed.source);
     expect(result.success).toBe(true);
 
-    // P1 トラック内の NOTE 命令列のみを確認 (b+1 = 72 / c+1 = 73)
+    // P1 トラック内の NOTE 命令列のみを確認 (b+1 = 72 / 元テキスト o4 の c+1 = 61)
     const data = trackBytes(result, 'P1');
     const notes: number[] = [];
     for (let i = 0; i < data.length; i++) {
@@ -313,7 +421,7 @@ describe('integration with MmlCompiler', () => {
       }
     }
 
-    expect(notes).toEqual([72, 73]);
+    expect(notes).toEqual([72, 61]);
   });
 
   it('compiles all sample songs with zero errors after transforms', () => {

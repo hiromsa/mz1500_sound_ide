@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Wand2, 
   ArrowUpDown, 
@@ -10,6 +10,7 @@ import {
   Music2
 } from 'lucide-react';
 import type { MmlTransformOperation } from '../core/transform/mmlTransformEngine';
+import { detectOtherTracks } from '../core/transform/mmlOtherTracks';
 
 /** TRANSFORM パネルから App (Monaco Editor) へ送る変換適用要求。 */
 export interface MmlTransformRequest {
@@ -23,6 +24,8 @@ export interface MmlTransformRequest {
 
 interface MmlTransformPanelProps {
   enableYM2151?: boolean;
+  /** エディタ上の現在の MML ソース (OTHER TRACKS 自動検出に使用)。 */
+  sourceText?: string;
   onToggleEnableYM2151?: () => void;
   onOpenMidiRouter?: () => void;
   onRequestTransform?: (request: MmlTransformRequest) => void;
@@ -32,7 +35,7 @@ interface MmlTransformPanelProps {
 interface TrackDefinition {
   id: string;
   name: string;
-  category: 'dcsg' | 'noise' | 'beep' | 'fm' | 'work';
+  category: 'dcsg' | 'noise' | 'beep' | 'fm' | 'work' | 'other';
 }
 
 const ALL_TRACKS: TrackDefinition[] = [
@@ -70,6 +73,7 @@ const WORK_TRACK_IDS = ['W1', 'W2', 'W3', 'W4'];
 
 export const MmlTransformPanel: React.FC<MmlTransformPanelProps> = ({
   enableYM2151 = false,
+  sourceText = '',
   onToggleEnableYM2151,
   onOpenMidiRouter,
   onRequestTransform,
@@ -77,6 +81,22 @@ export const MmlTransformPanel: React.FC<MmlTransformPanelProps> = ({
   const availableTracks = enableYM2151
     ? ALL_TRACKS
     : ALL_TRACKS.filter((t) => t.category !== 'fm');
+
+  // エディタの MML ソースから他方言トラック (OTHER: A-Z 1 文字宣言) を自動検出
+  const detectedOtherTracks = useMemo(() => detectOtherTracks(sourceText), [sourceText]);
+
+  // OTHER トラックを選択肢へ連結したトラック定義一覧 (remap 先などのセレクトに使用)
+  const allSelectableTracks = useMemo<TrackDefinition[]>(
+    () => [
+      ...availableTracks,
+      ...detectedOtherTracks.map((id) => ({
+        id,
+        name: `${id} (Other ${id})`,
+        category: 'other' as const,
+      })),
+    ],
+    [availableTracks, detectedOtherTracks],
+  );
 
   // 複数選択ステート (初期値: P1, P2, P3)
   const [selectedTracks, setSelectedTracks] = useState<string[]>(['P1', 'P2', 'P3']);
@@ -127,14 +147,14 @@ export const MmlTransformPanel: React.FC<MmlTransformPanelProps> = ({
       });
       selectedTracks.forEach((t, idx) => {
         if (!next[t]) {
-          const startIdx = availableTracks.findIndex((item) => item.id === batchStartTarget);
-          const defaultTarget = availableTracks[(startIdx >= 0 ? startIdx + idx : idx) % availableTracks.length]?.id ?? t;
+          const startIdx = allSelectableTracks.findIndex((item) => item.id === batchStartTarget);
+          const defaultTarget = allSelectableTracks[(startIdx >= 0 ? startIdx + idx : idx) % allSelectableTracks.length]?.id ?? t;
           next[t] = defaultTarget;
         }
       });
       return next;
     });
-  }, [selectedTracks, batchStartTarget, availableTracks]);
+  }, [selectedTracks, batchStartTarget, allSelectableTracks]);
 
   const toggleTrack = (id: string) => {
     if (FM_TRACK_IDS.includes(id) && !enableYM2151) return;
@@ -151,16 +171,19 @@ export const MmlTransformPanel: React.FC<MmlTransformPanelProps> = ({
     if (enableYM2151) setSelectedTracks(FM_TRACK_IDS);
   };
   const selectWork = () => setSelectedTracks(WORK_TRACK_IDS);
+  const selectOther = () => {
+    if (detectedOtherTracks.length > 0) setSelectedTracks([...detectedOtherTracks]);
+  };
   const clearSelection = () => setSelectedTracks([]);
 
   // クイックプリセット: 連番マッピング
   const applySequentialMapping = (startId: string) => {
     setBatchStartTarget(startId);
-    const startIdx = availableTracks.findIndex((t) => t.id === startId);
+    const startIdx = allSelectableTracks.findIndex((t) => t.id === startId);
     if (startIdx === -1) return;
     const newMappings: Record<string, string> = {};
     selectedTracks.forEach((src, idx) => {
-      const targetTrack = availableTracks[(startIdx + idx) % availableTracks.length];
+      const targetTrack = allSelectableTracks[(startIdx + idx) % allSelectableTracks.length];
       newMappings[src] = targetTrack.id;
     });
     setBatchMappings(newMappings);
@@ -232,9 +255,11 @@ export const MmlTransformPanel: React.FC<MmlTransformPanelProps> = ({
 
   // 変換適用要求を App (Monaco Editor) へ送出する
   const requestTransform = (description: string, operations: readonly MmlTransformOperation[]) => {
+    const isBasicsAllSelected = selectedTracks.length === availableTracks.length;
+    const isAllSelected = selectedTracks.length === allSelectableTracks.length;
     const targetDesc = selectedTracks.length === 0
       ? 'NO TRACKS'
-      : selectedTracks.length === availableTracks.length
+      : (isBasicsAllSelected || isAllSelected)
       ? (enableYM2151 ? 'ALL TRACKS (17ch)' : 'ALL TRACKS (9ch)')
       : selectedTracks.join(', ');
     const msg = `${description} → [${targetDesc}] (${scope === 'track' ? 'Entire Track' : 'Selection'})`;
@@ -420,7 +445,7 @@ export const MmlTransformPanel: React.FC<MmlTransformPanelProps> = ({
           <div className="flex items-center gap-2">
             <span className="font-semibold text-zinc-100">TARGET CHANNELS</span>
             <span className="px-1.5 py-0.2 rounded-full bg-[#3A3A3A] text-zinc-300 text-[9px] font-medium">
-              {selectedTracks.length} / {availableTracks.length} SELECTED
+              {selectedTracks.length} / {allSelectableTracks.length} SELECTED
             </span>
           </div>
 
@@ -456,6 +481,17 @@ export const MmlTransformPanel: React.FC<MmlTransformPanelProps> = ({
               title="作業用トラック W1〜W4 を選択"
             >
               WORK (4ch)
+            </button>
+            <button onClick={selectOther}
+              disabled={detectedOtherTracks.length === 0}
+              className={`h-5 px-2 text-[10px] font-medium rounded border transition-colors ${
+                detectedOtherTracks.length > 0
+                  ? 'bg-[#383838] hover:bg-[#444444] text-emerald-300 border-[#484848] hover:border-emerald-500/50 cursor-pointer'
+                  : 'bg-[#222222] text-zinc-600 border-[#333333] cursor-not-allowed opacity-40'
+              }`}
+              title="ソースから検出された他方言トラック (OTHER TRACKS: A-Z) を選択"
+            >
+              OTHER{detectedOtherTracks.length > 0 ? ` (${detectedOtherTracks.length}ch)` : ''}
             </button>
             <button
               onClick={clearSelection}
@@ -581,6 +617,52 @@ export const MmlTransformPanel: React.FC<MmlTransformPanelProps> = ({
                 );
               })}
             </div>
+          </div>
+
+          {/* OTHER TRACKS グループ (他方言 MML の A-Z 1 文字トラック / ソース自動検出) */}
+          <div>
+            <div className="flex items-center justify-between text-[10px] text-emerald-400/90 mb-1">
+              <div className="flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                <span>OTHER TRACKS (他方言トラック A-Z):</span>
+                <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-950/60 text-emerald-300 border border-emerald-800/50 font-medium">
+                  ソース自動検出
+                </span>
+              </div>
+              <span className="text-[9px] text-zinc-500">
+                {detectedOtherTracks.length > 0
+                  ? `${detectedOtherTracks.join(' ')}`
+                  : 'MML ソース内に未検出'}
+              </span>
+            </div>
+
+            {detectedOtherTracks.length > 0 ? (
+              <div className="grid grid-cols-6 sm:grid-cols-12 gap-1">
+                {detectedOtherTracks.map((id) => {
+                  const isSelected = selectedTracks.includes(id);
+                  return (
+                    <button
+                      key={id}
+                      onClick={() => toggleTrack(id)}
+                      className={`h-7 px-1 rounded text-center text-xs font-mono transition-colors flex items-center justify-center border cursor-pointer ${
+                        isSelected
+                          ? 'bg-emerald-500 text-black font-bold border-emerald-500'
+                          : 'bg-[#222222] text-emerald-300/80 border-[#3C3C3C] hover:border-emerald-500/50 hover:text-emerald-200 hover:bg-[#2A2A2A]'
+                      }`}
+                    >
+                      <span>{id}</span>
+                      <span className={`text-[8px] ${isSelected ? 'text-black/75' : 'text-emerald-500/70'}`}>
+                        OTH
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="h-7 px-2 rounded border border-dashed border-[#3C3C3C] flex items-center text-[10px] text-zinc-600 font-mono">
+                ※ 行頭に A-Z 単独宣言 (例: A o4 c / ABC @t1,86) を含む MML で表示されます
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -837,7 +919,7 @@ export const MmlTransformPanel: React.FC<MmlTransformPanelProps> = ({
                       onChange={(e) => applySequentialMapping(e.target.value)}
                       className="bg-[#1E1E1E] border border-[#3C3C3C] rounded px-1.5 py-0.5 text-zinc-200 text-xs focus:outline-none cursor-pointer font-mono"
                     >
-                      {availableTracks.map((t) => (
+                      {allSelectableTracks.map((t) => (
                         <option key={t.id} value={t.id}>
                           {t.id} ({t.category.toUpperCase()})
                         </option>
@@ -885,7 +967,7 @@ export const MmlTransformPanel: React.FC<MmlTransformPanelProps> = ({
                                 }}
                                 className="bg-[#1E1E1E] border border-[#3C3C3C] rounded px-1 py-0.2 text-[11px] font-bold text-[#00A8FF] focus:outline-none cursor-pointer font-mono"
                               >
-                                {availableTracks.map((t) => (
+                                {allSelectableTracks.map((t) => (
                                   <option key={t.id} value={t.id}>
                                     {t.id}
                                   </option>
@@ -929,7 +1011,7 @@ export const MmlTransformPanel: React.FC<MmlTransformPanelProps> = ({
                     onChange={(e) => setReassignSource(e.target.value)}
                     className="w-28 bg-[#1E1E1E] border border-[#3C3C3C] rounded px-2 py-1 text-zinc-200 text-xs font-mono focus:outline-none"
                   >
-                    {availableTracks.map((t) => (
+                    {allSelectableTracks.map((t) => (
                       <option key={t.id} value={t.id}>
                         {t.id} ({t.category.toUpperCase()})
                       </option>
@@ -943,7 +1025,7 @@ export const MmlTransformPanel: React.FC<MmlTransformPanelProps> = ({
                     onChange={(e) => setReassignTarget(e.target.value)}
                     className="w-28 bg-[#1E1E1E] border border-[#3C3C3C] rounded px-2 py-1 text-zinc-200 text-xs font-mono focus:outline-none"
                   >
-                    {availableTracks.filter((t) => t.id !== reassignSource).map((t) => (
+                    {allSelectableTracks.filter((t) => t.id !== reassignSource).map((t) => (
                       <option key={t.id} value={t.id}>
                         {t.id} ({t.category.toUpperCase()})
                       </option>
@@ -970,7 +1052,7 @@ export const MmlTransformPanel: React.FC<MmlTransformPanelProps> = ({
                     onChange={(e) => setSwapTrackA(e.target.value)}
                     className="w-28 bg-[#1E1E1E] border border-[#3C3C3C] rounded px-2 py-1 text-zinc-200 text-xs font-mono focus:outline-none"
                   >
-                    {availableTracks.map((t) => (
+                    {allSelectableTracks.map((t) => (
                       <option key={t.id} value={t.id}>
                         {t.id} ({t.category.toUpperCase()})
                       </option>
@@ -984,7 +1066,7 @@ export const MmlTransformPanel: React.FC<MmlTransformPanelProps> = ({
                     onChange={(e) => setSwapTrackB(e.target.value)}
                     className="w-28 bg-[#1E1E1E] border border-[#3C3C3C] rounded px-2 py-1 text-zinc-200 text-xs font-mono focus:outline-none"
                   >
-                    {availableTracks.filter((t) => t.id !== swapTrackA).map((t) => (
+                    {allSelectableTracks.filter((t) => t.id !== swapTrackA).map((t) => (
                       <option key={t.id} value={t.id}>
                         {t.id} ({t.category.toUpperCase()})
                       </option>

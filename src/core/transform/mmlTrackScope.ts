@@ -6,6 +6,10 @@
  * - 宣言は行頭 (先頭空白の後) の大文字識別子のみ (`P1`-`P6` / `N1`-`N2` / `B1` / `F1`-`F8`)
  * - カンマ区切りによる複数指定 (`F1,F2`) に対応
  * - 作業用トラック (`W1`-`W99`) は行頭の `W数字` のみ (パーサーの W 行判定と同一条件)
+ * - その他方言トラック (`OTHER TRACKS`): 行頭の A-Z アルファベット 1 文字 (`A`-`Z`)。
+ *   正式パーサには存在しない他方言 (例: `A` / `B` / `C`、連続指定 `ABC`) の
+ *   トラックを TRANSFORM のテキスト変換対象として扱うための拡張。
+ *   大文字の直後に数字が続く場合 (`A1` 等) は無効宣言として宣言扱いしない
  * - 宣言の無い行 (継続行) は直前行のトラックに帰属する
  */
 import { parseTrackId } from '../mml/TrackId';
@@ -30,6 +34,8 @@ export interface TrackDeclarationToken {
 }
 
 const isDigitChar = (ch: string): boolean => ch >= '0' && ch <= '9';
+
+const isUpperCaseLetter = (ch: string): boolean => ch >= 'A' && ch <= 'Z';
 
 /** マクロ定義行 (`@VE1 = { ... }` / `@1 = { ... }` 等) かどうか。 */
 export function isMacroDefinitionLine(line: string): boolean {
@@ -87,6 +93,23 @@ export function extractDeclarationTokens(
       }
 
       pos += 2;
+      continue;
+    }
+
+    // 他方言トラック (OTHER): A-Z アルファベット 1 文字の行頭宣言。
+    // `ABC` のような連続指定は各 1 文字を個別トラックとして解釈する。
+    // 大文字の直後に数字が続く場合 (A1 / P7 等) は正式パーサ同様に
+    // 無効な宣言として扱い、トラック指定ではない (継続行帰属になる)。
+    if (isUpperCaseLetter(c)) {
+      if (pos + 1 < line.length && isDigitChar(line[pos + 1])) {
+        break;
+      }
+
+      if (!tokens.some((token) => token.name === c)) {
+        tokens.push({ name: c, start: pos, end: pos + 1 });
+      }
+
+      pos++;
       continue;
     }
 

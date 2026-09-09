@@ -99,8 +99,8 @@ interface BodyTransformHandlers {
   onOctaveValue?(value: number): string | null;
   /** `<` / `>` コマンド (オクターブ相対移動)。 */
   onOctaveShift?(direction: 1 | -1): void;
-  /** 音符 (a-g + 臨時記号)。戻り値は音符本体の置換テキスト (音長・付点は保持される)。 */
-  onNote?(note: { letter: string; accidental: number; octave: number; inTuplet: boolean }): string | null;
+  /** 音符 (a-g + 臨時記号)。戻り値は音符本体の置換テキスト (音長・付点は保持される)。`octave` は元テキスト上、`outputOctave` は変換後テキスト上のオクターブ状態 (`o` 挿入の要否判定に使用)。 */
+  onNote?(note: { letter: string; accidental: number; octave: number; outputOctave: number; inTuplet: boolean }): string | null;
   /** `v` コマンド (PSG 音量)。戻り値は値部分のみ。 */
   onPsgVolume?(value: number): string | null;
   /** `@v` コマンド (FM 音量)。戻り値は値部分のみ。 */
@@ -113,18 +113,24 @@ interface TokenCounter {
 
 /**
  * トラック行の本体部分をトークン走査して書き換える。
- * - オクターブ状態 (`o` / `<` / `>`) を追跡し、音符ハンドラへ現在値を渡す
+ * - オクターブ状態を 2 系統で追跡する:
+ *   - `sourceOctave`: 元テキスト上の状態 (正式パーサと同一の `o` / `<` / `>` 解釈)。
+ *     音符ハンドラへ現在値を渡すのに使用する。
+ *   - `outputOctave`: 変換後テキスト上の状態。移調結果への `o` コマンド挿入は
+ *     出力上の状態のみ更新し、元テキストの解釈には影響させない。
  * - コメント開始文字 (`;` / `/`) 以降は無条件で保持する
- * - 戻り値は変換後テキストと追跡後のオクターブ (複数行で状態を引き継ぐために返す)
+ * - 戻り値は変換後テキストと追跡後の両オクターブ状態 (複数行で状態を引き継ぐために返す)
  */
 function transformTrackBody(
   body: string,
-  initialOctave: number,
+  initialSourceOctave: number,
+  initialOutputOctave: number,
   handlers: BodyTransformHandlers,
   counter: TokenCounter,
-): { text: string; octave: number } {
+): { text: string; sourceOctave: number; outputOctave: number } {
   let out = '';
-  let octave = initialOctave;
+  let sourceOctave = initialSourceOctave;
+  let outputOctave = initialOutputOctave;
   let tupletDepth = 0;
   let i = 0;
 
@@ -181,11 +187,13 @@ function transformTrackBody(
           out += replaced;
           const replacedValue = parseInt(replaced.slice(1), 10);
           if (!Number.isNaN(replacedValue)) {
-            octave = clampOctave(replacedValue);
+            sourceOctave = clampOctave(replacedValue);
+            outputOctave = sourceOctave;
           }
         } else {
           out += body.slice(i, end);
-          octave = clampOctave(value);
+          sourceOctave = clampOctave(value);
+          outputOctave = sourceOctave;
         }
 
         i = end;
@@ -200,7 +208,8 @@ function transformTrackBody(
     if (c === '<' || c === '>') {
       const direction = c === '<' ? -1 : 1;
       handlers.onOctaveShift?.(direction);
-      octave = clampOctave(octave + direction);
+      sourceOctave = clampOctave(sourceOctave + direction);
+      outputOctave = clampOctave(outputOctave + direction);
       out += c;
       i++;
       continue;
@@ -244,14 +253,15 @@ function transformTrackBody(
       // 無変換 (null) の場合は元トークン全体をそのまま出力する。
       const suffixStart = accidental === 0 ? i + 1 : cursor;
       const suffix = body.slice(suffixStart, end);
-      const replaced = handlers.onNote?.({ letter: c, accidental, octave, inTuplet: tupletDepth > 0 }) ?? null;
+      const replaced = handlers.onNote?.({ letter: c, accidental, octave: sourceOctave, outputOctave, inTuplet: tupletDepth > 0 }) ?? null;
       if (replaced !== null) {
         counter.count++;
         out += replaced;
-        // 移調によるオクターブ跨ぎ (`o5c` 等) が挿入された場合は走査状態も同期する
+        // 移調によるオクターブ跨ぎ (`o5c` 等) の挿入は出力テキスト上の状態のみ
+        // 更新する。元テキスト上のオクターブ状態は変わらないため sourceOctave は不変。
         const insertedOctave = /^o(\d+)/.exec(replaced);
         if (insertedOctave) {
-          octave = clampOctave(parseInt(insertedOctave[1], 10));
+          outputOctave = clampOctave(parseInt(insertedOctave[1], 10));
         }
 
         out += suffix;
@@ -267,32 +277,34 @@ function transformTrackBody(
     i++;
   }
 
-  return { text: out, octave };
+  return { text: out, sourceOctave, outputOctave };
 }
 
 /**
  * 1 行分をトラック本体 (contentStart 以降) に限定して変換する。
  * 行末の CR (CRLF 改行) は変換対象から除外して再結合する。
- * 戻り値は変換後テキストと追跡後のオクターブ。
+ * 戻り値は変換後テキストと追跡後のオクターブ状態 (元テキスト / 出力テキスト)。
  */
 function transformLine(
   line: string,
   contentStart: number,
-  initialOctave: number,
+  initialSourceOctave: number,
+  initialOutputOctave: number,
   handlers: BodyTransformHandlers,
   counter: TokenCounter,
-): { text: string; octave: number } {
+): { text: string; sourceOctave: number; outputOctave: number } {
   const hasCarriageReturn = line.endsWith('\r');
   const base = hasCarriageReturn ? line.slice(0, -1) : line;
   const before = base.slice(contentStart);
-  const transformed = transformTrackBody(before, initialOctave, handlers, counter);
+  const transformed = transformTrackBody(before, initialSourceOctave, initialOutputOctave, handlers, counter);
   if (transformed.text === before) {
-    return { text: line, octave: transformed.octave };
+    return { text: line, sourceOctave: transformed.sourceOctave, outputOctave: transformed.outputOctave };
   }
 
   return {
     text: base.slice(0, contentStart) + transformed.text + (hasCarriageReturn ? '\r' : ''),
-    octave: transformed.octave,
+    sourceOctave: transformed.sourceOctave,
+    outputOctave: transformed.outputOctave,
   };
 }
 
@@ -346,7 +358,7 @@ function applyShiftOctave(source: string, targetTracks: readonly string[], shift
       return line;
     }
 
-    return transformLine(line, scope.contentStart, DEFAULT_OCTAVE, {
+    return transformLine(line, scope.contentStart, DEFAULT_OCTAVE, DEFAULT_OCTAVE, {
       onOctaveValue: (value) => {
         const next = clampOctave(value + shift);
         return next === value ? null : `o${next}`;
@@ -360,9 +372,12 @@ function applyShiftOctave(source: string, targetTracks: readonly string[], shift
 /**
  * 対象トラックの音符を半音単位で移調する。
  *
- * 各トラックの現在オクターブを `o` / `<` / `>` を追跡しながら保持し
- * (初期値は正式パーサと同一の o4)、移調結果が現在オクターブと異なる場合は
+ * 元テキスト上のオクターブ状態 (`o` / `<` / `>`、初期値は正式パーサと同一の o4)
+ * を追跡して各音符のノート番号を算出し、移調結果が現在オクターブと異なる場合は
  * 音符直前に `o` コマンドを挿入してオクターブ跨ぎを表現する。
+ * 挿入した `o` は出力テキスト上の都合であり元テキストの解釈は変わらないため、
+ * 元テキストと出力テキストのオクターブ状態は独立に追跡する
+ * (オクターブ跨ぎ後の継続音符・同音連打 `a+12a+12...` を誤移調しない)。
  * 複数トラック同時指定 (`F1,F2`) の行では先頭対象トラックの状態で変換し、
  * 結果のオクターブを行終端時に全対象トラックへ同期する。
  */
@@ -370,7 +385,8 @@ function applyTranspose(source: string, targetTracks: readonly string[], semiton
   const targetSet = new Set(targetTracks);
   const scopes = resolveLineScopes(source);
   const counter: TokenCounter = { count: 0 };
-  const octaveByTrack = new Map<string, number>(targetTracks.map((name) => [name, DEFAULT_OCTAVE]));
+  const sourceOctaveByTrack = new Map<string, number>(targetTracks.map((name) => [name, DEFAULT_OCTAVE]));
+  const outputOctaveByTrack = new Map<string, number>(targetTracks.map((name) => [name, DEFAULT_OCTAVE]));
 
   const lines = source.split('\n').map((line, index) => {
     const scope = scopes[index];
@@ -379,8 +395,14 @@ function applyTranspose(source: string, targetTracks: readonly string[], semiton
       return line;
     }
 
-    const result = transformLine(line, scope.contentStart, octaveByTrack.get(active[0]) ?? DEFAULT_OCTAVE, {
-      onNote: ({ letter, accidental, octave, inTuplet }) => {
+    const track = active[0];
+    const result = transformLine(
+      line,
+      scope.contentStart,
+      sourceOctaveByTrack.get(track) ?? DEFAULT_OCTAVE,
+      outputOctaveByTrack.get(track) ?? DEFAULT_OCTAVE,
+      {
+      onNote: ({ letter, accidental, octave, outputOctave, inTuplet }) => {
         const current = noteNumber(octave, letter, accidental);
 
         // 連符 (`{ceg}`) 内は `o` コマンドを挿入できないため現在オクターブの音域にクランプする
@@ -401,11 +423,16 @@ function applyTranspose(source: string, targetTracks: readonly string[], semiton
           return null;
         }
 
-        return outOctave === octave ? text : `o${outOctave}${text}`;
+        // 出力テキスト上のオクターブ状態と異なる場合のみ `o` を挿入する
+        // (挿入済み `o` によるずれを、元テキストの解釈に基づいて打ち消す)
+        return outOctave === outputOctave ? text : `o${outOctave}${text}`;
       },
     }, counter);
 
-    active.forEach((name) => octaveByTrack.set(name, result.octave));
+    active.forEach((name) => {
+      sourceOctaveByTrack.set(name, result.sourceOctave);
+      outputOctaveByTrack.set(name, result.outputOctave);
+    });
     return result.text;
   });
 
@@ -440,7 +467,7 @@ function applyScaleVolume(
     }
 
     const hasFmTrack = active.some((name) => /^F[1-8]$/.test(name));
-    return transformLine(line, scope.contentStart, DEFAULT_OCTAVE, {
+    return transformLine(line, scope.contentStart, DEFAULT_OCTAVE, DEFAULT_OCTAVE, {
       onPsgVolume: (value) => scale(PSG_VOLUME_MAX, value),
       onFmVolume: hasFmTrack ? (value) => scale(FM_VOLUME_MAX, value) : undefined,
     }, counter).text;

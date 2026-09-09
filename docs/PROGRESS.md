@@ -6,8 +6,8 @@
 ---
 
 ## 1. 現在のステータス概要
-- **バージョン**: `v0.0.1-beta.119`（コミット通番＋短縮ハッシュ ハイブリッド方式）
-- **テスト通過状況**: 全 40 テストファイル / 569 件パス + 1 skip（`npm test` / Vitest）
+- **バージョン**: `v0.0.1-beta.120`（コミット通番＋短縮ハッシュ ハイブリッド方式）
+- **テスト通過状況**: 全 41 テストファイル / 587 件パス + 1 skip（`npm test` / Vitest）
 - **型検査状況**: エラー 0 件（`npx tsc -b`）
 - **主要機能の稼働状況**:
   - Web ネイティブ MML コンパイラ（9ch / 17ch / ワークトラック W1〜W99 対応）
@@ -15,7 +15,7 @@
   - DCSG (SN76489) / OPM (YM2151) / 8253 BEEP 音源エミュレーション & Web Audio 再生
   - QuickDisk イメージ (`.qdf`) 実機演奏プレイヤー内包エクスポート
   - MIDI ROUTING STUDIO (SMF プレビュー & MML 変換 & 和音自動ボイス分離)
-  - MML TRANSFORM (半音・オクターブ移調 & 音量スケーリング & チャンネル置換)
+  - MML TRANSFORM (半音・オクターブ移調 & 音量スケーリング & チャンネル置換 / 他方言トラック A-Z 対応)
   - ローカルフォルダオープン (`OPEN LOCAL FOLDER...`) & IndexedDB / localStorage 自動永続化・次回アクセス時完全復元
 
 ---
@@ -53,6 +53,17 @@
 ---
 
 ## 3. 直近の完了作業（最新）
+
+- **MML TRANSFORM に OTHER TRACKS (他方言 MML の A-Z 1 文字トラック) 対応を追加 & 移調エンジンのオクターブ追跡を正式パーサ準拠に修正 (`src/core/transform/mmlOtherTracks.ts` (新規), `src/core/transform/__tests__/mmlOtherTracks.test.ts` (新規), `src/core/transform/mmlTrackScope.ts`, `src/core/transform/mmlTransformEngine.ts`, `src/core/transform/__tests__/mmlTransformEngine.test.ts`, `src/view/MmlTransformPanel.tsx`, `src/app/App.tsx`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-09):
+  - **背景・ユーザー要望**: 「他の方言の mml についても TRANSFORM で CHANNEL 変更できるようにしたい。OTHER TRACKS みたいな感じで、記載されているトラック (ここでは A B C) も表示して変換できるように。A-Z のアルファベット 1 文字のパターンが OTHER という扱いでよい」
+  - **対応内容**:
+    1. **`mmlTrackScope.ts`**: 行頭宣言解析に A-Z アルファベット 1 文字 (`OTHER`) の検出を追加。連続指定 (`ABC`) は各 1 文字を個別トラック、カンマ区切り (`A,B`) は既存と同一ルールで対応。大文字の直後に数字が続く場合 (`A1` / `P7` 等) は正式パーサ同様の無効宣言として継続行帰属にする。既存 `P1` / `F1` 等の検出挙動は不変。
+    2. **`mmlOtherTracks.ts` (新規)**: `isOtherTrackName` / `OTHER_TRACK_IDS` / `detectOtherTracks` (ソースから OTHER トラックを出現順・重複なしで検出) の UI 非依存純粋関数群を新設。
+    3. **`MmlTransformPanel.tsx`**: TARGET CHANNELS に第 4 グループ「OTHER TRACKS (他方言トラック A-Z)」をエメラルド基調で追加 (`OTH` バッジ・検出 0 件時はガイド表示)。クイック選択 `OTHER (nch)` ボタン、`SELECTED` バッジ分母、CHANNEL OPERATIONS の全ドロップダウン (一括置換先 / 連番開始 / 単一置換 / スワップ) に検出済み OTHER トラックを選択肢として連結 (`A ➔ B` の他方言間振り替えや `A ➔ P1` の実機トラック移動が可能)。
+    4. **`App.tsx`**: パネルへ `activeMmlSource` を `sourceText` プロップとして渡し、ソース編集に追従したリアルタイム検出を実現。
+    5. **`mmlTransformEngine.ts` (移調の不具合修正)**: transpose のオクターブ追跡を「元テキスト上の状態」と「出力テキスト上の状態」の 2 系統に分離。従来は `o` コマンド挿入時に走査状態を同期していたため、オクターブ跨ぎ後の継続音符・同音連打 (`a+12a+12...`) を誤移調する (例: `o5 b b b` +1 が `o6c o7c o8c` になる) 不具合があった。正式パーサ準拠の解釈 (挿入した `o` は元テキストの意味を変えない) に修正し、ユーザー提供の他方言 MML 例 (同音連打を含む) が正しく移調されるようになった。
+    6. **テスト (+16)**: OTHER 検出 (連続指定・無効宣言・マクロ/ディレクティブ除外・重複排除)、remap (他方言間スワップ / `ABC`→`XBC` 部分置換 / 実機トラック移動)、transpose (同音連打を含むユーザー MML 例の全文期待値検証 / remap+transpose 連続適用)、shiftOctave / scaleVolume (`@v` 保持確認) を追加。既存 2 テストは修正後の正式パーサ準拠の期待値へ更新。
+  - **検証**: `npx tsc -b` エラーゼロ / `npm test` 全 41 ファイル・587 件合格 + 1 skip / `npm run lint` エラーゼロ (既存警告 10 は変更なし) / `npm run build` 成功。
 
 - **仮想キーボード [MML INSERT] モード — Ctrl 押下中の鍵盤入力で MML 音符をキャレット位置へ挿入・オクターブ差分は < > 自動付与 (`src/utils/mmlNoteInserter.ts` (新規), `src/utils/__tests__/mmlNoteInserter.test.ts` (新規), `src/utils/mmlCaretParser.ts`, `src/utils/__tests__/mmlCaretParser.test.ts`, `src/view/VirtualKeyboard.tsx`, `src/view/MmlEditor.tsx`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-09):
   - **背景・ユーザー要望**: 「仮想キーボードについて、MML Editor モードのばあい、P1～F8 などのチャンネル行にキャレットがあり、Ctrl キーを押下していると [MML INSERT]みたいな文字が有効になり、その間はキーボードを押下すると cdefgab が挿入されるようにしたいです。オクターブが異なる場合は相対指定で > < が自動的にはいるようにしたいです。音長は無視で大丈夫です。」
