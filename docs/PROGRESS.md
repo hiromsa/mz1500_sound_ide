@@ -6,8 +6,8 @@
 ---
 
 ## 1. 現在のステータス概要
-- **バージョン**: `v0.0.1-beta.108`（コミット通番＋短縮ハッシュ ハイブリッド方式）
-- **テスト通過状況**: 全 35 テストファイル / 488 件パス + 1 skip（`npm test` / Vitest）
+- **バージョン**: `v0.0.1-beta.109`（コミット通番＋短縮ハッシュ ハイブリッド方式）
+- **テスト通過状況**: 全 36 テストファイル / 495 件パス + 1 skip（`npm test` / Vitest）
 - **型検査状況**: エラー 0 件（`npx tsc -b`）
 - **主要機能の稼働状況**:
   - Web ネイティブ MML コンパイラ（9ch / 17ch / ワークトラック W1〜W99 対応）
@@ -53,6 +53,15 @@
 ---
 
 ## 3. 直近の完了作業（最新）
+
+- **仮想キーボードの CHIP セレクタに「PSG P3/P6 (@IN)」モードを追加 — @IN セレクタをキャレット位置に依存せず試聴可能に (`src/view/VirtualKeyboard.tsx`, `src/utils/keyboardChipMode.ts` (新規), `src/utils/__tests__/keyboardChipMode.test.ts` (新規), [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-09):
+  - **背景・ユーザー要望**: 「仮想キーボードについて、CHIPに PSG P3/P6 のようなモードが欲しいです。@INとの有効・無効の関係があるので。」(前回実装で @IN は MML モード時 P3/P6 キャレット限定となり、P1/P2/P4/P5 キャレットでは手動試聴も不可だった)
+  - **対応内容**:
+    1. `src/utils/keyboardChipMode.ts` (新規・UI 非依存の純粋関数) に CHIP 選択値型 `VirtualKeyboardChipMode` (`'psg_tone3'` = 「PSG P3/P6 (@IN)」モード)・発音エンジン正規化 `normalizeChipModeEngine` (`'psg_tone3'` → `'psg'` / 発音・DCSG 実機音域制限は通常 PSG と同一)・@IN 有効判定 `isNoiseIntegrateChipActive` を集約。
+    2. `VirtualKeyboard.tsx`: MML モードの CHIP プルダウンへ `PSG P3/P6 (@IN)` を追加。`isNoiseIntegrateActive` を「実効音源が PSG かつ (キャレットトラックが P3/P6 または CHIP で PSG P3/P6 を明示選択)」に更新 — キャレットが P1/P2/P4/P5 にあっても `@IN0/1/2` の自由試聴が可能。MML キャレット移動時は他の手動選択と同一パターンで `AUTO` へ戻す。CHIP / @IN / 無効バッジの各ツールチップを更新。
+    3. ENV エディタモード (VOL ENV / PITCH ENV) の CHIP プルダウンは変更なし (トラック概念が無いため PSG 選択時に @IN 常時有効のまま)。
+  - **テスト**: `keyboardChipMode.test.ts` (新規・7 件) — エンジン正規化 / PSG 以外で無効 / P3・P6 キャレットで有効 / P1・P2・P4・P5・N1・N2 キャレットで無効 / `psg_tone3` 明示選択時にキャレット非依存で有効 / ENV エディタモードで常時有効。
+  - **検証**: `npx tsc -b` エラーゼロ / `npm test` 全 36 ファイル・495 件合格 + 1 skip (+7) / `npm run lint` エラーゼロ (既存警告 10 は変更なし)。
 
 - **仮想キーボードの PSG (DCSG) 発音を実機レジスタ音域に制限 — 出せない低音キーの無効化 & 周波数 10bit レジスタ量子化 (`src/view/VirtualKeyboard.tsx`, `src/utils/virtualSynth.ts`, `src/core/chips/DcsgChip.ts`, `src/core/chips/__tests__/DcsgChip.test.ts`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-09):
   - **背景・ユーザー指摘**: 「仮想キーボードについて、DSCGでは出せない音域まで低い音が鳴ってます。」

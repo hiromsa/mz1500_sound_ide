@@ -1,7 +1,12 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Volume2, VolumeX } from 'lucide-react';
 import { virtualSynth, type SoundEngineType, type SynthPlayOptions } from '../utils/virtualSynth';
-import { isDcsgTone3TrackName, type MmlCaretContext } from '../utils/mmlCaretParser';
+import {
+  isNoiseIntegrateChipActive,
+  normalizeChipModeEngine,
+  type VirtualKeyboardChipMode,
+} from '../utils/keyboardChipMode';
+import type { MmlCaretContext } from '../utils/mmlCaretParser';
 import { findDefinitionBlocks } from '../utils/mmlContextParser';
 import { loadFmToneDefinition, loadPitchEnvDefinition, loadVolEnvDefinition } from '../utils/mmlDefinitionLoader';
 import { DcsgChip } from '../core/chips/DcsgChip';
@@ -138,8 +143,8 @@ export function VirtualKeyboard({
   testMidiNote,
   onChangeTestMidiNote,
 }: VirtualKeyboardProps) {
-  // 手動オーバーライド設定
-  const [manualEngine, setManualEngine] = useState<SoundEngineType | 'auto'>('auto');
+  // 手動オーバーライド設定 ('psg_tone3' = CHIP「PSG P3/P6 (@IN)」モードの明示選択)
+  const [manualEngine, setManualEngine] = useState<VirtualKeyboardChipMode>('auto');
   const [manualVolume, setManualVolume] = useState<number | null>(null);
   const [psgVolumeMode, setPsgVolumeMode] = useState<'direct' | 'env'>('direct'); // PSG/Noise時の音量モード
   const [selectedVolEnv, setSelectedVolEnv] = useState<string>('editor'); // 'editor' | '1' | '2' | '3'
@@ -202,22 +207,23 @@ export function VirtualKeyboard({
   // PCキーボードタイピング演奏用の基準オクターブ (初期値 4 = C4基準)
   const [typingOctave, setTypingOctave] = useState<number>(() => mmlContext?.octave ?? 4);
 
-  // 1. 実効音源判定
+  // 1. 実効音源判定 (CHIP「PSG P3/P6」モードは発音エンジンとしては通常の PSG と同一)
   const effectiveEngine: SoundEngineType = useMemo(() => {
+    const manual = normalizeChipModeEngine(manualEngine);
     if (activeTabContext === 'tone') return 'fm'; // FM TONEエディタ時はFMのみ
     if (activeTabContext === 'vol_envelope') {
       // VOL ENVエディタ時はPSGまたはNOISE
-      return (manualEngine === 'noise' || manualEngine === 'psg') ? manualEngine : 'psg';
+      return (manual === 'noise' || manual === 'psg') ? manual : 'psg';
     }
     if (activeTabContext === 'pitch_envelope') {
       // PITCH ENVエディタ時はFM / PSG / BEEP
-      if (manualEngine === 'fm' || manualEngine === 'psg' || manualEngine === 'beep') {
-        return manualEngine;
+      if (manual === 'fm' || manual === 'psg' || manual === 'beep') {
+        return manual;
       }
       return 'fm';
     }
     // MMLエディタ時
-    if (manualEngine !== 'auto') return manualEngine;
+    if (manual !== 'auto') return manual;
     return mmlContext?.engine || 'psg';
   }, [manualEngine, activeTabContext, mmlContext]);
 
@@ -237,12 +243,16 @@ export function VirtualKeyboard({
       : selectedNoiseIntegrate === 'in1' ? 1 : selectedNoiseIntegrate === 'in2' ? 2 : 0;
 
   // @WN はノイズトラック (N1/N2) 専用 / @IN はトーン 3 統合トラック (P3/P6) 専用コマンド (正式パーサ準拠)。
-  // MML モード時はキャレットトラックが P3/P6 のときのみ有効 (P3/P6 以外では MML 演奏へ反映されないため)。
+  // MML モード時は「キャレットトラックが P3/P6」または「CHIP で PSG P3/P6 を明示選択」のときに有効
+  // (P3/P6 以外のキャレットでは MML 演奏へ反映されないため、明示選択時は自由試聴として扱う)。
   // 各 ENV エディタモード時はトラック概念が無いため、PSG 選択時に試聴可能とする。
   const isNoiseWaveActive = effectiveEngine === 'noise';
-  const isNoiseIntegrateActive =
-    effectiveEngine === 'psg' &&
-    (activeTabContext !== 'mml' || isDcsgTone3TrackName(mmlContext?.trackName ?? ''));
+  const isNoiseIntegrateActive = isNoiseIntegrateChipActive({
+    effectiveEngine,
+    manualEngine,
+    isMmlContext: activeTabContext === 'mml',
+    caretTrackName: mmlContext?.trackName ?? '',
+  });
 
   // DCSG (PSG) 実機レジスタで出せない低音域の鍵盤は無効化する
   // (トーン周期レジスタ 10bit の下限 = period 1023 ≒ 109.3Hz / A2 未満は実機で発音不可)
@@ -590,7 +600,7 @@ export function VirtualKeyboard({
             ) : activeTabContext === 'vol_envelope' ? (
               <select
                 value={effectiveEngine}
-                onChange={(e) => setManualEngine(e.target.value as SoundEngineType)}
+                onChange={(e) => setManualEngine(e.target.value as VirtualKeyboardChipMode)}
                 className="h-5 px-1.5 rounded bg-[#0c0d12] border border-white/[0.1] text-zinc-200 text-[10px] focus:outline-none focus:border-cyan-400 cursor-pointer"
                 title="VOL ENVエディタ時はPSGまたはNOISEを選択可能"
               >
@@ -600,7 +610,7 @@ export function VirtualKeyboard({
             ) : activeTabContext === 'pitch_envelope' ? (
               <select
                 value={effectiveEngine}
-                onChange={(e) => setManualEngine(e.target.value as SoundEngineType)}
+                onChange={(e) => setManualEngine(e.target.value as VirtualKeyboardChipMode)}
                 className="h-5 px-1.5 rounded bg-[#0c0d12] border border-white/[0.1] text-zinc-200 text-[10px] focus:outline-none focus:border-cyan-400 cursor-pointer"
                 title="PITCH ENVエディタ時はFM/PSG/BEEPを選択可能"
               >
@@ -611,12 +621,13 @@ export function VirtualKeyboard({
             ) : (
               <select
                 value={manualEngine}
-                onChange={(e) => setManualEngine(e.target.value as SoundEngineType | 'auto')}
+                onChange={(e) => setManualEngine(e.target.value as VirtualKeyboardChipMode)}
                 className="h-5 px-1.5 rounded bg-[#0c0d12] border border-white/[0.1] text-zinc-200 text-[10px] focus:outline-none focus:border-cyan-400 cursor-pointer"
-                title="MMLエディタ選択時は自動または手動選択"
+                title="MMLエディタ選択時は自動または手動選択。PSG P3/P6 を選択すると @IN (ノイズ統合) をキャレット位置に関係なく試聴できます"
               >
                 <option value="auto">AUTO ({effectiveEngine.toUpperCase()})</option>
                 <option value="psg">PSG (DCSG)</option>
+                <option value="psg_tone3">PSG P3/P6 (@IN)</option>
                 <option value="fm">FM (YM2151)</option>
                 <option value="beep">BEEP (8253 PIT)</option>
                 <option value="noise">NOISE (DCSG)</option>
@@ -683,7 +694,7 @@ export function VirtualKeyboard({
                 value={selectedNoiseIntegrate}
                 onChange={(e) => setSelectedNoiseIntegrate(e.target.value as 'auto' | 'off' | 'in1' | 'in2')}
                 className="h-5 px-1.5 rounded bg-[#0c0d12] border border-white/[0.1] text-zinc-200 text-[10px] focus:outline-none focus:border-cyan-400 cursor-pointer"
-                title="ノイズ統合モード (@IN) を選択。AUTO は MML キャレットの状態へ追従 (P3/P6 トラック専用コマンドの試聴)"
+                title="ノイズ統合モード (@IN) を選択。AUTO は MML キャレットの状態へ追従 (P3/P6 トラック専用コマンド / CHIP で PSG P3/P6 選択時は自由試聴)"
               >
                 <option value="auto">AUTO ({`@IN${effectiveNoiseIntegrate}`})</option>
                 <option value="off">@IN0: 解除</option>
@@ -693,7 +704,7 @@ export function VirtualKeyboard({
             ) : (
               <span
                 className="h-5 px-1.5 rounded bg-zinc-900 border border-white/[0.05] text-zinc-600 text-[10px] flex items-center"
-                title="@IN はトーン 3 トラック (P3/P6) 専用コマンドです。MML モードでは P3/P6 にキャレットがあるときのみ試聴できます"
+                title="@IN はトーン 3 トラック (P3/P6) 専用コマンドです。MML モードでは P3/P6 にキャレットがあるか、CHIP で「PSG P3/P6」を選択したときのみ試聴できます"
               >
                 N/A (P3/P6)
               </span>
