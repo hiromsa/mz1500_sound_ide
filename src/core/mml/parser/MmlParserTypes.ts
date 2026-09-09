@@ -14,6 +14,10 @@ export interface MmlMapEvent {
   readonly length: number;
   /** イベント種別 (note / rest / control)。 */
   readonly kind: string;
+  /** 演奏開始フレーム (0-based / 曲先頭基準 / 60Hz)。部分再生の開始位置解決に使用。 */
+  readonly startFrame: number;
+  /** 音符 / 休符の長さ (フレーム数)。部分再生の終了位置解決に使用。 */
+  readonly durationFrames: number;
 }
 
 /** トラックごとのコンパイル中状態。 */

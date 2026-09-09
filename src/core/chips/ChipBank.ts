@@ -73,4 +73,24 @@ export class ChipBank {
   get currentFmMuteMask(): number {
     return this.fmMuteMask;
   }
+
+  /**
+   * 全チップを即時消音する。
+   * 部分再生 (Z80 ドライバモード) の範囲終端処理で、ドライバのワークメモリを
+   * 操作せずに確実に無音へ遷移させるために使用する。
+   */
+  silenceAll(): void {
+    for (const chip of [this.psg1, this.psg2]) {
+      for (let channel = 0; channel < DcsgChip.ChannelCount; channel++) {
+        chip.setAttenuation(channel, 15);
+      }
+    }
+
+    this.beep.setGate(false);
+
+    // FM 全チャンネルの Key Off (slot bits = 0 のチャンネル指定レジスタ)
+    for (let channel = 0; channel < FmChannelCount; channel++) {
+      this.fm.setReg(0x08, channel);
+    }
+  }
 }

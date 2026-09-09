@@ -36,6 +36,7 @@ import { Z80DriverImage } from '../core/player/Z80DriverImage';
 import { buildQuickDiskImage } from '../core/export/QdfImageBuilder';
 import type { FmToneData } from '../core/fm/FmTone';
 import type { PlaybackMapInfo } from '../utils/mmlPlaybackTracker';
+import { resolvePlaybackRange, type PlaybackRangeRequest, type ResolvedPlaybackRange } from '../utils/mmlSelectionResolver';
 import { formatDiagnosticsAsLogLines } from '../utils/diagnosticsLog';
 import type { CompileErrorItem } from '../view/CompileErrorPanel';
 import type { ActiveTabContext } from '../view/VirtualKeyboard';
@@ -435,8 +436,8 @@ function App() {
     };
   }, []);
 
-  // PLAY ハンドラ (MML コンパイル ➜ 再生開始)
-  const handlePlay = useCallback(async () => {
+  // PLAY ハンドラ (MML コンパイル ➜ [部分再生時は時間範囲解決] ➜ 再生開始)
+  const handlePlay = useCallback(async (request?: PlaybackRangeRequest) => {
     const { source, fileName } = mmlSourceRef.current;
     appendLog(`[BUILD] Compiling ${fileName}...`);
 
@@ -455,6 +456,18 @@ function App() {
       return;
     }
 
+    // 部分再生要求: MmlMap (イベント ↔ ソース位置 ↔ 演奏フレーム対応) から時間範囲を解決する
+    let range: ResolvedPlaybackRange | null = null;
+    if (request !== undefined) {
+      range = result.map === null ? null : resolvePlaybackRange(result.map, request);
+      if (range === null) {
+        appendLog(
+          `[PLAY] ${request.kind === 'caret' ? 'キャレット以降' : '選択範囲内'}に再生可能な音符・休符がありません。`,
+        );
+        return;
+      }
+    }
+
     appendLog(
       `[BUILD] SUCCESS: ${(result.totalFrames / 60).toFixed(2)} sec / ${result.tracks.length} tracks / ` +
       `${isLoopEnabled ? 'LOOP ENABLED' : 'PLAY ONCE'}.`
@@ -462,8 +475,11 @@ function App() {
 
     const player = ensurePlayer();
     try {
-      appendLog(`[AUDIO] Playback started (${playbackModeLabel(playbackMode)} / Web Audio).`);
-      await player.play(result.musicData, isLoopEnabled, playbackMode);
+      const rangeLabel = range === null
+        ? ''
+        : ` / PARTIAL ${range.startSeconds.toFixed(2)}s - ${range.endSeconds === null ? 'END' : `${range.endSeconds.toFixed(2)}s`} (${range.eventCount} events)`;
+      appendLog(`[AUDIO] Playback started (${playbackModeLabel(playbackMode)} / Web Audio${rangeLabel}).`);
+      await player.play(result.musicData, isLoopEnabled, playbackMode, range ?? undefined);
       setPlaybackInfo({ map: result.map, source });
       setIsPlaying(true);
     } catch (err) {
@@ -739,6 +755,11 @@ function App() {
               setLogs(prev => [...prev, `[${time}] [NAVIGATE] Jump to ${item.sourceFile} Line ${item.line}, Col ${item.column}`]);
             }}
             onTogglePlay={handleTogglePlay}
+            onStop={handleStop}
+            isLoopEnabled={isLoopEnabled}
+            onToggleLoop={() => setIsLoopEnabled(prev => !prev)}
+            isPlayFailed={isPlayFailed}
+            onPlayRangeRequest={(request) => { void handlePlay(request); }}
             activeTabContext={activeTabContext}
             activeFmTone={activeFmTone}
             activePitchEnv={activePitchEnv}

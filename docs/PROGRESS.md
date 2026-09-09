@@ -6,8 +6,8 @@
 ---
 
 ## 1. 現在のステータス概要
-- **バージョン**: `v0.0.1-beta.110`（コミット通番＋短縮ハッシュ ハイブリッド方式）
-- **テスト通過状況**: 全 36 テストファイル / 495 件パス + 1 skip（`npm test` / Vitest）
+- **バージョン**: `v0.0.1-beta.111`（コミット通番＋短縮ハッシュ ハイブリッド方式）
+- **テスト通過状況**: 全 38 テストファイル / 515 件パス + 1 skip（`npm test` / Vitest）
 - **型検査状況**: エラー 0 件（`npx tsc -b`）
 - **主要機能の稼働状況**:
   - Web ネイティブ MML コンパイラ（9ch / 17ch / ワークトラック W1〜W99 対応）
@@ -53,6 +53,17 @@
 ---
 
 ## 3. 直近の完了作業（最新）
+
+- **MMLエディタの「キャレット位置から再生」「選択範囲のみ再生」を本実装 (プリシーク + Tick ベース部分再生) (`src/core/mml/parser/MmlParserTypes.ts`, `src/core/mml/parser/MmlParser.ts`, `src/utils/mmlSelectionResolver.ts` (新規), `src/core/player/PlaybackRange.ts` (新規), `src/core/player/MzsdSequencer.ts`, `src/core/player/Z80DriverPlayback.ts`, `src/core/player/AudioEngine.ts`, `src/core/player/Player.ts`, `src/core/player/TrackSequencer.ts`, `src/core/chips/ChipBank.ts`, `src/view/MmlEditor.tsx`, `src/app/App.tsx`, `docs/specification/partial_playback.md` (新規), [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-09):
+  - **背景・ユーザー要望**: フェーズ 1 (UI モック・コミット `e8bd4b0`) の合意をもとに、フェーズ 2 (詳細設計・実装) を実施。「文字列を強引に切り出すアプローチではなく、トークン単位・Tick ベースのアプローチで。全パートにおいて曲の先頭から開始 Tick までは発音させずに内部状態のみを高速シミュレートし、開始 Tick に到達した時点から実際の同期再生を開始する」という指定の解決方針に準拠。
+  - **設計 (詳細は [`docs/specification/partial_playback.md`](./specification/partial_playback.md))**:
+    1. **MmlMapEvent へ時間情報拡張**: `startFrame` (演奏開始フレーム 0-based / 60Hz) と `durationFrames` (音符長フレーム数) を新設。`MmlParser.emitNote` / `emitRest` が `advance()` 前の累積時刻から記録。テンポ変更 (`t`) 途中でもパーサーの積算が都度反映されるため常に正確。
+    2. **時間範囲解決 (`mmlSelectionResolver.ts` 新規)**: Monaco と同一の 1-based 行 / 列で部分再生要求を受け取り、MmlMap を走査して `PlaybackRange { startFrame, endFrame | null }` へ解決。キャレット再生は「キャレット以降の最初のイベント」開始フレーム最小値・曲末尾まで、選択範囲再生は「範囲内のイベント」開始最小値〜最後のイベント終了フレーム。連符内音符 (column = 0) は「直前〜次の位置確定トークン間」の近似区間で判定 (連符の真ん中のキャレットは連符先頭から再生・連符より後なら誤採用なし)。イベント (トークン) 開始位置ベースのため中途半端な選択でも破綻せず、含まれるイベントが無ければ null (案内表示) を返す。W1-W99 は MmlMap に存在しないため自動除外。
+    3. **プレイヤーのプリシーク + 範囲制限**: `MzsdSequencer` / `Z80DriverPlayback` の両エンジンに `seekFrames` (開始フレームまでサイレント高速シミュレート・v/o/@ 等の状態をチップレジスタへ反映) と `stopAfterFrames` (範囲終端で全パート消音 + `isFinished`) を実装。`ChipBank.silenceAll()` を新設 (DCSG 減衰 15 / BEEP gate off / FM 全 ch Key Off)。`AudioEngine` / `Player` は `range` を受けて両エンジンへ引き回し、`Player.rewindToStart` も範囲先頭から再スタート対応。
+    4. **UI 結線**: `MmlEditor` のボタン・右クリックメニュー・`Alt+Enter` / `Ctrl+Shift+Enter` ショートカット全経路を `onPlayRangeRequest(request)` に集約し、`App.handlePlay(request?)` が 1 回のコンパイルで診断 → 時間範囲解決 → 再生まで実行 (常に編集後の最新ソースで解決)。実行ログは `[AUDIO] Playback started (... / PARTIAL 1.00s - 2.50s (8 events))` 形式。再生不可時は `[PLAY] ... 再生可能な音符・休符がありません。` を表示。あわせて前回未コミットだったエディタ 2 段バー化 (Row 1: トランスポートバー (`LOOP` / `PLAY` / `STOP` / `FROM CARET` / `SELECTION`) + Row 2: ファイルタブ専用バー) を確定。
+  - **両エンジン等価検証**: `PartialPlayback.test.ts` にて、プリシーク後のチップレジスタ状態が SourceInterpreter と Z80Driver で一致すること (v10 A4 発音済み状態からの v5 B4 再開) を検証。既定エンジン Z80Driver で部分再生が動作。
+  - **テスト**: `mmlSelectionResolver.test.ts` (新規・11 件)、`PartialPlayback.test.ts` (新規・9 件)。キャレット / 選択 / 複数トラック / 複数行選択 / テンポ変更 / 連符近似 / W トラック除外 / 再生不可 null / プリシーク状態引き継ぎ / 範囲終端消音 + 終了 / L ループ不復帰 / Z80 後 tick 無視。
+  - **検証**: `npx tsc -b` エラーゼロ / `npm test` 全 38 ファイル・515 件合格 + 1 skip (+20) / `npm run lint` エラーゼロ (既存警告 10 は変更なし) / `npm run build` 成功。
 
 - **MMLエディタに「キャレット位置から再生」「選択範囲のみ再生」のUIモックを実装 (`src/view/MmlEditor.tsx`, `src/app/App.tsx`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-09):
   - **背景・ユーザー要望**: 「MML エディタで 選択している範囲のみ再生したり、キャレットの位置から再生という機能を用意したいです。いずれもそのキャレットの直前、選択している文字の直前までは、vや@などのコマンドは実行されている前提での再生をしたいです。まずはUIのモックのみ実装をお願いします。」

@@ -7,11 +7,15 @@
 import { AudioEngine } from './AudioEngine';
 import { AudioEngineMode } from './AudioEngine';
 import { MzsdSong } from './MzsdSong';
+import type { PlaybackRange } from './PlaybackRange';
 
 export class Player {
   private readonly engine = new AudioEngine();
 
   private playbackMode: AudioEngineMode = AudioEngineMode.SourceInterpreter;
+
+  /** 最後の play で指定された部分再生範囲 (rewindToStart で再利用する)。 */
+  private currentRange: PlaybackRange | undefined;
 
   private disposed = false;
 
@@ -26,11 +30,12 @@ export class Player {
   /** 演奏が自然終了した。 */
   onPlaybackFinished: (() => void) | null = null;
 
-  /** MZSD データを解析して演奏を開始する。 */
+  /** MZSD データを解析して演奏を開始する。range 指定時は部分再生 (プリシーク + 範囲制限)。 */
   async play(
     musicData: Uint8Array,
     loop: boolean,
     mode: AudioEngineMode = AudioEngineMode.SourceInterpreter,
+    range?: PlaybackRange,
   ): Promise<void> {
     this.throwIfDisposed();
     this.stop();
@@ -39,8 +44,9 @@ export class Player {
     this.currentSong = song;
     this.isLoopEnabled = loop;
     this.playbackMode = mode;
+    this.currentRange = range;
     this.engine.sequencerFinished = this.handleSequencerFinished;
-    await this.engine.play(song, loop, mode);
+    await this.engine.play(song, loop, mode, range);
     this.isPlaying = true;
   }
 
@@ -51,7 +57,7 @@ export class Player {
     this.isPlaying = false;
   }
 
-  /** 演奏位置を先頭へ戻す (再生中は先頭から再スタート)。 */
+  /** 演奏位置を先頭へ戻す (再生中は先頭から再スタート)。部分再生中はその範囲の先頭から。 */
   async rewindToStart(): Promise<void> {
     this.throwIfDisposed();
     const song = this.currentSong;
@@ -59,7 +65,7 @@ export class Player {
       return;
     }
 
-    await this.engine.play(song, this.isLoopEnabled, this.playbackMode);
+    await this.engine.play(song, this.isLoopEnabled, this.playbackMode, this.currentRange);
     this.isPlaying = true;
   }
 

@@ -9,6 +9,7 @@
  */
 import type { MzsdSong } from './MzsdSong';
 import type { FrameDriver } from './FrameDriver';
+import type { PlaybackRange } from './PlaybackRange';
 import { AudioFrameMixer } from './AudioFrameMixer';
 import { DefaultSampleRate } from './AudioFrameMixer';
 import { FramePlaybackWorkletSource } from './FramePlaybackWorklet';
@@ -100,25 +101,33 @@ export class AudioEngine {
     await this.resumeIfNeeded();
   }
 
-  /** 演奏を開始する。 */
+  /** 演奏を開始する。range 指定時は部分再生 (プリシーク + 範囲制限) となる。 */
   async play(
     song: MzsdSong,
     loop: boolean,
     mode: AudioEngineMode = AudioEngineMode.SourceInterpreter,
+    range?: PlaybackRange,
   ): Promise<void> {
     this.stopInternal();
     await this.ensureOutput();
+
+    // 部分再生: 開始フレームまでのプリシーク数と、開始フレーム起算の演奏フレーム数を算出する
+    const seekFrames = range === undefined ? 0 : Math.max(0, Math.floor(range.startFrame));
+    const stopAfterFrames =
+      range === undefined || range.endFrame === null
+        ? 0
+        : Math.max(0, Math.floor(range.endFrame) - seekFrames);
 
     this.mixer.resetLevels();
     this.currentMode = mode;
     switch (mode) {
       case AudioEngineMode.SourceInterpreter:
-        this.driver = new MzsdSequencer(song, this.mixer.chips, loop);
+        this.driver = new MzsdSequencer(song, this.mixer.chips, loop, seekFrames, stopAfterFrames);
         break;
 
       case AudioEngineMode.Z80Driver: {
         const playback = new Z80DriverPlayback(this.mixer.chips);
-        playback.play(song.data, loop);
+        playback.play(song.data, loop, seekFrames, stopAfterFrames);
         this.driver = playback;
         break;
       }

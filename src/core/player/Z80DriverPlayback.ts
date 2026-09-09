@@ -16,26 +16,56 @@ const MaxBootFrames = 4;
 export class Z80DriverPlayback implements FrameDriver {
   private readonly machine: Z80DriverMachine;
 
+  private readonly chips: ChipBank;
+
+  /** 残り演奏フレーム数 (部分再生の範囲制限)。0 = 制限なし。 */
+  private remainingFrames = 0;
+
+  /** 部分再生の範囲終端に到達した (消音済み・演奏終了扱い)。 */
+  private rangeStopped = false;
+
   constructor(chips: ChipBank) {
+    this.chips = chips;
     this.machine = new Z80DriverMachine(chips);
   }
 
   get isFinished(): boolean {
-    return this.machine.isFinished;
+    return this.rangeStopped || this.machine.isFinished;
   }
 
-  /** MZSD データをロードしてドライバのブートを完了させる。 */
-  play(musicData: Uint8Array, loop: boolean): void {
+  /**
+   * MZSD データをロードしてドライバのブートを完了させる。
+   * seekFrames > 0 の場合は部分再生のプリシークとして、ドライバを開始フレーム直前まで
+   * サイレント実行する (mixer に未接続のため発音せず、v / o / @ 等の状態だけがチップへ残る)。
+   * stopAfterFrames > 0 の場合は指定フレーム数の演奏後に消音して終了する。
+   */
+  play(musicData: Uint8Array, loop: boolean, seekFrames: number = 0, stopAfterFrames: number = 0): void {
     this.machine.load(Z80DriverImage.defaultDriver, musicData, loop);
 
     let bootGuard = 0;
     while ((this.machine.status & 0x01) === 0 && bootGuard++ < MaxBootFrames) {
       this.machine.runFrame();
     }
+
+    for (let i = 0; i < seekFrames; i++) {
+      this.machine.runFrame();
+    }
+
+    this.remainingFrames = Math.max(0, stopAfterFrames);
+    this.rangeStopped = false;
   }
 
   tick(): void {
+    if (this.rangeStopped) {
+      return;
+    }
+
     this.machine.runFrame();
+
+    if (this.remainingFrames > 0 && --this.remainingFrames === 0) {
+      this.rangeStopped = true;
+      this.chips.silenceAll();
+    }
   }
 
   getTrackOffset(trackIndex: number): number {

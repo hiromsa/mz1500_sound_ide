@@ -837,6 +837,7 @@ export class MmlParser {
    * @param sourceLength MML ソース上の発音トークン長 (文字数)。連符由来 (列位置不定) は 0。
    */
   private emitNote(t: TrackBuilder, rawNote: number, units: number, lineNo: number, col: number, sourceLength: number): void {
+    const startFrame = Math.round(t.tickSeconds * 60.0);
     const len = this.advance(t, units);
     const gate = computeGate(len, t.state);
     const offset = t.code.length;
@@ -846,18 +847,19 @@ export class MmlParser {
     t.code.push(len >> 8);
     t.code.push(gate & 0xff);
     t.code.push(gate >> 8);
-    t.events.push({ offset, line: lineNo, column: col, length: sourceLength, kind: 'note' });
+    t.events.push({ offset, line: lineNo, column: col, length: sourceLength, kind: 'note', startFrame, durationFrames: len });
     t.notePatch = { offset: offset + 2, isNote: true };
   }
 
   /** レスト命令を emit する (sourceLength の意味は emitNote と同一)。 */
   private emitRest(t: TrackBuilder, units: number, lineNo: number, col: number, sourceLength: number): void {
+    const startFrame = Math.round(t.tickSeconds * 60.0);
     const len = this.advance(t, units);
     const offset = t.code.length;
     t.code.push(OpRest);
     t.code.push(len & 0xff);
     t.code.push(len >> 8);
-    t.events.push({ offset, line: lineNo, column: col, length: sourceLength, kind: 'rest' });
+    t.events.push({ offset, line: lineNo, column: col, length: sourceLength, kind: 'rest', startFrame, durationFrames: len });
     t.notePatch = { offset: offset + 1, isNote: false };
   }
 

@@ -606,8 +606,9 @@ export class TrackSequencer {
    * トラック終了 / 停止時の消音。
    * リリースの再始動は行わない (終了後に演奏フレームが進まないため、
    * リリース先頭へ巻き戻すと音量が復帰したまま持ち越される)。
+   * 部分再生の範囲終端処理 (MzsdSequencer.finishAtRangeEnd) からも呼ばれるため公開。
    */
-  private silence(): void {
+  silence(): void {
     this.noteOn = false;
     this.sweepElapsed = 0;
     this.venvReleasing = false;
