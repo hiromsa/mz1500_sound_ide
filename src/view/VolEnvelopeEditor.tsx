@@ -14,11 +14,10 @@ import {
 import { isIdDefined, loadVolEnvDefinition } from '../utils/mmlDefinitionLoader';
 import { DefinitionIdInput } from './DefinitionIdInput';
 import { TestNoteButton } from './components/TestNoteButton';
-import { midiNoteToFrequency, perceptualMasterGain } from '../utils/virtualSynth';
+import { virtualSynth } from '../utils/virtualSynth';
 import { MmlLiveDock } from './MmlLiveDock';
 
 /** ボリュームエンベロープ試聴音の基準出力ゲイン (TRACK MONITOR の MASTER VOL 100% 時)。 */
-const PreviewBaseGain = 0.25;
 
 const MAX_FRAMES = 128;
 
@@ -79,8 +78,6 @@ export interface VolEnvelopeEditorProps {
   testMidiNote?: number;
   /** テストノート変更コールバック */
   onChangeTestMidiNote?: (note: number) => void;
-  /** マスター音量 (0-1、ミュート時 0)。TRACK MONITOR の MASTER VOL と連動し、知覚カーブ適用のうえ試聴音量へ乗算される。 */
-  masterLevel?: number;
 }
 
 export function VolEnvelopeEditor({
@@ -90,7 +87,6 @@ export function VolEnvelopeEditor({
   onApplyToMml,
   testMidiNote,
   onChangeTestMidiNote,
-  masterLevel = 1,
 }: VolEnvelopeEditorProps = {}) {
   // エンベロープデータ (デフォルト32フレーム, 各フレーム 0〜15)
   const [envData, setEnvData] = useState<number[]>(createInitialEnvData());
@@ -296,15 +292,12 @@ export function VolEnvelopeEditor({
     };
   }, [columnPitch, envData.length]);
 
-  // Web Audio 試聴ステート
+  // チップ駆動試聴ステート (発音は KeyboardSoundEngine = MML 演奏と同一の DCSG エミュレーション)
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const isKeyOffRef = useRef<boolean>(false);
-  const audioCtxRef = useRef<AudioContext | null>(null);
-  const oscNodeRef = useRef<OscillatorNode | null>(null);
-  const gainNodeRef = useRef<GainNode | null>(null);
   const playbackTimerRef = useRef<number | null>(null);
-  /** 最新のマスター音量 (0-1)。発音タイマー (stale closure 回避) から参照する。 */
-  const masterLevelRef = useRef(masterLevel);
+  /** 発音中の試聴ノート (キーオフ対象の追跡用)。 */
+  const previewNoteRef = useRef<number | null>(null);
   const activeStepRef = useRef<number>(-1);
   const [previewActiveStep, setPreviewActiveStep] = useState<number>(-1);
 
@@ -573,24 +566,15 @@ export function VolEnvelopeEditor({
     }
   };
 
-  // Web Audio 再生プレビューの停止処理
+  // チップ駆動試聴の停止処理 (即時停止)
   const stopAudio = () => {
     if (playbackTimerRef.current) {
       window.clearInterval(playbackTimerRef.current);
       playbackTimerRef.current = null;
     }
-    if (oscNodeRef.current) {
-      try {
-        oscNodeRef.current.stop();
-        oscNodeRef.current.disconnect();
-      } catch {
-        // ignore
-      }
-      oscNodeRef.current = null;
-    }
-    if (gainNodeRef.current) {
-      gainNodeRef.current.disconnect();
-      gainNodeRef.current = null;
+    if (previewNoteRef.current !== null) {
+      virtualSynth.stopNote(previewNoteRef.current);
+      previewNoteRef.current = null;
     }
     setIsPlaying(false);
     isKeyOffRef.current = false;
@@ -601,72 +585,44 @@ export function VolEnvelopeEditor({
   useEffect(() => {
     return () => {
       stopAudio();
-      if (audioCtxRef.current) {
-        audioCtxRef.current.close();
-      }
     };
   }, []);
 
-  // マスター音量変更を発音タイマーへ反映させるため ref を最新化
-  useEffect(() => {
-    masterLevelRef.current = masterLevel;
-  }, [masterLevel]);
-
-  // Web Audio 試聴再生 (KEY ON)
+  // チップ駆動試聴再生 (KEY ON): PSG 矩形波 + @VE 減衰レジスタ駆動 (エンジン内で 60Hz 進行)
   const handlePlayKeyOn = (previewNote?: number) => {
     stopAudio();
 
-    const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    if (!AudioContextClass) return;
-
-    const ctx = audioCtxRef.current || new AudioContextClass();
-    audioCtxRef.current = ctx;
-
-    if (ctx.state === 'suspended') {
-      ctx.resume();
-    }
-
     const note = previewNote ?? testMidiNote ?? 60;
-    const freq = midiNoteToFrequency(note);
+    previewNoteRef.current = note;
 
-    const osc = ctx.createOscillator();
-    osc.type = 'square'; // DCSGの矩形波
-    osc.frequency.setValueAtTime(freq, ctx.currentTime);
+    virtualSynth.noteOn(note, {
+      engine: 'psg',
+      volume: 15,
+      volEnv: envData,
+      volEnvLoop: loopPoint,
+      volEnvRelease: releasePoint,
+    });
 
-    const gain = ctx.createGain();
-    gain.gain.setValueAtTime(0, ctx.currentTime);
-
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start();
-
-    oscNodeRef.current = osc;
-    gainNodeRef.current = gain;
     setIsPlaying(true);
     isKeyOffRef.current = false;
 
     activeStepRef.current = 0;
     setPreviewActiveStep(0);
 
+    // ステップハイライト進行 (音声はエンジン側で同一ロジックにより駆動されるため UI 表示専用)
     // 1フレーム = 約16.6ms (60fps)
     const FRAME_MS = 1000 / 60;
 
     playbackTimerRef.current = window.setInterval(() => {
-      if (!gainNodeRef.current || !audioCtxRef.current) return;
-
       const step = activeStepRef.current;
       if (step < 0 || step >= envData.length) {
         stopAudio();
         return;
       }
 
-      const val = envData[step] ?? 0;
-      const gainVal = (val / 15) * PreviewBaseGain * perceptualMasterGain(masterLevelRef.current);
-      gainNodeRef.current.gain.setValueAtTime(gainVal, audioCtxRef.current.currentTime);
-
       setPreviewActiveStep(step);
 
-      // 次のステップを計算
+      // 次のステップを計算 (KEY ON 中はリリース直前でループ / ホールド・演奏エンジンと同一挙動)
       let nextStep = step + 1;
       if (!isKeyOffRef.current && loopPoint >= 0 && step === releasePoint - 1) {
         // キーオン中はリリース直前でループポイントに戻る
@@ -690,6 +646,9 @@ export function VolEnvelopeEditor({
   const handleTriggerKeyOff = () => {
     if (!isPlaying) return;
     isKeyOffRef.current = true;
+    if (previewNoteRef.current !== null) {
+      virtualSynth.noteOff(previewNoteRef.current); // @VE リリース区間を再生して自動停止
+    }
     if (releasePoint >= 0 && releasePoint < envData.length) {
       activeStepRef.current = releasePoint;
       setPreviewActiveStep(releasePoint);

@@ -6,8 +6,8 @@
 ---
 
 ## 1. 現在のステータス概要
-- **バージョン**: `v0.0.1-beta.125`（コミット通番＋短縮ハッシュ ハイブリッド方式）
-- **テスト通過状況**: 全 44 テストファイル / 619 件パス + 1 skip（`npm test` / Vitest）
+- **バージョン**: `v0.0.1-beta.126`（コミット通番＋短縮ハッシュ ハイブリッド方式）
+- **テスト通過状況**: 全 44 テストファイル / 632 件パス + 1 skip（`npm test` / Vitest）
 - **型検査状況**: エラー 0 件（`npx tsc -b`）
 - **主要機能の稼働状況**:
   - Web ネイティブ MML コンパイラ（9ch / 17ch / ワークトラック W1〜W99 対応）
@@ -23,15 +23,6 @@
 ## 2. 残タスク・今後の ToDo 一覧 (Pending Tasks)
 
 ### 優先度: 高 (High Priority)
-- [ ] **仮想キーボード音源統一 Phase B: PSG / ノイズ / BEEP および V-ENV / P-ENV エディタ試聴をチップ駆動へ統一**
-  - **実装計画 (2026-09-10 ユーザー確定 / Plan)**:
-    1. `virtualSynth.ts` の PSG / ノイズ / BEEP を KeyboardSoundEngine (`DcsgChip` / `BeepChip` 直駆動) へ委譲し、簡易合成コード (OscillatorNode 矩形波 / BufferSource ノイズ / BEEP) を削除。
-    2. PSG 音程は `DcsgChip.tonePeriodForFrequency` によるレジスタ直書き (仮想キーボードの実機音域制限 `DcsgChip.LowestMidiNote` と同じ正を共有)、ノイズは `setNoiseControl` + @IN 統合 (`TrackSequencer.applyNoiseIntegrate` と同一経路: 統合中はノイズ ch へ減衰切替 + tone2 連動クロック)。
-    3. @VE: 既存 `VolumeEnvelopePlayback` (ドライバ挙動を手動再現したクラス) を 60Hz フレームタイマで減衰レジスタへ書き込み。「ノート発音中 / リリース中のみ進行」ガード (2026-09-09 修正) も踏襲。
-    4. **実機音声数制限の適用**: PSG 6 音声 (psg1×3 + psg2×3) / ノイズ 2 / BEEP 1。超過時は最古ボイス steal。挙動変更のため `docs/specification/ui.md` への仕様記録が必須。
-    5. `VolEnvelopeEditor.tsx` / `PitchEnvelopeEditor.tsx` の試聴 (独自 WebAudio 矩形波 / sawtooth) も KeyboardSoundEngine 経由へ (@PE は period 差分駆動・sawtooth 廃止)。
-  - **テスト**: `virtualSynth.test.ts` の簡易合成テストを `KeyboardSoundEngine` 側へ移行・削除。`VolumeEnvelopePlayback` の進行テスト (リリース / ループ冪等) はクラス継続のため維持。
-  - **設計指針**: ドライバと共有する式 (FM 音量合成 / KC-KF 展開 / @VE 進行) は共有レイヤーに集約し、将来 Phase C (ドライバ制御統一・`TrackSequencer` 直駆動) に上げられる道を確保する。**Phase C 自体は当面見送り (2026-09-10 ユーザー確定)**。
 - [ ] **実機 / エミュレータでの試聴・起動確認**
   - 生成された QuickDisk イメージ (`.qdf`) の実機および各種エミュレータでの動作・演奏確認。
   - 実機環境での AudioWorklet / Web Audio 再生挙動のクロスチェック。
@@ -62,6 +53,18 @@
 ---
 
 ## 3. 直近の完了作業（最新）
+
+- **仮想キーボード音源統一 Phase B: PSG / ノイズ / BEEP および V-ENV / P-ENV エディタ試聴をチップ駆動へ統一 — 全試聴経路が MML 演奏と同一のチップエミュレーションに (`src/core/keyboard/VolumeEnvelopePlayback.ts` 新設 (移動), `src/core/keyboard/KeyboardSoundEngine.ts`, `src/utils/virtualSynth.ts`, `src/view/VolEnvelopeEditor.tsx`, `src/view/PitchEnvelopeEditor.tsx`, `src/app/App.tsx`, テスト 13 件追加・仕様書更新)** (2026-09-10):
+  - **対応内容** (2026-09-10 ユーザー確定 Plan のとおり実装):
+    1. **`VolumeEnvelopePlayback` を core 層へ移動** (`src/core/keyboard/VolumeEnvelopePlayback.ts`・クラスは不変): エンジンの 60Hz フレーム駆動から直接利用。`virtualSynth.ts` から再エクスポートし既存テスト (`virtualSynth.test.ts`) は無修正で維持。
+    2. **`KeyboardSoundEngine` へ DCSG / BEEP ボイスを実装**: PSG トーン (`DcsgChip.tonePeriodForFrequency` によるトーン周期レジスタ直書き) / ノイズ (`setNoiseControl` + 音名 3 段階分周ヒント `noiseRateForNote`・@WN 波形) / **@IN 統合** (`TrackSequencer.applyNoiseIntegrate` と同一経路: tone2 へ音程 + rate 3 連動クロックでノイズ ch へ発音切替・トーン 3 無音化) / BEEP (`BeepChip` カウンタ直書き + ゲート・同時 1 音)。**実機音声数制限**: PSG トーン 6 (psg1×3 + psg2×3) / ノイズ 2 / @IN 統合 2 (tone2+noise ペア) / FM 8 / BEEP 1。スロット割当 + 超過時はリリース中→最古ボイスを steal。
+    3. **@VE / @PE を 60Hz フレームでレジスタ直書き**: @VE は `VolumeEnvelopePlayback` で減衰レジスタへ (ノート開始 = 音量直送・env[0] は最初の tick で反映 = TrackSequencer と同一タイミング。キーオフでリリース区間を 1 回再生し終了後に減衰 15 で解放)。@PE はレジスタ差分単位でトーン周期 (period = base - pitchUp) / 8253 カウンタ (+ pitchUp) / FM KC-KF へ反映。
+    4. **`virtualSynth.ts` をファサード化** (552 行 → 145 行): PSG / ノイズ / BEEP の WebAudio 簡易合成 (OscillatorNode 矩形波 / BufferSource ノイズ + BiquadFilter / BEEP / @VE・@PE の setInterval 進行) を全削除。`noteOn` / `noteOff` / `stopNote` (新設・即時停止) / `allNotesOff` / `releaseAllNotes` / `setMasterVolume` をエンジンへ委譲。
+    5. **V-ENV / P-ENV エディタの試聴をエンジン経由へ**: `VolEnvelopeEditor` は `engine:'psg'` + `volEnv` で DCSG 直駆動 (ステップハイライトは UI 側タイマーで表示専用化)。`PitchEnvelopeEditor` は sawtooth + 25 cents 近似を廃止し PSG 矩形波 + period 差分駆動へ。両エディタの独自 AudioContext / `PreviewBaseGain` / `masterLevel` props を廃止 (App.tsx の該当 props 渡しも削除)。
+  - **テスト**: `KeyboardSoundEngine.test.ts` に 13 件追加 (PSG レジスタ直書き・音量 / @IN 統合 (noiseClock = tone2×16 検証) / 6 音声 steal / @VE 減衰レジスタ進行・リリース再生と解放 / 即時消音 / @PE period 変調 / ノイズ rate・2 音声 steal / BEEP カウンタ・上書き・@PE 変調)。`npm test` 全 44 ファイル・632 件合格 + 1 skip / `npx tsc -b` エラーゼロ / `npm run lint` 警告 10 件 (既存分のみ) / `npm run build` 成功。
+  - **検証 (ブラウザ)**: 仮想キーボード PSG / NOISE / BEEP / @IN / @VE / @PE の各試聴が MML 再生と同一の音になることをユーザー確認待ち。
+  - **仕様書**: [`docs/specification/ui.md`](./specification/ui.md) の仮想キーボード「発音エンジン」節 (PSG/NOISE/BEEP・実機音声数制限・@VE/@PE)・@IN セレクタ・V-ENV / P-ENV エディタ試聴・マスターボリューム影響範囲を更新。
+  - **設計指針 (Phase C は当面見送り・2026-09-10 ユーザー確定)**: ドライバと共有する式 (FM 音量合成 / KC-KF 展開 / @VE 進行 / @PE 変調) は共有レイヤー (`FmToneRegisters` / `VolumeEnvelopePlayback`) に集約済み。将来 `TrackSequencer` 直駆動へ上げられる道を確保。
 
 - **仮想キーボード音源統一 Phase A: 仮想キーボード / FM TONE プレビューの FM を OPM エミュレーション (Ym2151) 駆動へ変更 — 「鍵盤の音 = 本番の音」を実装 (`src/core/player/FmToneRegisters.ts` 新規, `src/core/keyboard/KeyboardSoundEngine.ts` 新規, `src/core/keyboard/KeyboardAudioOutput.ts` 新規, `src/core/player/TrackSequencer.ts`, `src/utils/virtualSynth.ts`, `src/view/FmToneEditor.tsx`, `src/app/App.tsx`, テスト 2 件新規・仕様書更新)** (2026-09-10):
   - **背景**: 仮想キーボードの WebAudio 簡易 FM 合成は FB (フィードバック) 未実装のため、プリセット音色が実機 / MML 再生よりきれいに聞こえすぎる (ユーザー指摘「E.PIANO 1 は仮想キーボードがきれい / MML 再生は濁ったノイズ」)。TL 破壊バグ修正で MML 再生側は正しくなったため、試聴側をチップエミュレーションへ統一した。

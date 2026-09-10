@@ -15,11 +15,8 @@ import {
 import { isIdDefined, loadPitchEnvDefinition } from '../utils/mmlDefinitionLoader';
 import { DefinitionIdInput } from './DefinitionIdInput';
 import { TestNoteButton } from './components/TestNoteButton';
-import { midiNoteToFrequency, perceptualMasterGain } from '../utils/virtualSynth';
+import { virtualSynth } from '../utils/virtualSynth';
 import { MmlLiveDock } from './MmlLiveDock';
-
-/** ピッチエンベロープ試聴音の基準出力ゲイン (TRACK MONITOR の MASTER VOL 100% 時)。 */
-const PreviewBaseGain = 0.2;
 
 const MAX_FRAMES = 128;
 
@@ -128,8 +125,6 @@ export interface PitchEnvelopeEditorProps {
   testMidiNote?: number;
   /** テストノート変更コールバック */
   onChangeTestMidiNote?: (note: number) => void;
-  /** マスター音量 (0-1、ミュート時 0)。TRACK MONITOR の MASTER VOL と連動し、知覚カーブ適用のうえ試聴音量へ乗算される。 */
-  masterLevel?: number;
 }
 
 export function PitchEnvelopeEditor({
@@ -139,7 +134,6 @@ export function PitchEnvelopeEditor({
   onApplyToMml,
   testMidiNote,
   onChangeTestMidiNote,
-  masterLevel = 1,
 }: PitchEnvelopeEditorProps = {}) {
   // ピッチエンベロープデータ (各フレームの周波数/ピッチオフセット値)
   const [envData, setEnvData] = useState<number[]>(createInitialPitchData());
@@ -232,12 +226,11 @@ export function PitchEnvelopeEditor({
   const panStartXRef = useRef<number>(0);
   const panStartScrollLeftRef = useRef<number>(0);
 
-  // Web Audio 試聴ステート
+  // チップ駆動試聴ステート (発音は KeyboardSoundEngine = MML 演奏と同一の DCSG エミュレーション)
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
-  const audioCtxRef = useRef<AudioContext | null>(null);
-  const oscNodeRef = useRef<OscillatorNode | null>(null);
-  const gainNodeRef = useRef<GainNode | null>(null);
   const playbackTimerRef = useRef<number | null>(null);
+  /** 発音中の試聴ノート (停止対象の追跡用)。 */
+  const previewNoteRef = useRef<number | null>(null);
   const activeStepRef = useRef<number>(-1);
   const [previewActiveStep, setPreviewActiveStep] = useState<number>(-1);
 
@@ -620,24 +613,15 @@ export function PitchEnvelopeEditor({
     setLoopPoint(prev => (prev === stepIdx ? -1 : stepIdx));
   };
 
-  // Web Audio 試聴停止
+  // チップ駆動試聴停止 (即時停止)
   const stopAudio = () => {
     if (playbackTimerRef.current) {
       window.clearInterval(playbackTimerRef.current);
       playbackTimerRef.current = null;
     }
-    if (oscNodeRef.current) {
-      try {
-        oscNodeRef.current.stop();
-        oscNodeRef.current.disconnect();
-      } catch {
-        // ignore
-      }
-      oscNodeRef.current = null;
-    }
-    if (gainNodeRef.current) {
-      gainNodeRef.current.disconnect();
-      gainNodeRef.current = null;
+    if (previewNoteRef.current !== null) {
+      virtualSynth.stopNote(previewNoteRef.current);
+      previewNoteRef.current = null;
     }
     setIsPlaying(false);
     setPreviewActiveStep(-1);
@@ -647,51 +631,27 @@ export function PitchEnvelopeEditor({
   useEffect(() => {
     return () => {
       stopAudio();
-      if (audioCtxRef.current) {
-        audioCtxRef.current.close();
-      }
     };
   }, []);
 
-  // TRACK MONITOR の MASTER VOL 変更を発音中の試聴音へ即時反映 (知覚カーブ適用)
-  useEffect(() => {
-    const gain = gainNodeRef.current;
-    const ctx = audioCtxRef.current;
-    if (!gain || !ctx) return;
-    try {
-      gain.gain.setValueAtTime(PreviewBaseGain * perceptualMasterGain(masterLevel), ctx.currentTime);
-    } catch { /* ignore */ }
-  }, [masterLevel]);
-
-  // Web Audio 試聴開始 (KEY ON - ピッチ変調をリアルタイムシミュレート)
+  // チップ駆動試聴開始 (KEY ON): PSG 矩形波 + @PE トーン周期差分駆動 (エンジン内で 60Hz 進行)
+  // @PE の値はレジスタ差分単位 (1 unit = period 1) でドライバと同一の変調がかかる
   const handlePlayKeyOn = (previewNote?: number) => {
     stopAudio();
 
-    const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    if (!AudioContextClass) return;
-
-    const ctx = audioCtxRef.current || new AudioContextClass();
-    audioCtxRef.current = ctx;
-    if (ctx.state === 'suspended') ctx.resume();
-
     const note = previewNote ?? testMidiNote ?? 60;
-    const baseFreq = midiNoteToFrequency(note);
+    previewNoteRef.current = note;
 
-    const osc = ctx.createOscillator();
-    osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(baseFreq, ctx.currentTime);
+    virtualSynth.noteOn(note, {
+      engine: 'psg',
+      volume: 15,
+      pitchEnv: envData,
+      pitchEnvLoop: loopPoint,
+    });
 
-    const gain = ctx.createGain();
-    gain.gain.setValueAtTime(PreviewBaseGain * perceptualMasterGain(masterLevel), ctx.currentTime);
-
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start();
-
-    oscNodeRef.current = osc;
-    gainNodeRef.current = gain;
     setIsPlaying(true);
 
+    // ステップハイライト進行 (音声はエンジン側で同一ロジックにより駆動されるため UI 表示専用)
     let currentStep = 0;
     activeStepRef.current = currentStep;
     setPreviewActiveStep(currentStep);
@@ -700,13 +660,6 @@ export function PitchEnvelopeEditor({
     const frameIntervalMs = 1000 / 60;
 
     const timer = window.setInterval(() => {
-      if (!oscNodeRef.current || !gainNodeRef.current) return;
-
-      const pVal = envData[currentStep] ?? 0;
-      // ピッチ変調: 1ステップあたり 25 cents (1/4半音)
-      const detuneCents = pVal * 25;
-      oscNodeRef.current.detune.setValueAtTime(detuneCents, ctx.currentTime);
-
       setPreviewActiveStep(currentStep);
       activeStepRef.current = currentStep;
 

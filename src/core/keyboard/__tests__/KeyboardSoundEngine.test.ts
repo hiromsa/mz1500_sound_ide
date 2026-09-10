@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { KeyboardSoundEngine } from '../KeyboardSoundEngine';
+import { DcsgChip } from '../../chips/DcsgChip';
 import type { FmToneData } from '../../fm/FmTone';
 
 /** テスト用の簡易音色 (ALG 0 直列 / OP4 キャリア)。 */
@@ -155,5 +156,153 @@ describe('KeyboardSoundEngine', () => {
     expect(engine.activeVoiceCount).toBe(2); // 減衰中もボイスは保持
     expect(engine.mixer.chips.fm.isKeyOn(0)).toBe(false);
     expect(engine.mixer.chips.fm.isKeyOn(1)).toBe(false);
+  });
+});
+
+describe('KeyboardSoundEngine — PSG (DCSG)', () => {
+  it('psgNoteOn はトーン周期レジスタと減衰レジスタへ書き込む (実機レジスタ式)', () => {
+    const engine = new KeyboardSoundEngine();
+    engine.psgNoteOn(69, { volume: 15 }); // A4 = period 253
+
+    const psg1 = engine.mixer.chips.psg1;
+    expect(psg1.tonePeriodRegister(0)).toBe(253); // DcsgChip.tonePeriodForFrequency と同一式
+    expect(psg1.attenuationRegister(0)).toBe(0); // v15 → 減衰 0
+    expect(engine.activeVoiceCount).toBe(1);
+  });
+
+  it('音量 v は減衰 = 15 - v として書き込まれる', () => {
+    const engine = new KeyboardSoundEngine();
+    engine.psgNoteOn(60, { volume: 8 });
+    expect(engine.mixer.chips.psg1.attenuationRegister(0)).toBe(7);
+  });
+
+  it('@IN 統合モードは tone2 連動クロックでノイズ ch へ発音を切替える (トーン 3 は無音)', () => {
+    const engine = new KeyboardSoundEngine();
+    engine.psgNoteOn(69, { volume: 10, noiseIntegrate: 2 });
+
+    const psg1 = engine.mixer.chips.psg1;
+    expect(psg1.attenuationRegister(3)).toBe(5); // ノイズ ch へ減衰
+    expect(psg1.attenuationRegister(2)).toBe(15); // トーン 3 は無音化
+    expect(psg1.tonePeriodRegister(2)).toBe(253); // tone2 へ音程 (ノイズシフトクロック源)
+    expect(psg1.noiseClock).toBeCloseTo(psg1.toneFrequency(2) * 16.0, 3); // rate 3 = tone2 × 16 連動
+  });
+
+  it('PSG トーンは実機どおり 6 音声 (psg1×3 + psg2×3)。7 音目は最古ボイスを steal', () => {
+    const engine = new KeyboardSoundEngine();
+    for (let note = 60; note < 66; note++) {
+      engine.psgNoteOn(note, { volume: 15 });
+    }
+    expect(engine.activeVoiceCount).toBe(6);
+
+    engine.psgNoteOn(66, { volume: 15 }); // 7 音目 → note 60 を steal
+    expect(engine.activeVoiceCount).toBe(6);
+    expect(engine.hasVoice(60)).toBe(false);
+    expect(engine.hasVoice(66)).toBe(true);
+  });
+
+  it('@VE は 60Hz で減衰レジスタへ反映される (サステイン末尾でホールド)', () => {
+    const engine = new KeyboardSoundEngine();
+    engine.psgNoteOn(60, { volume: 15, volEnv: [15, 10, 5], volEnvLoop: -1 });
+
+    const psg1 = engine.mixer.chips.psg1;
+    expect(psg1.attenuationRegister(0)).toBe(0); // ノート開始 = 音量直送 (v15)
+
+    tick(engine, 1); // frame 1 = env[0] = 15 (TrackSequencer と同一・1 フレーム遅れで反映)
+    expect(psg1.attenuationRegister(0)).toBe(0);
+
+    tick(engine, 1); // frame 2 = env[1] = 10
+    expect(psg1.attenuationRegister(0)).toBe(5);
+
+    tick(engine, 1); // frame 3 = env[2] = 5
+    expect(psg1.attenuationRegister(0)).toBe(10);
+
+    tick(engine, 5); // 末尾でホールド
+    expect(psg1.attenuationRegister(0)).toBe(10);
+  });
+
+  it('キーオフで @VE リリース区間を 1 回だけ再生し、終了後に減衰 15 で解放される', () => {
+    const engine = new KeyboardSoundEngine();
+    engine.psgNoteOn(60, { volume: 15, volEnv: [15, 12], volEnvLoop: -1, volEnvRelease: 1 });
+    engine.dcsgNoteOff(60);
+
+    const psg1 = engine.mixer.chips.psg1;
+    expect(psg1.attenuationRegister(0)).toBe(3); // リリース先頭 env[1] = 12 → 減衰 3
+
+    tick(engine, 4); // リリース 1 フレーム + マージン 2 を経過 → 解放
+    expect(psg1.attenuationRegister(0)).toBe(15);
+    expect(engine.activeVoiceCount).toBe(0);
+  });
+
+  it('リリース定義のないキーオフは即時消音 (減衰 15) される', () => {
+    const engine = new KeyboardSoundEngine();
+    engine.psgNoteOn(60, { volume: 15 });
+    engine.dcsgNoteOff(60);
+
+    expect(engine.mixer.chips.psg1.attenuationRegister(0)).toBe(15);
+    expect(engine.activeVoiceCount).toBe(0);
+  });
+
+  it('@PE はトーン周期をレジスタ差分単位で変調する (period = base - pitchUp)', () => {
+    const engine = new KeyboardSoundEngine();
+    engine.psgNoteOn(69, { volume: 15, pitchEnv: [10], pitchEnvLoop: -1 }); // A4 = period 253
+
+    tick(engine, 1); // frame 1 → pitchUp = 10 → period 243
+    expect(engine.mixer.chips.psg1.tonePeriodRegister(0)).toBe(243);
+  });
+});
+
+describe('KeyboardSoundEngine — ノイズ (DCSG)', () => {
+  it('noiseNoteOn はノイズ ch (ch3) へ減衰を書き、音名 3 段階の分周レートを設定する', () => {
+    const engine = new KeyboardSoundEngine();
+    engine.noiseNoteOn(60, { volume: 10, noiseType: 'white' }); // C4 = 低レート (2)
+
+    const psg1 = engine.mixer.chips.psg1;
+    expect(psg1.attenuationRegister(3)).toBe(5);
+    // rate 2 (Clock/64) = Clock / 16 / 4
+    expect(psg1.noiseClock).toBeCloseTo(DcsgChip.ClockHz / 16.0 / 4, 3);
+    expect(engine.activeVoiceCount).toBe(1);
+  });
+
+  it('ノイズは実機どおり 2 音声。3 音目は最古ボイスを steal', () => {
+    const engine = new KeyboardSoundEngine();
+    engine.noiseNoteOn(60, { volume: 15 });
+    engine.noiseNoteOn(62, { volume: 15 });
+    engine.noiseNoteOn(64, { volume: 15 });
+
+    expect(engine.activeVoiceCount).toBe(2);
+    expect(engine.hasVoice(60)).toBe(false); // 最古が steal される
+    expect(engine.hasVoice(64)).toBe(true);
+  });
+});
+
+describe('KeyboardSoundEngine — BEEP (8253)', () => {
+  it('beepNoteOn はカウンタを直書きしてゲートオン。キーオフでゲートオフ', () => {
+    const engine = new KeyboardSoundEngine();
+    engine.beepNoteOn(69, {}); // A4 = round(894886.25 / 440) = 2034
+
+    const beep = engine.mixer.chips.beep;
+    expect(beep.counterValue).toBe(Math.round(894886.25 / 440));
+    expect(beep.isGateOn).toBe(true);
+
+    engine.dcsgNoteOff(69);
+    expect(beep.isGateOn).toBe(false);
+    expect(engine.activeVoiceCount).toBe(0);
+  });
+
+  it('BEEP は同時 1 音。2 音目は前の音を上書きする', () => {
+    const engine = new KeyboardSoundEngine();
+    engine.beepNoteOn(69, {});
+    engine.beepNoteOn(72, {});
+
+    expect(engine.activeVoiceCount).toBe(1);
+    expect(engine.mixer.chips.beep.isGateOn).toBe(true);
+  });
+
+  it('@PE は 8253 カウンタを差分単位で変調する (カウンタ増加 = 音程下降)', () => {
+    const engine = new KeyboardSoundEngine();
+    engine.beepNoteOn(69, { pitchEnv: [100], pitchEnvLoop: -1 });
+
+    tick(engine, 1); // frame 1 → counter = base + 100
+    expect(engine.mixer.chips.beep.counterValue).toBe(Math.round(894886.25 / 440) + 100);
   });
 });

@@ -977,7 +977,6 @@ function App() {
                   onApplyToMml={handleApplyVolEnvToMml}
                   testMidiNote={testMidiNote}
                   onChangeTestMidiNote={setTestMidiNote}
-                  masterLevel={masterLevel}
                 />
               )}
 
@@ -992,7 +991,6 @@ function App() {
                   onApplyToMml={handleApplyPitchEnvToMml}
                   testMidiNote={testMidiNote}
                   onChangeTestMidiNote={setTestMidiNote}
-                  masterLevel={masterLevel}
                 />
               )}
 

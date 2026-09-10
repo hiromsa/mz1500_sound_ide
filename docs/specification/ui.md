@@ -266,7 +266,11 @@ FlexboxおよびCSS Gridを活用し、解像度変化に追従するペイン�
         - FM 同時発音は実機どおり **8 音** (OPM 8ch round-robin 割当)。全チャンネル使用時は**リリース中のボイスを優先、次に最古のボイスを steal** する。キーオフ後の減衰は音色の RR に従い OPM 内蔵 EG が再生し、推定減衰時間の経過後にチャンネルを解放。
         - 音量 `v` (0-15) は `TrackSequencer` と同一式の TL オフセット ((15-v)×8) として合成。`@EP` ピッチエンベロープも 60Hz フレーム進行で KC/KF へ反映 (ドライバと同一挙動)。`@VE` は FM 非対応のため従来どおり RR キーオフ減衰のみ。
         - 出力は `KeyboardAudioOutput` (10ms pump + 小バッファの低レイテンシ AudioWorklet / `FramePlaybackWorkletSource` 流用) から常時駆動。マスター音量は TRACK MONITOR の MASTER VOL と共有 (知覚カーブ 2 乗)。
-        - PSG / NOISE / BEEP は従来どおり WebAudio 簡易合成 (Phase B でチップ駆動へ統一予定)。
+        - **PSG**: `DcsgChip` 直駆動 (トーン周期レジスタ直書き)。実機音域制限は鍵盤 UI 側 (`DcsgChip.LowestMidiNote`) と同じ正を共有。**@IN ノイズ統合** (`noiseIntegrate` 1/2) は `TrackSequencer.applyNoiseIntegrate` と同一経路 (統合中は tone2 へ音程を書き、ノイズ ch (rate 3 = tone2 × 16 連動) へ発音切替 + トーン 3 無音化)。
+        - **NOISE**: `DcsgChip` ノイズ ch 直駆動 (`setNoiseControl` + 音名 3 段階の分周レートヒント `noiseRateForNote`・@WN 波形選択)。@VE も減衰レジスタへ反映。
+        - **BEEP**: `BeepChip` (8253) 直駆動 (カウンタ直書き + ゲート)。同時 1 音 (実機どおり)。
+        - **実機音声数制限 (2026-09-10 Phase B)**: PSG トーン 6 音声 (psg1×3 + psg2×3) / ノイズ 2 / @IN 統合 2 (各 PSG の tone2+noise ペア) / FM 8 / BEEP 1。超過時は**リリース中のボイスを優先、次に最古のボイスを steal** する。
+        - **@VE / @PE**: `VolumeEnvelopePlayback` / ピッチエンベロープ進行を 60Hz フレームでレジスタへ直書き (@VE = 減衰レジスタ / @PE = トーン周期・8253 カウンタ・KC-KF のレジスタ差分単位)。いずれもドライバ (`TrackSequencer`) と同一挙動。
       - **発音コンテキストの決定ルール (2026-09-06 修正・堅牢化)**:
         - キーボードは **「最後に選択したエディタ」のプレビュー** として機能する。
         - **フォーカス判定範囲の適正化**: MML側へのフォーカス切り替えは「左ペイン上部の MML エディタ主ペイン（Monaco Editor）やエクスプローラー、ファイルタブ」のクリック・フォーカス時のみ行われる。下部ツールエリア（KEYBOARD パネル、鍵盤の打鍵・ドラッグ演奏、コントロールバー、PROBLEMS / CONSOLE タブ、上下スプリッター）の操作はエディタフォーカス（`focusedPane`）を一切変更しないため、各エディタ選択後に鍵盤を演奏してもコンテキストが勝手に MML へ切り替わることはない。
@@ -282,7 +286,7 @@ FlexboxおよびCSS Gridを活用し、解像度変化に追従するペイン�
         - **VOL ENVエディタ**: 編集中のボリュームエンベロープカーブを適用してリアルタイム発音（PSG / NOISE、PITCH ENV併用可）。
       - **コントロールバー機能**: CHIP選択（AUTO / PSG / **PSG P3/P6 (@IN)** (2026-09-09 新設) / FM / BEEP / NOISE）、FM VOICE選択、PITCH ENV / VOL ENV適用トグル、PITCH/DETUNEプルダウン指定、**ノイズ統合 (@IN) / ノイズ波形 (@WN) 選択 (2026-09-09 新設)**、音量スライダー（v0〜v15）。PANIC（全音停止）ボタンは行2へ配置。
         - **CHIP「PSG P3/P6」モード (2026-09-09 新設)**: MML モードの CHIP プルダウンに `PSG P3/P6 (@IN)` を追加。トーン 3 統合トラック (P3/P6) 専用コマンドの `@IN` を**キャレット位置に関係なく試聴**するための明示選択モード。発音エンジン・DCSG 実機音域制限 (最低音 A2) は通常の PSG と同一で、モード正規化と @IN 有効判定は `src/utils/keyboardChipMode.ts` (`normalizeChipModeEngine` / `isNoiseIntegrateChipActive`) に共通化。MML キャレット移動時の自動連動では他の手動選択と同様に `AUTO` へ戻る。
-        - **ノイズ統合 @IN 選択 (2026-09-09 新設・同日 P3/P6 条件化 / CHIP P3/P6 モード連動)**: PITCH セレクタの右隣に配置。`AUTO (@INn)` / `@IN0: 解除` / `@IN1: 周期連動` / `@IN2: 白連動` を選択。`AUTO` は MML キャレットの `@IN` 状態 (`mmlCaretParser` が P3/P6 トラックのみ解析・正式パーサ準拠) へ追従し、MML キャレット移動時の自動連動で手動選択は `AUTO` へ戻る。**発音**は `virtualSynth` が PSG エンジン選択時に「音程に追従するノイズ」を合成（実機仕様: トーン 3 周波数レジスタでノイズジェネレータを駆動 = 発音がノイズへ切替）。`@PE` 併用時はノイズ音源の playbackRate をピッチ変調。**有効化条件は MML モード時「実効音源が PSG かつ (キャレットトラックが P3/P6 または CHIP で `PSG P3/P6` を明示選択)」**（P1/P2/P4/P5 キャレットでは MML 演奏へ反映されないため、CHIP での明示選択がない限り `N/A (P3/P6)` の無効バッジ表示）。各 ENV エディタモード時はトラック概念が無いため、PSG 選択時のみ自由試聴として有効。
+        - **ノイズ統合 @IN 選択 (2026-09-09 新設・同日 P3/P6 条件化 / CHIP P3/P6 モード連動)**: PITCH セレクタの右隣に配置。`AUTO (@INn)` / `@IN0: 解除` / `@IN1: 周期連動` / `@IN2: 白連動` を選択。`AUTO` は MML キャレットの `@IN` 状態 (`mmlCaretParser` が P3/P6 トラックのみ解析・正式パーサ準拠) へ追従し、MML キャレット移動時の自動連動で手動選択は `AUTO` へ戻る。**発音**は PSG エンジン選択時に DCSG 直駆動で「音程に追従するノイズ」を再生 (実機仕様: トーン 3 周波数レジスタでノイズジェネレータを駆動 = 発音がノイズへ切替・2026-09-10 Phase B よりチップエミュレーション)。`@PE` 併用時は tone2 周期レジスタの変調として反映。**有効化条件は MML モード時「実効音源が PSG かつ (キャレットトラックが P3/P6 または CHIP で `PSG P3/P6` を明示選択)」**（P1/P2/P4/P5 キャレットでは MML 演奏へ反映されないため、CHIP での明示選択がない限り `N/A (P3/P6)` の無効バッジ表示）。各 ENV エディタモード時はトラック概念が無いため、PSG 選択時のみ自由試聴として有効。
         - **ノイズ波形 @WN 選択 (2026-09-09 新設)**: @IN セレクタの右隣に配置。`AUTO (@WNn)` / `@WN0: 周期` / `@WN1: ホワイト` を選択。`AUTO` は MML キャレットの `@WN` 状態 (`noiseType`) へ追従し、MML キャレット移動時の自動連動で手動選択は `AUTO` へ戻る。NOISE エンジン選択時の発音 (`noiseType`) に反映され、周期ノイズは bandpass / ホワイトノイズは分周レート連動 lowpass で試聴できる。**有効化条件は実効音源が NOISE のときのみ**で、それ以外は `N/A (N1/N2)` の無効バッジ表示。
         - **FM VOICE選択 (2026-09-08 本実装)**: アクティブ MML 上で定義済みの FM 音色 (`@N`) を `@ID: NAME` 形式で動的リスト表示 (NAME 未設定時は `UNNAMED`、ID 昇順)。旧ハードコードのモック (`E.PIANO 1` / `SLAP BASS` 等の `DEFAULT_PRESET_FM_TONES`) は廃止。発音はプルダウンで選択中の定義音色で行い、TONE タブ表示中はエディタ編集中の音色を優先する。
         - **PITCH ENV / VOLUME ENV 選択 (2026-09-08 本実装)**: 同様にアクティブ MML 上で定義済みの `@PEN` / `@VEN` を `@PEID: NAME` / `@VEID: NAME` 形式で動的リスト表示 (NAME 未設定時は `UNNAMED`、ID 昇順)。旧ハードコードのモック (`Vib Mild` / `Piano Decay` 等の `PRESET_PITCH_ENVS` / `PRESET_VOL_ENVS`) は廃止。発音も選択中の MML 定義エンベロープのデータで行い、各 ENV エディタ表示中はエディタ編集中のカーブを優先する。
@@ -417,7 +421,7 @@ FlexboxおよびCSS Gridを活用し、解像度変化に追従するペイン�
 - **影響範囲 (2026-09-09 拡張)**: 音量 / ミュート state は `App` で一元管理され、以下の **3 つのプレビュー経路のすべて**へ同一レベルが反映される:
   1. **演奏プレビュー (PLAY)**: `Player.setMasterVolume` — 知覚カーブ（2 乗曲線）を適用。
   2. **仮想キーボード発音 (鍵盤プレビュー)**: `virtualSynth.setMasterVolume` — 同一の知覚カーブ (`perceptualMasterGain`) を適用。スライダー変更は**発音中のノートへも即時反映**される。
-  3. **右ペイン各エディタの試聴 (FM TONE / VOL ENV / PITCH ENV)**: **FM TONE は 2026-09-10 Phase A より `virtualSynth` 経由の OPM エミュレーション発音に統一** (基準ゲインは MML 演奏と同一・`masterLevel` props 廃止)。VOL ENV / PITCH ENV は `masterLevel` props (0-1、ミュート時 0) を基準出力ゲイン (V-ENV: 0.25 / P-ENV: 0.2) に知覚カーブで乗算。スライダー変更は**発音中の試聴音へも即時反映**される。
+  3. **右ペイン各エディタの試聴 (FM TONE / VOL ENV / PITCH ENV)**: **FM TONE は 2026-09-10 Phase A より `virtualSynth` 経由の OPM エミュレーション発音に統一** (基準ゲインは MML 演奏と同一)。**2026-09-10 Phase B で VOL ENV / PITCH ENV もチップ駆動へ統一され、3 エディタすべて `masterLevel` props は廃止** (基準ゲインは MML 演奏と同一)。スライダー変更は**発音中の試聴音へも即時反映**される。
 - **値の保持**: マスター音量 / ミュートを `App` state で保持するため、TRACK MONITOR タブを離れて戻っても設定値はリセットされない。
 
 #### 4) トラック一括操作
@@ -441,7 +445,7 @@ FlexboxおよびCSS Gridを活用し、解像度変化に追従するペイン�
 - **Bento Card 構成**:
   - **Bento Card 1 (ヘッダー & トランスポート & プリセット)**:
     - タイトル、音源種別バッジ（`DCSG SN76489`）、ID 数値入力（`@VE0`〜`@VE255`）＋ MML定義状態バッジ（`DEFINED` / `UNDEFINED`、2026-09-06 新設）。
-    - リアルタイム試聴トランスポート（`▶ KEY ON`, `■ KEY OFF`, `STOP`）。
+    - リアルタイム試聴トランスポート（`▶ KEY ON`, `■ KEY OFF`, `STOP`）。**2026-09-10 Phase B より発音は `virtualSynth` (`engine: 'psg'`) 経由の DCSG 直駆動 (MML 演奏と同一の減衰レジスタ制御)**。ステップハイライト進行は UI 側タイマーで表示 (音声はエンジン側で同一ロジックにより駆動)。
     - トランスポート右横に `▶ MMLに反映` ボタン（エメラルド系）。**定義済み ID は MML の該当定義を置き換え、未定義 ID は最後の定義の後に新規挿入**する (2026-09-06 強化)。
     - プリセットクイック適用（`PIANO (DECAY)`, `ORGAN (SUSTAIN)`, `SLOW ATTACK`, `SHORT PLUCK`）。
     - ループ（`|`）/ リリース（`>`）の現在ステップ状態バッジ（ワンクリック解除ボタン付き）。
@@ -618,8 +622,8 @@ FlexboxおよびCSS Gridを活用し、解像度変化に追従するペイン�
   - **Bento Card 4 (MML コマンド出力 & コピー)**:
     - `@PE1 = { |, 0, 3, 6, 8, ... }` 形式でリアルタイム生成、ワンクリッククリップボードコピー。
     - 同一生成ロジック（`generateMmlSnippet`）が `▶ MMLに反映` ボタンと共有されており、エディタヘッダーから直接MMLへの挿入も可能。
-  - **Web Audio リアルタイム試聴**:
-    - A4 (440Hz) ソートゥース波オシレーターを用い、1フレーム（約16.6ms）ごとに `pitch * 25 cents` のデチューン変調を適用。ビブラートやピッチベンドの聴感効果を忠実にシミュレート。
+  - **チップ駆動リアルタイム試聴 (2026-09-10 Phase B 統一)**:
+    - `virtualSynth` (`engine: 'psg'`) 経由で `KeyboardSoundEngine` = MML 演奏と同一の DCSG エミュレーション (PSG 矩形波) で発音。`@PE` の値はトーン周期レジスタの差分単位 (1 unit = period 1) として 60Hz で反映され、ビブラートやピッチベンドがドライバと同一の変調で聞こえる (従来の sawtooth オシレーター + 25 cents 近似は廃止)。
 
 ---
 
