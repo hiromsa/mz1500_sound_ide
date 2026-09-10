@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { perceptualMasterGain, sustainEnvelopeIndex } from '../virtualSynth';
+import {
+  perceptualMasterGain,
+  sustainEnvelopeIndex,
+  VolumeEnvelopePlayback,
+} from '../virtualSynth';
 
 /**
  * sustainEnvelopeIndex (仮想キーボードの @VE サステイン区間インデックス算出) のテスト。
@@ -41,6 +45,64 @@ describe('sustainEnvelopeIndex', () => {
   it('treats an out-of-range release as absent', () => {
     expect(sustainEnvelopeIndex(9, length, 3, 255)).toBe(3);
     expect(sustainEnvelopeIndex(9, length, 3, -1)).toBe(3);
+  });
+});
+
+/**
+ * VolumeEnvelopePlayback (@VE 1 発音分の進行) のテスト。
+ * ユーザー報告パターン `@VE1 = {13,14,15,14,13,|,12,>,7,6,5,4,3,2,1}`
+ * (loop=5 / release=6) を使って KEY ON 中はリリース区間に入らず、
+ * KEY OFF でリリース区間 (7,6,5,4,3,2,1) を 1 回だけ再生することを固定する。
+ */
+describe('VolumeEnvelopePlayback', () => {
+  const values = [13, 14, 15, 14, 13, 12, 7, 6, 5, 4, 3, 2, 1]; // loop=5, release=6
+
+  it('reports the release definition and its length in frames', () => {
+    const env = new VolumeEnvelopePlayback(values, 5, 6);
+    expect(env.hasRelease).toBe(true);
+    expect(env.releaseLengthFrames).toBe(values.length - 6); // 7,6,5,4,3,2,1 = 7 frames
+  });
+
+  it('cycles the sustain section without entering the release section on key on', () => {
+    const env = new VolumeEnvelopePlayback(values, 5, 6);
+    const samples: number[] = [];
+    for (let i = 0; i < 20; i++) {
+      samples.push(values[env.currentIndex()]);
+      env.advance();
+    }
+    // 13,14,15,14,13 → 12 でループし続け、リリース区間 (7 以下) には到達しない
+    expect(samples).toEqual([
+      13, 14, 15, 14, 13, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12,
+    ]);
+  });
+
+  it('plays the release section once on key off and holds the last value', () => {
+    const env = new VolumeEnvelopePlayback(values, 5, 6);
+    for (let i = 0; i < 10; i++) env.advance();
+    expect(env.beginRelease()).toBe(true);
+    const releaseSamples: number[] = [];
+    for (let i = 0; i < 12; i++) {
+      releaseSamples.push(values[env.currentIndex()]);
+      env.advance();
+    }
+    // KEY OFF 後に 7,6,5,4,3,2,1 を 1 回だけ再生し、末尾 (1) でホールド
+    expect(releaseSamples).toEqual([7, 6, 5, 4, 3, 2, 1, 1, 1, 1, 1, 1]);
+  });
+
+  it('is idempotent on repeated key off while already releasing', () => {
+    const env = new VolumeEnvelopePlayback(values, 5, 6);
+    expect(env.beginRelease()).toBe(true);
+    env.advance();
+    expect(values[env.currentIndex()]).toBe(6);
+    // マウスアップ後処理などの 2 回目のキーオフでリリースが巻き戻らない
+    expect(env.beginRelease()).toBe(true);
+    expect(values[env.currentIndex()]).toBe(6);
+  });
+
+  it('reports no release transition when the release is not defined', () => {
+    const env = new VolumeEnvelopePlayback(values, 5, undefined);
+    expect(env.hasRelease).toBe(false);
+    expect(env.beginRelease()).toBe(false);
   });
 });
 

@@ -54,6 +54,19 @@
 
 ## 3. 直近の完了作業（最新）
 
+- **仮想キーボードのマウスリリースで @VE リリース音が即停止される問題を修正 — マウスアップ後処理を「リリース付き全キーオフ」へ変更 & FM は音色 RR キーオフ減衰を新設 (`src/utils/virtualSynth.ts`, `src/view/VirtualKeyboard.tsx`, `src/utils/__tests__/virtualSynth.test.ts`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-10):
+  - **背景・ユーザー指摘**: 「`@VE1 = {13,14,15,14,13,|,12,>,7,6,5,4,3,2,1}` のような設定のばあいに MML エディタのモードの仮想キーボードで、マウスを離したときに 7,6,5,4,3,2,1 のリリース音が鳴っていない。DCSGで確認。FM音源は未確認」
+  - **原因**:
+    1. 鍵盤 `onMouseUp` → `noteOff()` で `@VE` リリース区間の再生は正しく開始されるが、イベントバブリングで直後に走るコンテナ `onMouseUp` (`handleContainerMouseUp`) / `window` mouseup の `handleAllNotesOff()` (全音即停止) がリリース音を 0.05 秒フェードで打ち切っていた。ドラッグで鍵盤外へ出た場合の `onMouseLeave` → `window` mouseup でも同様。
+    2. リリース再生中の音へ 2 回目のキーオフが来ると `beginRelease()` が `false` を返して即停止ロジックに落ちる構造だった (再キーオフ / 全キーオフとの競合)。
+  - **対応内容**:
+    1. `virtualSynth` に `releaseAllNotes()` を新設 (全ボイスへリリース付きキーオフ / リリース定義のない音のみ即停止)。マウスアップ後処理 (コンテナ / `window` mouseup) はこちらを使用するよう変更。**`PANIC` ボタン / `blur` は即時停止のまま** (セーフティ用)。
+    2. `ActiveVoice.isReleasing` フラグで 2 重キーオフをガードし、`beginRelease()` を冪等化 (リリース中の再キーオフでリリース進行を壊さない)。
+    3. リリーストリガー生成 (`makeVolEnvReleaseTrigger` / `scheduleAutoStop`) を PSG / NOISE パスで共通化 (挙動差分なしのリファクタ)。
+    4. **FM は @VE 非対応のまま (ユーザー確定)**。代わりに音色のリリースレート (**RR**) に従ったキーオフ減衰を新設 — `triggerRelease` で全 4 OP を `0.6秒 × (1 - RR/31)` (D1R と同一近似式) で減衰し、最も遅い OP の減衰完了後に自動停止。デフォルトサイン波 (音色未指定) は従来どおり即時フェード。
+  - **テスト (+5)**: `virtualSynth.test.ts` に `VolumeEnvelopePlayback` を export 化のうえテスト追加 — ユーザー報告パターン `{13,14,15,14,13,|,12,>,7,6,5,4,3,2,1}` (loop=5 / release=6) で KEY ON 中はサステイン `12` ループのみ / KEY OFF 後 `7,6,5,4,3,2,1` を 1 回再生して末尾ホールド / 再キーオフの冪等性 / リリース未定義時は遷移しない。
+  - **検証**: `npx tsc -b` エラーゼロ / `npm test` 全 41 ファイル・594 件合格 + 1 skip (+5) / `npm run lint` エラーゼロ (既存警告 10 は変更なし) / `npm run build` 成功。
+
 - **休符だけで `@VE` リリース音が鳴る問題を修正 — REST 命令を「ノート発音中のみキーオフ」に変更 & 音量エンベロープのノート外書き込みを停止 (`src/core/player/TrackSequencer.ts`, `driver/mzsd_driver.asm`, `src/core/player/__tests__/MzsdSequencer.test.ts`, `src/core/player/__tests__/Z80DriverEquivalence.test.ts`, [`docs/specification/web_core_port.md`](./specification/web_core_port.md), [`docs/specification/mml_reference.md`](./specification/mml_reference.md))** (2026-09-09):
   - **背景・ユーザー指摘**: 「`@VE1 = {15,15,|13,>,11,10,...}` + `P1 o4 l8 r r r r` のように休符だけでリリース音が鳴ってしまう。`cr` のようなときはリリース音が鳴るべきだが、`r` だけでは鳴らないようにしたい」
   - **原因** (TS `TrackSequencer` / asm `mzsd_driver.asm` 共通):

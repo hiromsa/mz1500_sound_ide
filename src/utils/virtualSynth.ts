@@ -55,7 +55,7 @@ export function sustainEnvelopeIndex(
  * KEY ON 中はサステイン区間 (`[loop, release)` / リリースなしは末尾) を進み、
  * beginRelease() 以降はリリース区間を末尾まで 1 回だけ再生する。
  */
-class VolumeEnvelopePlayback {
+export class VolumeEnvelopePlayback {
   private readonly values: readonly number[];
 
   private readonly loop: number | undefined;
@@ -106,9 +106,14 @@ class VolumeEnvelopePlayback {
     }
   }
 
-  /** KEY OFF: リリースフェーズへ遷移する (未定義 / 遷移済みの場合は false)。 */
+  /**
+   * KEY OFF: リリースフェーズへ遷移する (リリース未定義は false)。
+   * 既にリリース中の場合は進行を壊さないよう true を返すだけの冪等設計
+   * (マウスドラッグ終了時の全キーオフで 2 回呼ばれてもリリースが巻き戻らない)。
+   */
   beginRelease(): boolean {
-    if (this.releasing || !this.hasRelease) return false;
+    if (!this.hasRelease) return false;
+    if (this.releasing) return true;
     this.releasing = true;
     this.releaseFrame = 0;
     return true;
@@ -130,6 +135,8 @@ interface ActiveVoice {
   setVolume: (volume: number) => void;
   /** @VE リリース定義がある場合のキーオフ遷移 (false = リリースなしで即停止)。 */
   triggerRelease?: () => boolean;
+  /** リリースフェーズ再生中か (2 重キーオフで即停止 / リリース巻き戻しを防ぐガード)。 */
+  isReleasing?: boolean;
 }
 
 /**
@@ -202,6 +209,28 @@ export class VirtualSynthEngine {
     const timers: number[] = [];
     let triggerRelease: (() => boolean) | undefined;
     let releaseStopTimer: number | null = null;
+
+    // リリース再生完了後のボイス自動停止 (フェード分を見て +120ms)
+    const scheduleAutoStop = (releaseMs: number) => {
+      releaseStopTimer = window.setTimeout(() => {
+        const voice = this.activeVoices.get(midiNote);
+        if (voice) {
+          voice.stop();
+          this.activeVoices.delete(midiNote);
+        }
+      }, releaseMs + 120);
+    };
+
+    // リリース定義付き @VE のキーオフ遷移トリガー生成 (PSG / NOISE 共通、演奏エンジンと同一挙動)
+    const makeVolEnvReleaseTrigger = (state: VolumeEnvelopePlayback): (() => boolean) | undefined => {
+      if (!state.hasRelease) return undefined;
+      const releaseMs = state.releaseLengthFrames * (1000 / 60);
+      return () => {
+        if (!state.beginRelease()) return false;
+        scheduleAutoStop(releaseMs);
+        return true;
+      };
+    };
 
     // --- 1. PSG (DCSG 矩形波 / @IN ノイズ統合) ---
     if (options.engine === 'psg') {
@@ -286,19 +315,8 @@ export class VirtualSynthEngine {
       }
 
       // キーオフで @VE リリース区間 (> 以降) へ遷移するトリガー (演奏エンジンと同一挙動)
-      if (volEnvState?.hasRelease) {
-        const releaseMs = volEnvState.releaseLengthFrames * (1000 / 60);
-        triggerRelease = () => {
-          if (!volEnvState.beginRelease()) return false;
-          releaseStopTimer = window.setTimeout(() => {
-            const voice = this.activeVoices.get(midiNote);
-            if (voice) {
-              voice.stop();
-              this.activeVoices.delete(midiNote);
-            }
-          }, releaseMs + 120); // リリース再生後、フェード分を見て自動停止
-          return true;
-        };
+      if (volEnvState) {
+        triggerRelease = makeVolEnvReleaseTrigger(volEnvState);
       }
 
       stopCallbacks.push(() => {
@@ -407,19 +425,8 @@ export class VirtualSynthEngine {
         timers.push(interval);
 
         // キーオフで @VE リリース区間 (> 以降) へ遷移するトリガー (演奏エンジンと同一挙動)
-        if (noiseVolEnvState.hasRelease) {
-          const releaseMs = noiseVolEnvState.releaseLengthFrames * (1000 / 60);
-          triggerRelease = () => {
-            if (!noiseVolEnvState.beginRelease()) return false;
-            releaseStopTimer = window.setTimeout(() => {
-              const voice = this.activeVoices.get(midiNote);
-              if (voice) {
-                voice.stop();
-                this.activeVoices.delete(midiNote);
-              }
-            }, releaseMs + 120); // リリース再生後、フェード分を見て自動停止
-            return true;
-          };
+        if (noiseVolEnvState) {
+          triggerRelease = makeVolEnvReleaseTrigger(noiseVolEnvState);
         }
       }
 
@@ -517,6 +524,26 @@ export class VirtualSynthEngine {
           timers.push(interval);
         }
 
+        // キーオフ: 音色のリリースレート (RR) に従って全オペレータを減衰させる
+        // (@VE は FM 非対応のため RR をキーオフ減衰として使用する・ユーザー確定)
+        // 減衰時間は D1R (decay) と同一の線形近似式: 0.6 秒 × (1 - rate / 31)
+        const releaseTimes = tone.ops.map((op) => Math.max(0.02, 0.6 * (1 - op.rr / 31)));
+        const maxReleaseTime = Math.max(...releaseTimes);
+        triggerRelease = () => {
+          try {
+            const now = ctx.currentTime;
+            for (let i = 0; i < 4; i++) {
+              const param = opGains[i].gain;
+              param.cancelScheduledValues(now);
+              param.setValueAtTime(Math.max(0.0001, param.value), now);
+              param.linearRampToValueAtTime(0.0001, now + releaseTimes[i]);
+            }
+          } catch { /* ignore */ }
+          // 最も遅いオペレータの減衰完了後に自動停止 (フェード分を見て +120ms)
+          scheduleAutoStop(maxReleaseTime * 1000);
+          return true;
+        };
+
         stopCallbacks.push(() => {
           try {
             const curTime = ctx.currentTime;
@@ -556,10 +583,12 @@ export class VirtualSynthEngine {
   // ノートOFF
   public noteOff(midiNote: number) {
     const voice = this.activeVoices.get(midiNote);
-    if (!voice) return;
+    if (!voice || voice.isReleasing) return;
 
-    // @VE リリース定義がある場合はキーオフでリリースフェーズへ遷移する (演奏エンジンと同一挙動)
+    // @VE リリース定義 (PSG / NOISE) または FM 音色の RR キーオフ減衰へ遷移する
+    // (演奏エンジンのキーオフと同一挙動。既にリリース中の音は巻き戻さない)
     if (voice.triggerRelease && voice.triggerRelease()) {
+      voice.isReleasing = true;
       return;
     }
 
@@ -570,6 +599,24 @@ export class VirtualSynthEngine {
   public allNotesOff() {
     this.activeVoices.forEach(voice => voice.stop());
     this.activeVoices.clear();
+  }
+
+  /**
+   * 発音中の全ノートへキーオフを行う (@VE リリース / FM RR 減衰を再生してから自動停止)。
+   * マウスドラッグ終了時など「鍵盤を離す」操作用。
+   * リリース定義のない音のみ即時停止する (PANIC などの即時停止は allNotesOff を使用)。
+   */
+  public releaseAllNotes() {
+    // ループ中に Map を変更するためスナップショットへ列挙する
+    for (const [midiNote, voice] of [...this.activeVoices]) {
+      if (voice.isReleasing) continue;
+      if (voice.triggerRelease && voice.triggerRelease()) {
+        voice.isReleasing = true;
+        continue;
+      }
+      voice.stop();
+      this.activeVoices.delete(midiNote);
+    }
   }
 
   /** 指定ノートの発音を即時停止する (リリースは行わない)。 */

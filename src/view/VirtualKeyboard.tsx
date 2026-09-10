@@ -513,6 +513,13 @@ export function VirtualKeyboard({
     virtualSynth.allNotesOff();
   };
 
+  // 全音キーオフ (@VE リリース / FM RR 減衰を再生してから自動停止する)
+  // マウスドラッグ終了時用 (PANIC / blur などの即時停止は handleAllNotesOff を使用)
+  const handleReleaseAllNotes = () => {
+    setPressedNotes(new Set());
+    virtualSynth.releaseAllNotes();
+  };
+
   // マウスイベント (ドラッグ演奏対応)
   const handleContainerMouseDown = () => {
     isMouseDownRef.current = true;
@@ -521,7 +528,8 @@ export function VirtualKeyboard({
   const handleContainerMouseUp = () => {
     if (isMouseDownRef.current) {
       isMouseDownRef.current = false;
-      handleAllNotesOff();
+      // 鍵盤を離したら即停止ではなくリリース付きキーオフ (@VE リリース区間を再生)
+      handleReleaseAllNotes();
     }
   };
 
@@ -529,7 +537,8 @@ export function VirtualKeyboard({
     const onMouseUp = () => {
       if (isMouseDownRef.current) {
         isMouseDownRef.current = false;
-        handleAllNotesOff();
+        // 鍵盤外へのドラッグ終了でもリリース付きキーオフ (即時停止は PANIC / blur のみ)
+        handleReleaseAllNotes();
       }
     };
     window.addEventListener('mouseup', onMouseUp);
