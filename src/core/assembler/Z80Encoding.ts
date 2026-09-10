@@ -571,10 +571,12 @@ function encodePushPop(
     case Reg16.Hl: output.push(baseOp | 0x20); break;
     case Reg16.Ix:
       requirePrefix(prefix, 0xdd, lineNumber);
+      pushMaybe(output, prefix);
       output.push(baseOp | 0x20);
       break;
     case Reg16.Iy:
       requirePrefix(prefix, 0xfd, lineNumber);
+      pushMaybe(output, prefix);
       output.push(baseOp | 0x20);
       break;
     default: throw new AssemblerException(lineNumber, `${mnemonic} に使えないレジスタ: ${operandToString(op)}`);

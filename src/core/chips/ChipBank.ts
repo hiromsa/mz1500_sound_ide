@@ -7,6 +7,7 @@
 import { BeepChip } from './BeepChip';
 import { DcsgChip } from './DcsgChip';
 import { Ym2151 } from './fm/Ym2151';
+import { isOpCarrier } from '../fm/FmTone';
 
 const FmChannelCount = 8;
 
@@ -60,13 +61,22 @@ export class ChipBank {
       return 0;
     }
 
-    // シーケンサは 4 op 同一 TL を書くため op0 を代表値として読む
-    const tl = this.fm.tryGetRegister(0x60 + channel);
-    if (tl === null) {
-      return 0;
+    // ALG に応じたキャリア OP のうち最も大きな音量 (最小 TL) を代表値とする
+    // (シーケンサは OP ごとに「音色 TL + 音量オフセット」を書くため op0 は代表にならない)
+    const alg = (this.fm.tryGetRegister(0x20 + channel)?.value ?? 0) & 7;
+    let level = 0;
+    for (let op = 0; op < 4; op++) {
+      if (!isOpCarrier(alg, op)) {
+        continue;
+      }
+
+      const tl = this.fm.tryGetRegister(0x60 + (op << 3) + channel);
+      if (tl !== null) {
+        level = Math.max(level, 1.0 - tl.value / 127.0);
+      }
     }
 
-    return Math.min(Math.max(1.0 - tl.value / 127.0, 0), 1) * this.fmChannelGains[channel];
+    return level * this.fmChannelGains[channel];
   }
 
   /** 検証 / デバッグ用: 現在の FM ミュートマスク。 */

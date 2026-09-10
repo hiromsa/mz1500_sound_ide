@@ -522,7 +522,7 @@ export class MmlParser {
     return read.next;
   }
 
-  /** @v<n> : FM 音量指定 (0-127、127 = 最大音量)。YM2151 TL (Total Level) へ 127 - n で反映。FM トラック専用。 */
+  /** @v<n> : FM 音量指定 (0-127、127 = 最大音量)。YM2151 TL (Total Level) へ「音色 TL + (127 - n)」で反映。FM トラック専用。 */
   private processFineVolume(line: string, pos: number, lineNo: number, tracks: TrackBuilder[]): number {
     // pos は 'v' の次 (数値の先頭) を指す (processAt から pos + 1 で呼ばれる)
     const read = readUnsigned(line, pos, -1);

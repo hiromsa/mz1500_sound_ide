@@ -6,8 +6,8 @@
 ---
 
 ## 1. 現在のステータス概要
-- **バージョン**: `v0.0.1-beta.121`（コミット通番＋短縮ハッシュ ハイブリッド方式）
-- **テスト通過状況**: 全 41 テストファイル / 589 件パス + 1 skip（`npm test` / Vitest）
+- **バージョン**: `v0.0.1-beta.123`（コミット通番＋短縮ハッシュ ハイブリッド方式）
+- **テスト通過状況**: 全 42 テストファイル / 600 件パス + 1 skip（`npm test` / Vitest）
 - **型検査状況**: エラー 0 件（`npx tsc -b`）
 - **主要機能の稼働状況**:
   - Web ネイティブ MML コンパイラ（9ch / 17ch / ワークトラック W1〜W99 対応）
@@ -53,6 +53,19 @@
 ---
 
 ## 3. 直近の完了作業（最新）
+
+- **FM 音量の「TL 一括上書き」を「音色 TL + 音量オフセット」方式へ修正 — プリセットの音色バランスが MML 再生で失われる問題を解消 & Z80 アセンブラの `push ix` エンコードバグを修正 (`src/core/player/TrackSequencer.ts`, `driver/mzsd_driver.asm`, `src/core/chips/ChipBank.ts`, `src/core/assembler/Z80Encoding.ts`, テスト 3 件・仕様書 2 件更新)** (2026-09-10):
+  - **背景・ユーザー指摘**: 「FM TONE でプリセットの E.PIANO 1 を選択すると、きれいなエレピの音がなるが、MML で鳴らすと濁ったノイズ音がなる。どちらが正しいかよくわからない。仮想キーボードはきれいなエレピの音がなる。」
+  - **原因**:
+    1. **FM 音量制御が音色の OP ごと TL を破壊** (根本原因): TS `TrackSequencer.writeAttenuation` / asm `wa_fm` ともに `v` / `@v` の音量を `TL = att×8` / `TL = 127-@v` として 4 OP に同一値で一括上書きしており、音色定義の OP ごと TL (モジュレータの変調度を決める) が演奏時に完全に失われていた。E.PIANO 1 (OP1 TL=45 など) は v15 再生時 TL=0 となり変調度が約 +68dB 暴走 → 過変調でノイズ化。
+    2. **(修正中に発覚した副次バグ) Z80 アセンブラの `push ix` エンコード**: `Z80Encoding.ts` の `encodePushPop` が IX/IY で `requirePrefix` 検査のみ行い **DD/FD プレフィックスを出力に積んでおらず、`push ix` が `E5` (PUSH HL) にエンコードされていた** (`pop ix` / `push iy` / `pop iy` も同様・実機 .qdf 出力にも影響し得るアセンブラバグ)。
+  - **対応内容**:
+    1. **「音色 TL + 音量オフセット」方式へ両エンジンを変更**: TS は `fmToneLevels[4]` ワークを新設し `applyFmTone` で OP ごとの音色 TL を保存、`writeAttenuation` で `TL = clamp(音色TL[op] + オフセット + trim, 0, 127)` を OP ごとに出力 (オフセット: `v` = att×8 / `@v` = 127-@v、`@v127` = 音色定義どおりの最大音量)。asm も `CH_TL` (変位 59-62) ワークを新設し `apply_fm_tone` で保存、`wa_fm` を OP 個別合成へ改修 (加算結果 ≥128 → 127 クランプ、最大 254 で加算キャリーなし)。音色未指定トラックは TL=0 扱いで旧挙動と同一。仕様変更に伴い `mml_reference.md` (`@v` / 音量表) と `MmlParser.processFineVolume` コメントを更新、C# からの意図的差分として `web_core_port.md` §3.1 に記録。
+    2. **`ChipBank.getFmLevel` (FM VU) をキャリア TL 参照へ変更**: 旧実装は「4 OP 同一 TL」前提で op0 を代表値としていたため、OP ごとに異なる TL を書くようになった本修正で VU が音量と無関係になる問題を、ALG に応じたキャリア OP (`FmTone.isOpCarrier`) のうち最大レベル (最小 TL) を読む方式へ変更。
+    3. **アセンブラ `push ix` / `pop ix` / `push iy` / `pop iy` エンコード修正**: `encodePushPop` に `pushMaybe(output, prefix)` を追加し `DD E5` / `DD E1` / `FD E5` / `FD E1` を正しく出力。コア実行テスト (`pushIxEncoding.test.ts` 新設 4 件) で `push ix / pop hl` → hl = ix を検証。
+  - **テスト**: `MzsdSequencer.test.ts` に音色 TL 保存 (+オフセット加算・127 クランプ) の 2 ケース追加、`ChipBank.test.ts` の FM VU テストを ALG=7 設定付きへ更新。**両エンジン等価性テスト (11 シナリオ) 含め全 42 ファイル・600 件合格 + 1 skip**。
+  - **検証**: `npx tsc -b` エラーゼロ / `npm run lint` エラーゼロ (既存警告 10 は変更なし)。
+  - **備考**: 仮想キーボードの WebAudio 簡易 FM 合成 (FB 未実装) との不一致は、承認済みの Phase A/B (仮想キーボード FM → OPM エミュレーション駆動統一 → PSG/ノイズ/BEEP 統一) で解消予定。
 
 - **仮想キーボードのマウスリリースで @VE リリース音が即停止される問題を修正 — マウスアップ後処理を「リリース付き全キーオフ」へ変更 & FM は音色 RR キーオフ減衰を新設 (`src/utils/virtualSynth.ts`, `src/view/VirtualKeyboard.tsx`, `src/utils/__tests__/virtualSynth.test.ts`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-10):
   - **背景・ユーザー指摘**: 「`@VE1 = {13,14,15,14,13,|,12,>,7,6,5,4,3,2,1}` のような設定のばあいに MML エディタのモードの仮想キーボードで、マウスを離したときに 7,6,5,4,3,2,1 のリリース音が鳴っていない。DCSGで確認。FM音源は未確認」

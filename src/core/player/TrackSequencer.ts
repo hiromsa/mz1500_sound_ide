@@ -130,6 +130,9 @@ export class TrackSequencer {
   /** 現在の ALG/FB (pan 変更時の 0x20 レジスタ再合成用)。 */
   private fmAlgFb = 0;
 
+  /** 音色適用時に保存した OP ごとの TL (音量オフセット合成の基準)。音色未指定時は全 0。 */
+  private readonly fmToneLevels = [0, 0, 0, 0];
+
   /** 非連動ノイズの分周ヒント (直近の音符の音名から算出)。 */
   private noiseRateHint = 0;
 
@@ -509,7 +512,8 @@ export class TrackSequencer {
     for (let op = 0; op < 4; op++) {
       const o = 2 + op * 11; // AR, D1R, D2R, RR, D1L, TL, KS, MUL, DT1, DT2, AME
       this.chips.fm.setReg(0x40 + (op << 3) + ch, ((p[o + 10] & 1) << 7) | ((p[o + 8] & 7) << 4) | (p[o + 7] & 15));
-      this.chips.fm.setReg(0x60 + (op << 3) + ch, p[o + 5] & 127); // TL 基準値 (音量で上書き)
+      this.fmToneLevels[op] = p[o + 5] & 127; // 音色 TL を保存 (writeAttenuation で音量オフセットと合成)
+      this.chips.fm.setReg(0x60 + (op << 3) + ch, p[o + 5] & 127); // TL 基準値 (ノート開始時に音量合成値へ置換)
       this.chips.fm.setReg(0x80 + (op << 3) + ch, ((p[o + 6] & 3) << 6) | (p[o + 0] & 31));
       this.chips.fm.setReg(0xa0 + (op << 3) + ch, p[o + 1] & 31);
       this.chips.fm.setReg(0xc0 + (op << 3) + ch, ((p[o + 9] & 3) << 6) | (p[o + 2] & 31));
@@ -639,10 +643,13 @@ export class TrackSequencer {
     if (this.isBeep) {
       this.chips.beep.setGate(this.attenuation < 15);
     } else if (this.isFm) {
-      // v0-15 → TL = (15 - v) × 8 / @v0-127 → TL = 127 - @v。フェーダー音量は TL トリムとして追加
-      const base = this.fineVolume ? 127 - this.fmVolume : this.attenuation * 8;
-      const tl = Math.min(Math.max(base + this.chips.getFmTrim(this.fmChannel), 0), 127);
+      // v0-15 → 音量オフセット = (15 - v) × 8 / @v0-127 → 音量オフセット = 127 - @v。
+      // 音色の OP ごと TL に音量オフセットとフェーダー TL トリムを加算して出力する
+      // (OP ごとの TL は変調度を決める音色の核のため、音量値での一括上書きはしない)
+      const offset = this.fineVolume ? 127 - this.fmVolume : this.attenuation * 8;
+      const trim = this.chips.getFmTrim(this.fmChannel);
       for (let op = 0; op < 4; op++) {
+        const tl = Math.min(Math.max(this.fmToneLevels[op] + offset + trim, 0), 127);
         this.chips.fm.setReg(0x60 + (op << 3) + this.fmChannel, tl);
       }
     } else if (this.dcsg !== null) {

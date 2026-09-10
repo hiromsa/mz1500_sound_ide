@@ -11,7 +11,7 @@
 ;     TONE (FM 音色) / PAN (ステレオ定位) / FMVOL (@v: FM 専用音量) /
 ;     LOOP_START / LOOP_END / TRACK_END + 全体ループ (L)。
 ;   - FM トラック (9-16 = OPM ch 0-7) は KC/KF 展開によるピッチ、
-;     TL = att * 8 (v) / 127 - @v (@v) による音量、@FM 音色 46 パラメータのレジスタ展開に対応。
+;     TL = 音色 TL + (att * 8 (v) / 127 - @v (@v)) による音量、@FM 音色 46 パラメータのレジスタ展開に対応。
 ;   - エンベロープ / スイープ / ディチューンは C# リファレンス実装
 ;     (TrackSequencer.cs) と同一のフレーム進行で振る舞う (等価性テストで検証)。
 ; 構成 (メモリ):
@@ -82,7 +82,8 @@ CH_TONE         equ     54              ; 1B: TONE (FM 音色番号) 直近値
 CH_ALGFB        equ     55              ; 1B: ALG/FB (pan 変更時の 0x20 レジスタ再合成用)
 CH_PAN          equ     56              ; 1B: ステレオ定位 (0: 無出力 / 1: 左 / 2: 右 / 3: 左右)
 CH_FVOL         equ     57              ; 1B: @v FM 専用音量 (0-127、127 = 最大)
-CH_FMODE        equ     58              ; 1B: FM 音量モード (0 = v: TL=att*8 / 1 = @v: TL=127-@v)
+CH_FMODE        equ     58              ; 1B: FM 音量モード (0 = v: オフセット=att*8 / 1 = @v: オフセット=127-@v)
+CH_TL           equ     59              ; 4B: 音色 TL x 4 OP (apply_fm_tone で保存、wa_fm で音量オフセットと合成)
 CH_TOTAL        equ     64              ; チャンネルブロック総サイズ (基本部 + ループ + 拡張部)
 
 TRACK_COUNT     equ     17
@@ -1275,8 +1276,9 @@ ani_off:
 ; FM 音源 (YM2151 / OPM) 出力 — C# TrackSequencer と同一動作
 ; ============================================================================
 
-; ---- FM 減衰量出力 (write_att の FM 分岐): TL を 4 op へ出力する
-;      v モード (CH_FMODE=0): TL = att * 8 (0-120) / @v モード (CH_FMODE=1): TL = 127 - @v (0-127)
+; ---- FM 減衰量出力 (write_att の FM 分岐): 音色 TL + 音量オフセットを 4 op へ出力する
+;      v モード (CH_FMODE=0): オフセット = att * 8 (0-120) / @v モード (CH_FMODE=1): オフセット = 127 - @v (0-127)
+;      TL = clamp(音色 TL[op] + オフセット, 0, 127) — OP ごとの音色 TL (変調度) を保持する
 ;      (フェーダー TL トリムは内蔵コア側では 0 固定 = C# GetFmTrim 既定値と等価)
 ;      write_att から jp で入るため、末尾は wa_done (write_att の pop + ret) へ戻る
 wa_fm:
@@ -1284,19 +1286,59 @@ wa_fm:
         or      a
         jr      z,wa_fm_att
         ld      a,127
-        sub     (ix+CH_FVOL)            ; a = TL = 127 - @v
+        sub     (ix+CH_FVOL)            ; a = 音量オフセット = 127 - @v
         jr      wa_fm_go
 wa_fm_att:
         ld      a,(ix+CH_ATT)
         add     a,a
         add     a,a
-        add     a,a                     ; a = TL = att * 8
+        add     a,a                     ; a = 音量オフセット = att * 8
 wa_fm_go:
-        ld      c,a
+        ld      d,a                     ; d = 音量オフセット (0-127)
         ld      a,(ix+CH_PORT)
         ld      e,a                     ; e = FM チャンネル (0-7)
-        ld      b,0x60
-        call    write_fm4               ; reg = 0x60 + op*8 + ch
+        ; TL = clamp(音色 TL[op] + オフセット, 0, 127) を各 OP へ (reg = 0x60 + op*8 + ch)
+        ; (音色 TL ≤ 127 + オフセット ≤ 127 = 最大 254 のため加算でキャリーは出ない)
+        ld      a,(ix+CH_TL)
+        add     a,d
+        cp      0x80
+        jr      c,wa_fm1
+        ld      a,127
+wa_fm1:
+        ld      c,a
+        ld      a,0x60
+        add     a,e
+        call    write_fm
+        ld      a,(ix+CH_TL+1)
+        add     a,d
+        cp      0x80
+        jr      c,wa_fm2
+        ld      a,127
+wa_fm2:
+        ld      c,a
+        ld      a,0x68
+        add     a,e
+        call    write_fm
+        ld      a,(ix+CH_TL+2)
+        add     a,d
+        cp      0x80
+        jr      c,wa_fm3
+        ld      a,127
+wa_fm3:
+        ld      c,a
+        ld      a,0x70
+        add     a,e
+        call    write_fm
+        ld      a,(ix+CH_TL+3)
+        add     a,d
+        cp      0x80
+        jr      c,wa_fm4
+        ld      a,127
+wa_fm4:
+        ld      c,a
+        ld      a,0x78
+        add     a,e
+        call    write_fm
         jp      wa_done
 
 ; ---- FM 用 total 計算: hl = CH_BASEP + (DETUNE + PENV値 + SWEEP累積)
@@ -1500,7 +1542,7 @@ aft_op:
         pop     hl
         push    hl
         push    de
-        ; reg 0x60+op*8+ch = TL   <- p5
+        ; reg 0x60+op*8+ch = TL   <- p5 (CH_TL[op] へも保存し、wa_fm で音量オフセットと合成する)
         ld      bc,5
         add     hl,bc
         ld      a,(hl)
@@ -1509,6 +1551,19 @@ aft_op:
         ld      b,0x60
         call    aft_reg
         call    write_fm
+        ; CH_TL[op] = 音色 TL (write_fm は全レジスタ保護のため c = TL が保持されている)
+        push    hl
+        ld      a,c
+        push    bc
+        push    ix
+        pop     hl
+        ld      bc,CH_TL
+        add     hl,bc
+        ld      c,e
+        add     hl,bc
+        ld      (hl),a
+        pop     bc
+        pop     hl
         pop     de
         pop     hl
         push    hl
@@ -2126,7 +2181,11 @@ init_ch_regs:
         ld      (ix+CH_ALGFB),0
         ld      (ix+CH_PAN),3           ; 初期定位: 左右出力 (p3 相当)
         ld      (ix+CH_FVOL),127        ; @v 音量初期値 (最大音量)
-        ld      (ix+CH_FMODE),0         ; 初期モード: v (TL = att * 8)
+        ld      (ix+CH_FMODE),0         ; 初期モード: v (オフセット = att * 8)
+        ld      (ix+CH_TL),0            ; 音色 TL 初期値 (音色未指定 = 全 OP 0)
+        ld      (ix+CH_TL+1),0
+        ld      (ix+CH_TL+2),0
+        ld      (ix+CH_TL+3),0
         cp      3                       ; a = トラック番号 ( xor a 等で壊さないこと )
         jr      c,icr_psg1              ; 0-2
         jr      z,icr_n1                ; 3

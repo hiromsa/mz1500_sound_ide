@@ -181,6 +181,18 @@ C# の partial class (1 クラス複数ファイル) は、TS では 1 ファイ
   TS `TrackSequencer.applyVolumeFrame` と asm `venv_frame` の両方に同一ガードを追加し、
   休符中にエンベロープ値の音量が書き出されることがないようにしている。
 
+- **意図的な C# からの差分 (2026-09-10): FM 音量を「音色 TL + 音量オフセット」方式へ変更**。
+  C# 版は `v` / `@v` の音量を `TL = att × 8` / `TL = 127 - @v` として 4 OP に同一値で
+  一括上書きするため、音色定義の OP ごと TL (モジュレータの変調度を決める) が演奏時に
+  完全に失われ、音色設計どおりの音にならなかった (例: OP1 TL=45 の音色が v15 再生時に
+  TL=0 となり変調度が約 +68dB 暴走 → 過変調でノイズ化)。TS (`TrackSequencer` の
+  `fmToneLevels`) と asm (`CH_TL` ワーク + `wa_fm` の OP 個別合成) は `@FM` 音色適用時に
+  OP ごとの音色 TL を保存し、`TL = clamp(音色 TL[op] + 音量オフセット, 0, 127)` で出力する
+  (オフセット: `v` = att × 8 / `@v` = 127 - @v。`@v127` = 音色定義どおりの TL バランスが
+  そのまま最大音量)。音色未指定トラックは TL = 0 扱いのため旧挙動と同一。
+  併せて `ChipBank.getFmLevel` (FM VU) の代表値を op0 固定から
+  「ALG に応じたキャリア OP のうち最大レベル (最小 TL)」へ変更した。
+
 ## 4. 検証方針
 
 1. **数値一致テスト**: C# 版のテスト期待値 (オペコード列 / フレーム数 / 周波数テーブル等) を
@@ -201,6 +213,12 @@ C# の partial class (1 クラス複数ファイル) は、TS では 1 ファイ
      (op1 以降の書き込みが ch4-7 のレジスタ領域へ衝突) → `add a,a` を 1 回追加。
    - 0xC0 系 (DT2/D2R): DT2 読み出しが `hl` が既に p2 を指した状態で `+9` しており p11
      (次オペレータの AR) を読んでいた → `+7` (p9) に修正。
+   - **(2026-09-10 追記) Z80 アセンブラの `push ix` エンコードバグを修正**: `Z80Encoding.ts` の
+     `encodePushPop` が IX/IY レジスタで `requirePrefix` を検査するのみで **DD/FD プレフィックス
+     バイトを出力に積んでおらず、`push ix` が `DD E5` でなく `E5` (PUSH HL) にエンコードされていた**
+     (`pop ix` / `push iy` / `pop iy` も同様)。ドライバの FM 音量修正 (§3.1 の音色 TL 保存) で
+     `push ix / pop hl` を初使用したことで発覚。IX→HL 転送が失敗し `apply_fm_tone` の音色 TL 保存が
+     動作しない状態だった。`pushMaybe(output, prefix)` を追加して修正 (テスト: `pushIxEncoding.test.ts`)。
 4. **C# リファレンス値ダンプ (`tools/cs-probe/`)**: chips 移植の検証のため、C# 版
    `MzSound.Player` を参照する .NET コンソールツールを用意した。
    `dotnet run --project tools/cs-probe -c Release` で以下を `out/reference.json` へ出力し、

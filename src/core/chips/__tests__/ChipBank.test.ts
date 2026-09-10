@@ -39,8 +39,9 @@ describe('ChipBank', () => {
     const chips = new ChipBank();
     expect(chips.getFmLevel(0)).toBe(0); // 未発音
 
-    // KEYON ($08): channel 0 / 4 op、TL = 40 (減衰)
+    // KEYON ($08): channel 0 / 4 op、ALG=7 (全 OP キャリア)、TL = 40 (減衰)
     chips.fm.setReg(0x08, 0x78);
+    chips.fm.setReg(0x20, 0xc7);
     chips.fm.setReg(0x60, 40);
     const level = chips.getFmLevel(0);
     expect(level).toBeCloseTo(1 - 40 / 127, 9);
@@ -50,6 +51,7 @@ describe('ChipBank', () => {
     expect(chips.getFmLevel(0)).toBeCloseTo(1 - 40 / 127, 9);
 
     // channel 1 は TL 未書き込みのため 0
+    chips.fm.setReg(0x21, 0xc7);
     expect(chips.getFmLevel(1)).toBe(0);
     chips.fm.setReg(0x61, 20);
     expect(chips.getFmLevel(1)).toBeCloseTo(1 - 20 / 127, 9);

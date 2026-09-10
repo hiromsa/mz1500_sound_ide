@@ -257,6 +257,56 @@ describe('FM sequencer', () => {
     }
   });
 
+  it('adds the volume offset on top of the per-operator tone TL', () => {
+    // 音色 TL (OP1=20 / OP2=45 / OP3=0 / OP4=60) を保存し、ノート開始時に
+    // 音量オフセット (初期 v15 → 0) を加算して OP ごとに出力する
+    const builder = new SongBuilder();
+    const tone = new Array<number>(46).fill(0);
+    tone[0] = 4; // ALG
+    tone[1] = 3; // FB
+    tone[2 + 5] = 20; // OP1 TL
+    tone[2 + 11 + 5] = 45; // OP2 TL
+    tone[2 + 22 + 5] = 0; // OP3 TL
+    tone[2 + 33 + 5] = 60; // OP4 TL
+    const toneIndex = builder.addFmTone(tone);
+    builder.addTrack(
+      9,
+      SongBuilder.tone(toneIndex),
+      SongBuilder.note(69, 4, 4),
+      SongBuilder.trackEnd(),
+    );
+    const chips = new ChipBank();
+    const sequencer = new MzsdSequencer(MzsdSong.parse(builder.build()), chips, false);
+
+    sequencer.tick(); // TONE / NOTE まで連続実行 (v15 → 音量オフセット 0)
+    expect(chips.fm.tryGetRegister(0x60)?.value).toBe(20);
+    expect(chips.fm.tryGetRegister(0x68)?.value).toBe(45);
+    expect(chips.fm.tryGetRegister(0x70)?.value).toBe(0);
+    expect(chips.fm.tryGetRegister(0x78)?.value).toBe(60);
+  });
+
+  it('clamps the per-operator TL when the volume offset exceeds 127', () => {
+    // v10 (att 5 → オフセット 40): 音色 TL 60 → 100 / 音色 TL 100 → 140 → 127 にクランプ
+    const builder = new SongBuilder();
+    const tone = new Array<number>(46).fill(0);
+    tone[2 + 5] = 60; // OP1 TL
+    tone[2 + 33 + 5] = 100; // OP4 TL
+    const toneIndex = builder.addFmTone(tone);
+    builder.addTrack(
+      9,
+      SongBuilder.tone(toneIndex),
+      SongBuilder.volume(10),
+      SongBuilder.note(69, 4, 4),
+      SongBuilder.trackEnd(),
+    );
+    const chips = new ChipBank();
+    const sequencer = new MzsdSequencer(MzsdSong.parse(builder.build()), chips, false);
+
+    sequencer.tick();
+    expect(chips.fm.tryGetRegister(0x60)?.value).toBe(100);
+    expect(chips.fm.tryGetRegister(0x78)?.value).toBe(127);
+  });
+
   it('switches back to the coarse volume when v follows @v', () => {
     // 後勝ち: @v100 (TL=27) の後 v10 → TL = (15-10) × 8 = 40
     const builder = new SongBuilder();
