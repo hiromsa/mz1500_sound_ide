@@ -261,6 +261,12 @@ FlexboxおよびCSS Gridを活用し、解像度変化に追従するペイン�
         - **PC キーボードは無効のまま (ユーザー確定)**: MML モード時の PC キーボード演奏無効化 (エディタ文字入力との衝突防止) は本機能でも変更せず、鍵盤のマウスクリック / ドラッグのみで挿入する (Ctrl+A 全選択 / Ctrl+F 検索 / Ctrl+S 保存等のショートカットを保護)。
         - **ロジック分離**: 挿入ロジックは UI 非依存の純粋関数 `src/utils/mmlNoteInserter.ts` (`isMmlNoteInsertModeActive` / `buildMmlNoteInsertion` / `buildMmlNoteInsertionAtCaret`) に集約。キャレット行のトラック宣言判定は `MmlCaretContext.isTrackSpecLine` として `parseMmlCaretContext` (`src/utils/mmlCaretParser.ts`) が提供する。
       - **オクターブクイックジャンプ**: 行2の `JUMP:` `C1`〜`C7` ボタンで目的のオクターブへスムーズスクロール（MMLモード時はキャレットのオクターブがハイライト）。
+      - **発音エンジン (2026-09-10 Phase A: FM の音源統一)**:
+        - **FM**: `virtualSynth` の `engine: 'fm'` は **OPM エミュレーション (`KeyboardSoundEngine`) へ委譲**。MML 演奏 (`TrackSequencer`) と同一の `ChipBank` + OPM レジスタ経路 (音色 46 パラメータ展開 / KC-KF / TL 音量オフセット合成) で発音するため、**鍵盤の音 = 本番 (MML 再生・実機) の音** が保証される (FB 由来の質感まで一致)。
+        - FM 同時発音は実機どおり **8 音** (OPM 8ch round-robin 割当)。全チャンネル使用時は**リリース中のボイスを優先、次に最古のボイスを steal** する。キーオフ後の減衰は音色の RR に従い OPM 内蔵 EG が再生し、推定減衰時間の経過後にチャンネルを解放。
+        - 音量 `v` (0-15) は `TrackSequencer` と同一式の TL オフセット ((15-v)×8) として合成。`@EP` ピッチエンベロープも 60Hz フレーム進行で KC/KF へ反映 (ドライバと同一挙動)。`@VE` は FM 非対応のため従来どおり RR キーオフ減衰のみ。
+        - 出力は `KeyboardAudioOutput` (10ms pump + 小バッファの低レイテンシ AudioWorklet / `FramePlaybackWorkletSource` 流用) から常時駆動。マスター音量は TRACK MONITOR の MASTER VOL と共有 (知覚カーブ 2 乗)。
+        - PSG / NOISE / BEEP は従来どおり WebAudio 簡易合成 (Phase B でチップ駆動へ統一予定)。
       - **発音コンテキストの決定ルール (2026-09-06 修正・堅牢化)**:
         - キーボードは **「最後に選択したエディタ」のプレビュー** として機能する。
         - **フォーカス判定範囲の適正化**: MML側へのフォーカス切り替えは「左ペイン上部の MML エディタ主ペイン（Monaco Editor）やエクスプローラー、ファイルタブ」のクリック・フォーカス時のみ行われる。下部ツールエリア（KEYBOARD パネル、鍵盤の打鍵・ドラッグ演奏、コントロールバー、PROBLEMS / CONSOLE タブ、上下スプリッター）の操作はエディタフォーカス（`focusedPane`）を一切変更しないため、各エディタ選択後に鍵盤を演奏してもコンテキストが勝手に MML へ切り替わることはない。
@@ -411,7 +417,7 @@ FlexboxおよびCSS Gridを活用し、解像度変化に追従するペイン�
 - **影響範囲 (2026-09-09 拡張)**: 音量 / ミュート state は `App` で一元管理され、以下の **3 つのプレビュー経路のすべて**へ同一レベルが反映される:
   1. **演奏プレビュー (PLAY)**: `Player.setMasterVolume` — 知覚カーブ（2 乗曲線）を適用。
   2. **仮想キーボード発音 (鍵盤プレビュー)**: `virtualSynth.setMasterVolume` — 同一の知覚カーブ (`perceptualMasterGain`) を適用。スライダー変更は**発音中のノートへも即時反映**される。
-  3. **右ペイン各エディタの試聴 (FM TONE / VOL ENV / PITCH ENV)**: `masterLevel` props (0-1、ミュート時 0) を各エディタへ渡し、基準出力ゲイン (FM: 0.35 / V-ENV: 0.25 / P-ENV: 0.2) に知覚カーブを乗算。スライダー変更は**発音中の試聴音へも即時反映**される。
+  3. **右ペイン各エディタの試聴 (FM TONE / VOL ENV / PITCH ENV)**: **FM TONE は 2026-09-10 Phase A より `virtualSynth` 経由の OPM エミュレーション発音に統一** (基準ゲインは MML 演奏と同一・`masterLevel` props 廃止)。VOL ENV / PITCH ENV は `masterLevel` props (0-1、ミュート時 0) を基準出力ゲイン (V-ENV: 0.25 / P-ENV: 0.2) に知覚カーブで乗算。スライダー変更は**発音中の試聴音へも即時反映**される。
 - **値の保持**: マスター音量 / ミュートを `App` state で保持するため、TRACK MONITOR タブを離れて戻っても設定値はリセットされない。
 
 #### 4) トラック一括操作
@@ -504,8 +510,11 @@ FlexboxおよびCSS Gridを活用し、解像度変化に追従するペイン�
   - **MML出力 & クリップボードコピー**:
     - `@N = { /* 音色名 */ ALG, FB, OP1〜OP4 (AR, D1R, D1L, D2R, RR, TL, MUL, DT1, DT2) }` 形式のMML音色定義ブロック（`mml_reference.md` 準拠の複数行コマンド形式）をリアルタイム生成し、ワンクリックでコピー可能。
     - ヘッダー部の `▶ MMLに反映` ボタン（エメラルド系）により、同一生成ロジック（`generateMmlSnippet`）の出力を MML へ反映可能。**定義済み ID は該当定義を置き換え、未定義 ID は最後の定義の後に新規挿入**する (2026-09-06 強化)。
-  - **Web Audio 4-Op FM 合成プレビュー**:
-    - `▶ TEST NOTE (C4)` / `■ STOP` ボタンにより、Web Audio APIのOscillatorNodeとGainNodeを用いて選択中ALG・各OPパラメータに忠実な4オペレータFM変調サウンドをリアルタイム試聴可能。
+  - **4-Op FM プレビュー (OPM エミュレーション駆動 / 2026-09-10 Phase A 変更)**:
+    - `▶ TEST NOTE (C4)` / `■ STOP` ボタンにより、**MML 演奏と同一の YM2151 (OPM) エミュレーション (`KeyboardSoundEngine`)** で選択中 ALG・FB・各 OP パラメータの音色をリアルタイム試聴可能。FB (フィードバック) を含むチップの合成特性が完全再現され、**プリセット音色が MML 再生時 (実機) と同一の音色で聞こえる**。
+    - 出力は `virtualSynth` 経由 (`engine: 'fm'`) で `KeyboardSoundEngine` (独自 `ChipBank` + FM 8ch マルチボイス) へ委譲され、`KeyboardAudioOutput` (10ms pump の低レイテンシ AudioWorklet) から再生される。
+    - **[M] Mute / [S] Solo** はミュート対象 OP の TL +127 (実質ミュート) 書き込みで表現。
+    - STOP 押下でキーオフ。以降の減衰は音色の RR に従い OPM 内蔵 EG が自然に再生する。
 
 - **4.2 オペレータ編集部（OP1〜OP4）**:
   - 4つのオペレータを**2×2のグリッド配置**で表示（上段: `OP1`, `OP2` / 下段: `OP3`, `OP4`）。

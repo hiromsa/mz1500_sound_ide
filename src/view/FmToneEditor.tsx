@@ -22,11 +22,8 @@ import {
 import { isIdDefined, loadFmToneDefinition } from '../utils/mmlDefinitionLoader';
 import { DefinitionIdInput } from './DefinitionIdInput';
 import { TestNoteButton } from './components/TestNoteButton';
-import { midiNoteToFrequency, perceptualMasterGain } from '../utils/virtualSynth';
+import { virtualSynth } from '../utils/virtualSynth';
 import { MmlLiveDock } from './MmlLiveDock';
-
-/** FM 試聴音の基準出力ゲイン (TRACK MONITOR の MASTER VOL 100% 時)。 */
-const PreviewBaseGain = 0.35;
 
 // プリセット音色定義
 const PRESET_TONES: FmToneData[] = [
@@ -1155,8 +1152,6 @@ export interface FmToneEditorProps {
   testMidiNote?: number;
   /** テストノート変更コールバック */
   onChangeTestMidiNote?: (note: number) => void;
-  /** マスター音量 (0-1、ミュート時 0)。TRACK MONITOR の MASTER VOL と連動し、知覚カーブ適用のうえ試聴音量へ乗算される。 */
-  masterLevel?: number;
 }
 
 export function FmToneEditor({
@@ -1166,7 +1161,6 @@ export function FmToneEditor({
   onApplyToMml,
   testMidiNote,
   onChangeTestMidiNote,
-  masterLevel = 1,
 }: FmToneEditorProps = {}) {
   // 現在編集中の音色データ (NAME は未設定の空文字で開始: プリセットは参考値としてのみ使用する)
   const [toneData, setToneData] = useState<FmToneData>({ ...PRESET_TONES[0], name: '' });
@@ -1242,12 +1236,10 @@ export function FmToneEditor({
   // クリップボード (オペレータ単位コピー＆ペースト用)
   const [copiedOpParams, setCopiedOpParams] = useState<OperatorParams | null>(null);
 
-  // Web Audio 試聴ステート
+  // 試聴ステート (発音は KeyboardSoundEngine 経由 = MML 演奏と同一の OPM エミュレーション)
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
-  const audioCtxRef = useRef<AudioContext | null>(null);
-  const activeNodesRef = useRef<{ stop: () => void } | null>(null);
-  /** 発音中の試聴 masterGain (TRACK MONITOR の MASTER VOL 即時反映用)。 */
-  const masterGainRef = useRef<GainNode | null>(null);
+  /** 発音中の試聴ノート (キーオフ対象の追跡用)。 */
+  const previewNoteRef = useRef<number | null>(null);
 
   // アルゴリズム変更
   const setAlg = (alg: number) => {
@@ -1371,11 +1363,12 @@ export function FmToneEditor({
     });
   };
 
-  // Web Audio 試聴プレビュー停止
+  // 試聴プレビュー停止 (キーオフ。音色の RR 減衰は OPM 内蔵 EG が自然に再生する)
   const stopAudio = useCallback(() => {
-    if (activeNodesRef.current) {
-      activeNodesRef.current.stop();
-      activeNodesRef.current = null;
+    const note = previewNoteRef.current;
+    if (note !== null) {
+      virtualSynth.noteOff(note);
+      previewNoteRef.current = null;
     }
     setIsPlaying(false);
   }, []);
@@ -1383,110 +1376,27 @@ export function FmToneEditor({
   useEffect(() => {
     return () => {
       stopAudio();
-      if (audioCtxRef.current) {
-        audioCtxRef.current.close();
-      }
     };
   }, [stopAudio]);
 
-  // TRACK MONITOR の MASTER VOL 変更を発音中の試聴音へ即時反映 (知覚カーブ適用)
-  useEffect(() => {
-    const gain = masterGainRef.current;
-    const ctx = audioCtxRef.current;
-    if (!gain || !ctx) return;
-    try {
-      gain.gain.setValueAtTime(PreviewBaseGain * perceptualMasterGain(masterLevel), ctx.currentTime);
-    } catch { /* ignore */ }
-  }, [masterLevel]);
-
-  // Web Audio 試聴プレビュー開始 (4-Operator FM 合成)
+  // 試聴プレビュー開始 (KeyboardSoundEngine 経由の OPM エミュレーション発音)。
+  // MML 演奏と同一のレジスタ経路で鳴るため、プリセット音色の FB 由来の質感まで一致する。
+  // OP Mute / Solo は TL +127 (実質ミュート) で表現する。
   const playPreviewTone = (previewNote?: number) => {
     stopAudio();
 
-    const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    if (!AudioContextClass) return;
-
-    const ctx = audioCtxRef.current || new AudioContextClass();
-    audioCtxRef.current = ctx;
-    if (ctx.state === 'suspended') ctx.resume();
-
-    const now = ctx.currentTime;
     const note = previewNote ?? testMidiNote ?? 60;
-    const baseFreq = midiNoteToFrequency(note);
-
-    const masterGain = ctx.createGain();
-    masterGain.gain.setValueAtTime(PreviewBaseGain * perceptualMasterGain(masterLevel), now);
-    masterGain.connect(ctx.destination);
-    masterGainRef.current = masterGain;
-
-    // 4つのオシレーターとゲインを作成
-    const oscs: OscillatorNode[] = [];
-    const gains: GainNode[] = [];
-
-    // Soloが有効なオペレータが存在するかチェック
     const hasSolo = opSolo.some(s => s);
+    const opMuted = opMute.map((muted, i) => muted || (hasSolo && !opSolo[i]));
 
-    for (let i = 0; i < 4; i++) {
-      const op = toneData.ops[i];
-      const isMuted = opMute[i] || (hasSolo && !opSolo[i]);
-
-      const osc = ctx.createOscillator();
-      const mult = op.mul === 0 ? 0.5 : op.mul;
-      const detuneCents = (op.dt1 - 3) * 6 + op.dt2 * 30;
-      osc.frequency.setValueAtTime(baseFreq * mult, now);
-      osc.detune.setValueAtTime(detuneCents, now);
-
-      const gain = ctx.createGain();
-      // TL (0=Max, 127=Mute)
-      const maxVol = isMuted ? 0 : Math.max(0, (127 - op.tl) / 127);
-
-      // 簡単なADSRエンベロープ適用
-      const attackTime = Math.max(0.01, 0.4 * (1 - op.ar / 31));
-      const decayTime = Math.max(0.02, 0.6 * (1 - op.d1r / 31));
-      const sustainLevel = Math.max(0.01, maxVol * (1 - op.d1l / 15));
-
-      gain.gain.setValueAtTime(0.0001, now);
-      gain.gain.linearRampToValueAtTime(maxVol, now + attackTime);
-      gain.gain.linearRampToValueAtTime(sustainLevel, now + attackTime + decayTime);
-
-      osc.connect(gain);
-      osc.start(now);
-
-      oscs.push(osc);
-      gains.push(gain);
-    }
-
-    // アルゴリズムに応じた正確なルーティング接続
-    for (let i = 0; i < 4; i++) {
-      const isCarrier = isOpCarrier(toneData.alg, i);
-      if (isCarrier) {
-        gains[i].connect(masterGain);
-      }
-      const targets = OP_MODULATION_TARGETS[toneData.alg]?.[i] || [];
-      for (const targetIdx of targets) {
-        const modScale = ctx.createGain();
-        modScale.gain.setValueAtTime(baseFreq * 2.5, now);
-        gains[i].connect(modScale);
-        modScale.connect(oscs[targetIdx].frequency);
-      }
-    }
-
+    previewNoteRef.current = note;
+    virtualSynth.noteOn(note, {
+      engine: 'fm',
+      volume: 15,
+      fmTone: toneData,
+      fmOpMuted: opMuted,
+    });
     setIsPlaying(true);
-    activeNodesRef.current = {
-      stop: () => {
-        const stopTime = ctx.currentTime;
-        masterGain.gain.linearRampToValueAtTime(0.0001, stopTime + 0.1);
-        setTimeout(() => {
-          oscs.forEach(o => {
-            try { o.stop(); o.disconnect(); } catch { /* ignore */ }
-          });
-          masterGain.disconnect();
-          if (masterGainRef.current === masterGain) {
-            masterGainRef.current = null;
-          }
-        }, 150);
-      }
-    };
   };
 
   // MMLスニペット生成 (mml_reference.md 4.3 の @N = { } 46 パラメータ書式に準拠)

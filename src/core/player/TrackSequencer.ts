@@ -6,6 +6,7 @@
 import { BeepChip } from '../chips/BeepChip';
 import { ChipBank } from '../chips/ChipBank';
 import { DcsgChip } from '../chips/DcsgChip';
+import { fmKcKfForPitch, FM_PITCH_UNIT, writeFmToneRegisters } from './FmToneRegisters';
 import type { FmToneDef, MzsdSong } from './MzsdSong';
 import { MzsdOp, readInt16, readUInt16 } from './MzsdSong';
 
@@ -18,15 +19,6 @@ interface DcsgAssignment {
 
 export class TrackSequencer {
   private static readonly maxLoopDepth = 8;
-
-  /** MIDI ノート 60 (C4) に対応する OPM オクターブ。 */
-  private static readonly fmC4Octave = 4;
-
-  /** ピッチ内部値の 1 セミトーン (= KC/KF 展開の分解能)。 */
-  private static readonly fmPitchUnit = 64;
-
-  /** OPM ノートコード (C=0, C#=1, D=2, D#=4, E=5, F=6, F#=8, G=9, G#=10, A=12, A#=13, B=14)。 */
-  private static readonly fmNoteCodes = [0, 1, 2, 4, 5, 6, 8, 9, 10, 12, 13, 14];
 
   /** トラック番号 → DCSG チャンネル対応 (0-2 = tone、3 = noise)。 */
   private static resolveDcsg(trackIndex: number, chips: ChipBank): DcsgAssignment | null {
@@ -408,7 +400,7 @@ export class TrackSequencer {
       this.applyPitchFrame();
     } else if (this.isFm) {
       // FM: ピッチ内部値 (C4 = 0、1 semitone = 64) を基準に KC/KF へ展開する
-      this.basePitch = (note + this.transpose - 60) * TrackSequencer.fmPitchUnit;
+      this.basePitch = (note + this.transpose - 60) * FM_PITCH_UNIT;
       this.applyPitchFrame();
       this.writeAttenuation();
 
@@ -471,25 +463,9 @@ export class TrackSequencer {
       this.chips.beep.setCounter(Math.min(Math.max(this.baseCounter + pitchUp, 1), 65535));
     } else if (this.isFm) {
       // FM: ピッチ内部値 (12bit 相当) → KC / KF へ展開
-      const total = this.basePitch + pitchUp;
-      const semitones = Math.floor(total / TrackSequencer.fmPitchUnit);
-      let fraction = total - semitones * TrackSequencer.fmPitchUnit;
-      let octave = TrackSequencer.fmC4Octave + Math.floor(semitones / 12);
-      let noteIndex = semitones - (octave - TrackSequencer.fmC4Octave) * 12;
-
-      if (octave < 0) {
-        octave = 0;
-        noteIndex = 0;
-        fraction = 0;
-      } else if (octave > 7) {
-        octave = 7;
-        noteIndex = 11;
-        fraction = TrackSequencer.fmPitchUnit - 1;
-      }
-
-      const kc = (octave << 4) | TrackSequencer.fmNoteCodes[noteIndex];
+      const { kc, kf } = fmKcKfForPitch(this.basePitch + pitchUp);
       this.chips.fm.setReg(0x28 + this.fmChannel, kc);
-      this.chips.fm.setReg(0x30 + this.fmChannel, fraction);
+      this.chips.fm.setReg(0x30 + this.fmChannel, kf);
     } else if (this.dcsg !== null && !this.isNoise) {
       this.dcsg.chip.setTonePeriod(
         this.dcsg.channel,
@@ -500,24 +476,17 @@ export class TrackSequencer {
     this.sweepElapsed++;
   }
 
-  /** @FM 音色パラメータ (46 個) を OPM レジスタへ展開する。 */
+  /** @FM 音色パラメータ (46 個) を OPM レジスタへ展開する (展開式は FmToneRegisters と共有)。 */
   private applyFmTone(tone: FmToneDef): void {
-    const ch = this.fmChannel;
-    const p = tone.parameters;
-
-    // RL (PAN: p コマンド値) / FB / ALG
-    this.fmAlgFb = ((p[1] & 7) << 3) | (p[0] & 7);
-    this.chips.fm.setReg(0x20 + ch, (this.pan << 6) | this.fmAlgFb);
-
+    const state = writeFmToneRegisters(
+      tone.parameters,
+      this.fmChannel,
+      (register, value) => this.chips.fm.setReg(register, value),
+      this.pan,
+    );
+    this.fmAlgFb = state.algFb;
     for (let op = 0; op < 4; op++) {
-      const o = 2 + op * 11; // AR, D1R, D2R, RR, D1L, TL, KS, MUL, DT1, DT2, AME
-      this.chips.fm.setReg(0x40 + (op << 3) + ch, ((p[o + 10] & 1) << 7) | ((p[o + 8] & 7) << 4) | (p[o + 7] & 15));
-      this.fmToneLevels[op] = p[o + 5] & 127; // 音色 TL を保存 (writeAttenuation で音量オフセットと合成)
-      this.chips.fm.setReg(0x60 + (op << 3) + ch, p[o + 5] & 127); // TL 基準値 (ノート開始時に音量合成値へ置換)
-      this.chips.fm.setReg(0x80 + (op << 3) + ch, ((p[o + 6] & 3) << 6) | (p[o + 0] & 31));
-      this.chips.fm.setReg(0xa0 + (op << 3) + ch, p[o + 1] & 31);
-      this.chips.fm.setReg(0xc0 + (op << 3) + ch, ((p[o + 9] & 3) << 6) | (p[o + 2] & 31));
-      this.chips.fm.setReg(0xe0 + (op << 3) + ch, ((p[o + 4] & 15) << 4) | (p[o + 3] & 15));
+      this.fmToneLevels[op] = state.toneLevels[op];
     }
   }
 

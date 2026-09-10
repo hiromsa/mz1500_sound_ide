@@ -1,9 +1,9 @@
 import {
   type FmToneData,
-  isOpCarrier,
-  OP_MODULATION_TARGETS,
 } from '../core/fm/FmTone';
 import { DcsgChip } from '../core/chips/DcsgChip';
+import { KeyboardSoundEngine } from '../core/keyboard/KeyboardSoundEngine';
+import { KeyboardAudioOutput } from '../core/keyboard/KeyboardAudioOutput';
 
 // MIDIノート番号から周波数 (Hz) を計算
 export function midiNoteToFrequency(midiNote: number, detuneCents: number = 0): number {
@@ -20,12 +20,14 @@ export interface SynthPlayOptions {
   engine: SoundEngineType;
   volume: number; // 0〜15 (MML準拠)
   fmTone?: FmToneData;
+  /** FM 試聴時の OP 単位ミュート (FM TONE エディタの OP Mute / Solo 表現)。true の OP は TL +127。 */
+  fmOpMuted?: boolean[];
   pitchEnv?: number[]; // フレームごとのピッチオフセット値 (1 frame = 1/60s)
   pitchEnvLoop?: number; // -1: ループなし
   volEnv?: number[]; // フレームごとの音量 (0〜15)
   volEnvLoop?: number; // -1: ループなし
   volEnvRelease?: number; // リリース開始インデックス (KEY OFF 後に再生する区間。undefined / -1: なし)
-  detune?: number; // デチューン値 (MML Dコマンド相当, ±cents)
+  detune?: number; // デチューン値 (MML Dコマンド相当。FM はレジスタ差分単位、それ以外は cents 近似)
   noiseType?: 'periodic' | 'white'; // ノイズ種別
   /** ノイズ統合モード (MML @IN コマンド相当、PSG エンジン専用)。0 = 統合なし / 1 = 周期ノイズ連動 / 2 = ホワイトノイズ連動。 */
   noiseIntegrate?: 0 | 1 | 2;
@@ -153,8 +155,20 @@ export class VirtualSynthEngine {
   private activeVoices: Map<number, ActiveVoice> = new Map();
   private noiseBuffer: AudioBuffer | null = null;
 
+  /**
+   * FM (OPM エミュレーション) 鍵盤音源。
+   * MML 演奏と同一の ChipBank + レジスタ経路で発音するため「鍵盤の音 = 本番の音」になる。
+   */
+  private readonly keyboardEngine = new KeyboardSoundEngine();
+
+  private readonly keyboardOutput: KeyboardAudioOutput;
+
   /** マスター音量 (知覚カーブ適用済み 0-1)。TRACK MONITOR の MASTER VOL と共有する。 */
   private masterVolume = 1;
+
+  constructor() {
+    this.keyboardOutput = new KeyboardAudioOutput(this.keyboardEngine, this.keyboardEngine.mixer.sampleRate);
+  }
 
   /**
    * マスター音量を設定する (0-1 / 知覚カーブ適用)。
@@ -162,6 +176,7 @@ export class VirtualSynthEngine {
    * 発音中のボイスへも即時反映する。
    */
   public setMasterVolume(volume: number): void {
+    this.keyboardEngine.setMasterVolume(volume); // FM はエンジン内で知覚カーブ (2 乗) を適用
     this.masterVolume = perceptualMasterGain(volume);
     this.activeVoices.forEach(voice => voice.setVolume(this.masterVolume));
   }
@@ -193,6 +208,21 @@ export class VirtualSynthEngine {
 
   // ノートON
   public noteOn(midiNote: number, options: SynthPlayOptions) {
+    // FM は OPM エミュレーション (KeyboardSoundEngine) へ委譲する。
+    // MML 演奏と同一の ChipBank + レジスタ経路で発音するため、鍵盤の音 = 本番の音になる。
+    if (options.engine === 'fm') {
+      void this.keyboardOutput.ensureStarted();
+      this.keyboardEngine.fmNoteOn(midiNote, {
+        fmTone: options.fmTone,
+        volume: options.volume,
+        detune: options.detune ?? 0,
+        pitchEnv: options.pitchEnv,
+        pitchEnvLoop: options.pitchEnvLoop,
+        opMuted: options.fmOpMuted,
+      });
+      return;
+    }
+
     const ctx = this.getAudioContext();
     this.stopVoice(midiNote); // 既存の同音を停止 (リトリガー時はリリースさせず即時停止)
 
@@ -439,123 +469,6 @@ export class VirtualSynthEngine {
           }, 60);
         } catch { /* ignore */ }
       });
-
-    // --- 4. FM (YM2151 4-OP OPM) ---
-    } else if (options.engine === 'fm') {
-      const tone = options.fmTone;
-      if (!tone) {
-        // デフォルトのFMサイン波
-        const osc = ctx.createOscillator();
-        osc.frequency.setValueAtTime(baseFreq, ctx.currentTime);
-        const gain = ctx.createGain();
-        gain.gain.setValueAtTime(peakGain, ctx.currentTime);
-        osc.connect(gain);
-        gain.connect(masterGain);
-        osc.start();
-        stopCallbacks.push(() => {
-          gain.gain.linearRampToValueAtTime(0.0001, ctx.currentTime + 0.05);
-          setTimeout(() => { try { osc.stop(); osc.disconnect(); } catch { /* ignore */ } }, 60);
-        });
-      } else {
-        const oscs: OscillatorNode[] = [];
-        const opGains: GainNode[] = [];
-        const now = ctx.currentTime;
-
-        for (let i = 0; i < 4; i++) {
-          const op = tone.ops[i];
-          const osc = ctx.createOscillator();
-          const mult = op.mul === 0 ? 0.5 : op.mul;
-          const detuneCents = (options.detune || 0) + (op.dt1 - 3) * 6 + op.dt2 * 30;
-          osc.frequency.setValueAtTime(baseFreq * mult, now);
-          osc.detune.setValueAtTime(detuneCents, now);
-
-          const gain = ctx.createGain();
-          // TL (0=Max, 127=Mute)
-          const maxVol = Math.max(0, (127 - op.tl) / 127) * (peakGain * 1.5);
-          const attackTime = Math.max(0.01, 0.4 * (1 - op.ar / 31));
-          const decayTime = Math.max(0.02, 0.6 * (1 - op.d1r / 31));
-          const sustainLevel = Math.max(0.001, maxVol * (1 - op.d1l / 15));
-
-          gain.gain.setValueAtTime(0.0001, now);
-          gain.gain.linearRampToValueAtTime(maxVol, now + attackTime);
-          gain.gain.linearRampToValueAtTime(sustainLevel, now + attackTime + decayTime);
-
-          osc.connect(gain);
-          osc.start(now);
-          oscs.push(osc);
-          opGains.push(gain);
-        }
-
-        // アルゴリズム変調接続
-        for (let i = 0; i < 4; i++) {
-          const isCarrier = isOpCarrier(tone.alg, i);
-          if (isCarrier) {
-            opGains[i].connect(masterGain);
-          }
-          const targets = OP_MODULATION_TARGETS[tone.alg]?.[i] || [];
-          for (const targetIdx of targets) {
-            const modScale = ctx.createGain();
-            modScale.gain.setValueAtTime(baseFreq * 2.5, now);
-            opGains[i].connect(modScale);
-            modScale.connect(oscs[targetIdx].frequency);
-          }
-        }
-
-        // ピッチエンベロープ
-        if (options.pitchEnv && options.pitchEnv.length > 0) {
-          let currentFrame = 0;
-          const interval = window.setInterval(() => {
-            if (!this.ctx) return;
-            const curTime = this.ctx.currentTime;
-            const pLen = options.pitchEnv!.length;
-            let pIdx = currentFrame;
-            if (pIdx >= pLen) {
-              const pLoop = options.pitchEnvLoop ?? 0;
-              pIdx = pLoop >= 0 && pLoop < pLen ? pLoop + ((pIdx - pLen) % (pLen - pLoop)) : pLen - 1;
-            }
-            const pVal = options.pitchEnv![pIdx] ?? 0;
-            for (let i = 0; i < 4; i++) {
-              const op = tone.ops[i];
-              const detuneCents = (options.detune || 0) + (op.dt1 - 3) * 6 + op.dt2 * 30 + pVal * 25;
-              oscs[i].detune.setValueAtTime(detuneCents, curTime);
-            }
-            currentFrame++;
-          }, 1000 / 60);
-          timers.push(interval);
-        }
-
-        // キーオフ: 音色のリリースレート (RR) に従って全オペレータを減衰させる
-        // (@VE は FM 非対応のため RR をキーオフ減衰として使用する・ユーザー確定)
-        // 減衰時間は D1R (decay) と同一の線形近似式: 0.6 秒 × (1 - rate / 31)
-        const releaseTimes = tone.ops.map((op) => Math.max(0.02, 0.6 * (1 - op.rr / 31)));
-        const maxReleaseTime = Math.max(...releaseTimes);
-        triggerRelease = () => {
-          try {
-            const now = ctx.currentTime;
-            for (let i = 0; i < 4; i++) {
-              const param = opGains[i].gain;
-              param.cancelScheduledValues(now);
-              param.setValueAtTime(Math.max(0.0001, param.value), now);
-              param.linearRampToValueAtTime(0.0001, now + releaseTimes[i]);
-            }
-          } catch { /* ignore */ }
-          // 最も遅いオペレータの減衰完了後に自動停止 (フェード分を見て +120ms)
-          scheduleAutoStop(maxReleaseTime * 1000);
-          return true;
-        };
-
-        stopCallbacks.push(() => {
-          try {
-            const curTime = ctx.currentTime;
-            masterGain.gain.linearRampToValueAtTime(0.0001, curTime + 0.12);
-            setTimeout(() => {
-              oscs.forEach(o => {
-                try { o.stop(); o.disconnect(); } catch { /* ignore */ }
-              });
-            }, 150);
-          } catch { /* ignore */ }
-        });
-      }
     }
 
     // 発音中インスタンスを登録
@@ -582,10 +495,13 @@ export class VirtualSynthEngine {
 
   // ノートOFF
   public noteOff(midiNote: number) {
+    // FM: KEY OFF 後は OPM 内蔵 EG の RR 減衰へ任せる (演奏エンジンのキーオフと同一挙動)
+    this.keyboardEngine.fmNoteOff(midiNote);
+
     const voice = this.activeVoices.get(midiNote);
     if (!voice || voice.isReleasing) return;
 
-    // @VE リリース定義 (PSG / NOISE) または FM 音色の RR キーオフ減衰へ遷移する
+    // @VE リリース定義 (PSG / NOISE) へ遷移する
     // (演奏エンジンのキーオフと同一挙動。既にリリース中の音は巻き戻さない)
     if (voice.triggerRelease && voice.triggerRelease()) {
       voice.isReleasing = true;
@@ -595,8 +511,9 @@ export class VirtualSynthEngine {
     this.stopVoice(midiNote);
   }
 
-  // 全ノート停止
+  // 全ノート停止 (PANIC 相当)
   public allNotesOff() {
+    this.keyboardEngine.allNotesOff();
     this.activeVoices.forEach(voice => voice.stop());
     this.activeVoices.clear();
   }
@@ -607,6 +524,8 @@ export class VirtualSynthEngine {
    * リリース定義のない音のみ即時停止する (PANIC などの即時停止は allNotesOff を使用)。
    */
   public releaseAllNotes() {
+    this.keyboardEngine.releaseAllNotes();
+
     // ループ中に Map を変更するためスナップショットへ列挙する
     for (const [midiNote, voice] of [...this.activeVoices]) {
       if (voice.isReleasing) continue;

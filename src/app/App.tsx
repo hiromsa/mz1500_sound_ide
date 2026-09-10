@@ -946,7 +946,6 @@ function App() {
                     onApplyToMml={handleApplyToneToMml}
                     testMidiNote={testMidiNote}
                     onChangeTestMidiNote={setTestMidiNote}
-                    masterLevel={masterLevel}
                   />
                 ) : (
                   <div className="flex-grow p-6 flex flex-col items-center justify-center text-slate-400 font-mono text-xs">

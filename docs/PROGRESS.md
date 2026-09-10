@@ -6,8 +6,8 @@
 ---
 
 ## 1. 現在のステータス概要
-- **バージョン**: `v0.0.1-beta.123`（コミット通番＋短縮ハッシュ ハイブリッド方式）
-- **テスト通過状況**: 全 42 テストファイル / 600 件パス + 1 skip（`npm test` / Vitest）
+- **バージョン**: `v0.0.1-beta.125`（コミット通番＋短縮ハッシュ ハイブリッド方式）
+- **テスト通過状況**: 全 44 テストファイル / 619 件パス + 1 skip（`npm test` / Vitest）
 - **型検査状況**: エラー 0 件（`npx tsc -b`）
 - **主要機能の稼働状況**:
   - Web ネイティブ MML コンパイラ（9ch / 17ch / ワークトラック W1〜W99 対応）
@@ -23,17 +23,6 @@
 ## 2. 残タスク・今後の ToDo 一覧 (Pending Tasks)
 
 ### 優先度: 高 (High Priority)
-- [ ] **仮想キーボード音源統一 Phase A: 仮想キーボード / FM TONE プレビューの FM を OPM エミュレーション (Ym2151) 駆動へ変更**
-  - 背景・目的: 仮想キーボードの WebAudio 簡易 FM 合成は FB (フィードバック) 未実装のため、プリセット音色が実機 / MML 再生よりきれいに聞こえすぎる (2026-09-10 ユーザー指摘「プリセット E.PIANO 1 は仮想キーボードがきれい / MML 再生は濁ったノイズ」)。TL 破壊バグ修正 (2026-09-10 完了・下記完了作業参照) により MML 再生側は正しくなったため、試聴側をチップエミュレーションへ統一して「鍵盤の音 = 本番の音」を保証する。
-  - **実装計画 (2026-09-10 ユーザー確定 / Plan)**:
-    1. `src/core/player/FmToneRegisters.ts` (新規・UI 非依存): `TrackSequencer.applyFmTone` のレジスタ展開 (46 パラメータ → OPM $20 / $40 / $60 / $80 / $A0 / $C0 / $E0 系) とピッチ内部値 → KC/KF 展開 (`fmPitchUnit = 64` / `fmNoteCodes`) を純粋関数として抽出。`TrackSequencer` 側は呼び出しのみへリファクタ (挙動無変更・等価性テスト 11 シナリオで担保)。`getFmLevel` (FM VU) のキャリア判定に使っている `isOpCarrier` もここから供給すると単一の正になる。
-    2. `src/core/keyboard/KeyboardSoundEngine.ts` (新規・core 層 / WebAudio 非依存): 鍵盤専用チップエンジン。独自 `ChipBank` 保持 / マルチボイス管理 (FM 8ch round-robin + 最古ボイス steal) / `noteOn` (音色レジスタ展開 → KC/KF → KEYON `$08 = 0x78 | ch`) / `noteOff` (KEYOFF 後は OPM 内蔵 EG の RR 減衰に任せ、推定 RR 時間経過後に ch 解放) / `releaseAllNotes` (リリース付き全キーオフ) / `allNotesOff` (PANIC 相当) / `setMasterVolume` (知覚カーブ 2 乗 = `perceptualMasterGain` を Player と共有)。
-    3. `src/core/keyboard/KeyboardAudioOutput.ts` (新規): 既存 `FramePlaybackWorkletSource` (Blob URL) を流用した出力アダプタ。**低レイテンシ要件** (鍵盤の即時応答): Player 用 pump (20ms 間隔 / 目標バッファ 4096 frames ≒ 85ms) ではなく 10ms 前後の pump + 小バッファ (数百 frames) で常時駆動する。
-    4. `src/utils/virtualSynth.ts`: `engine === 'fm'` を KeyboardSoundEngine へ委譲し WebAudio 簡易 FM 合成コード (OscillatorNode 4 OP + modScale 固定係数・FB 無視) を削除。
-    5. `src/view/FmToneEditor.tsx`: `playPreviewTone` を KeyboardSoundEngine 経由へ。OP Mute/Solo は TL +127 書き込みで表現。
-    6. `src/app/App.tsx`: エンジン生成・MASTER VOLUME 配線 (`virtualSynth.setMasterVolume` を統合先へ)。
-  - **テスト**: `FmToneRegisters` レジスタ期待値テスト / `KeyboardSoundEngine` ミックス・ボイス管理テスト (WebAudio 非依存ロジック層として vitest 完全検証可)。
-  - **検証**: 仮想キーボード FM = MML 再生 FM の音色一致 (E.PIANO 1 の FB=6 由来の濁りまで一致すること)。
 - [ ] **仮想キーボード音源統一 Phase B: PSG / ノイズ / BEEP および V-ENV / P-ENV エディタ試聴をチップ駆動へ統一**
   - **実装計画 (2026-09-10 ユーザー確定 / Plan)**:
     1. `virtualSynth.ts` の PSG / ノイズ / BEEP を KeyboardSoundEngine (`DcsgChip` / `BeepChip` 直駆動) へ委譲し、簡易合成コード (OscillatorNode 矩形波 / BufferSource ノイズ / BEEP) を削除。
@@ -73,6 +62,18 @@
 ---
 
 ## 3. 直近の完了作業（最新）
+
+- **仮想キーボード音源統一 Phase A: 仮想キーボード / FM TONE プレビューの FM を OPM エミュレーション (Ym2151) 駆動へ変更 — 「鍵盤の音 = 本番の音」を実装 (`src/core/player/FmToneRegisters.ts` 新規, `src/core/keyboard/KeyboardSoundEngine.ts` 新規, `src/core/keyboard/KeyboardAudioOutput.ts` 新規, `src/core/player/TrackSequencer.ts`, `src/utils/virtualSynth.ts`, `src/view/FmToneEditor.tsx`, `src/app/App.tsx`, テスト 2 件新規・仕様書更新)** (2026-09-10):
+  - **背景**: 仮想キーボードの WebAudio 簡易 FM 合成は FB (フィードバック) 未実装のため、プリセット音色が実機 / MML 再生よりきれいに聞こえすぎる (ユーザー指摘「E.PIANO 1 は仮想キーボードがきれい / MML 再生は濁ったノイズ」)。TL 破壊バグ修正で MML 再生側は正しくなったため、試聴側をチップエミュレーションへ統一した。
+  - **対応内容** (2026-09-10 ユーザー確定 Plan のとおり実装):
+    1. **`FmToneRegisters.ts` (新規・共有レイヤー)**: `TrackSequencer.applyFmTone` の 46 パラメータ → OPM レジスタ展開 (`writeFmToneRegisters`)、ピッチ内部値 → KC/KF 展開 (`fmKcKfForPitch` / `FM_PITCH_UNIT = 64` / `FM_NOTE_CODES`)、エディタ形式 `FmToneData` → 46 パラメータ変換 (`fmToneDataToParameters`) を純粋関数として抽出。`TrackSequencer` は呼び出しのみへリファクタ (挙動無変更・既存 Z80DriverEquivalence 等の全テストで等価性を担保)。
+    2. **`KeyboardSoundEngine.ts` (新規・core 層 / WebAudio 非依存)**: 鍵盤専用チップエンジン。`AudioFrameMixer` (内蔵 `ChipBank`) を直駆動し、FM 8ch マルチボイス (round-robin 割当 + 全 ch 使用時はリリース中→最古ボイスを steal) / `fmNoteOn` (音色レジスタ展開 → KC/KF → TL 音量合成 (15-v)×8 → KEYON `$08 = 0x78|ch`) / `fmNoteOff` (KEYOFF 後は OPM 内蔵 EG の RR 減衰に任せ推定時間 + マージン経過後に ch 解放) / `releaseAllNotes` / `allNotesOff` (PANIC = KEYOFF + TL127) / `setMasterVolume` (2 乗知覚カーブ) / @EP ピッチエンベロープの 60Hz フレーム進行 (`TrackSequencer.applyPitchEnvFrame` と同一挙動) を実装。ボイスが無いときはチップ合成をスキップして無音を返す (常時駆動の CPU 削減)。
+    3. **`KeyboardAudioOutput.ts` (新規)**: `FramePlaybackWorkletSource` (Blob URL) を流用した低レイテンシ出力アダプタ。Player 用 pump (20ms / 4096 frames) に対し **10ms pump + 256 frames チャンク / 目標 768 frames (≒16ms)** で常時駆動。AudioWorklet 非対応時は ScriptProcessor へフォールバック。
+    4. **`virtualSynth.ts`**: `engine === 'fm'` を KeyboardSoundEngine へ委譲し、WebAudio 簡易 FM 合成コード (OscillatorNode 4 OP + modScale 固定係数・FB 無視) を削除。音色未指定時は ALG0 / OP4 キャリアのみの既定音色で発音。`SynthPlayOptions` に `fmOpMuted` (OP 単位ミュート) を追加。`setMasterVolume` / `noteOff` / `allNotesOff` / `releaseAllNotes` をエンジンへ転送。
+    5. **`FmToneEditor.tsx`**: `playPreviewTone` を virtualSynth 経由の KeyboardSoundEngine 発音へ変更。OP Mute / Solo は TL +127 書き込みで表現。独自 AudioContext / masterGain / PreviewBaseGain (0.35) を廃止し、`masterLevel` props も削除 (App.tsx の該当 props 渡しも削除)。音量は v15 = MML 再生と同一ゲイン。
+  - **テスト**: `FmToneRegisters.test.ts` (レジスタ展開期待値 / KC-KF 展開・クランプ / 46 パラメータ変換 = 8 件)、`KeyboardSoundEngine.test.ts` (KEYON・TL 音量合成・OP ミュート / リトリガー / 8ch round-robin + steal (リリース中優先) / RR 減衰後の ch 解放 / read 音声响合成・マスター音量 / @EP 進行 / PANIC・リリース付き全キーオフ = 11 件) を新設。`npm test` 全 44 ファイル・619 件合格 + 1 skip / `npx tsc -b` エラーゼロ / `npm run lint` 警告 10 件 (既存分のみ) / `npm run build` 成功。
+  - **検証 (ブラウザ)**: 仮想キーボード FM = MML 再生 FM の音色一致 (E.PIANO 1 の FB=6 由来の濁りまで一致すること) をユーザー確認待ち。
+  - **仕様書**: [`docs/specification/ui.md`](./specification/ui.md) の仮想キーボード「発音エンジン」節・FM TONE エディタ「4-Op FM プレビュー」節・マスターボリューム影響範囲を更新。
 
 - **FM 音量の「TL 一括上書き」を「音色 TL + 音量オフセット」方式へ修正 — プリセットの音色バランスが MML 再生で失われる問題を解消 & Z80 アセンブラの `push ix` エンコードバグを修正 (`src/core/player/TrackSequencer.ts`, `driver/mzsd_driver.asm`, `src/core/chips/ChipBank.ts`, `src/core/assembler/Z80Encoding.ts`, テスト 3 件・仕様書 2 件更新)** (2026-09-10):
   - **背景・ユーザー指摘**: 「FM TONE でプリセットの E.PIANO 1 を選択すると、きれいなエレピの音がなるが、MML で鳴らすと濁ったノイズ音がなる。どちらが正しいかよくわからない。仮想キーボードはきれいなエレピの音がなる。」
