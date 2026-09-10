@@ -6,8 +6,8 @@
 ---
 
 ## 1. 現在のステータス概要
-- **バージョン**: `v0.0.1-beta.127`（コミット通番＋短縮ハッシュ ハイブリッド方式）
-- **テスト通過状況**: 全 44 テストファイル / 634 件パス + 1 skip（`npm test` / Vitest）
+- **バージョン**: `v0.0.1-beta.128`（コミット通番＋短縮ハッシュ ハイブリッド方式）
+- **テスト通過状況**: 全 45 テストファイル / 639 件パス + 1 skip（`npm test` / Vitest）
 - **型検査状況**: エラー 0 件（`npx tsc -b`）
 - **主要機能の稼働状況**:
   - Web ネイティブ MML コンパイラ（9ch / 17ch / ワークトラック W1〜W99 対応）
@@ -53,6 +53,17 @@
 ---
 
 ## 3. 直近の完了作業（最新）
+
+- **fix: 仮想キーボード / FM TONE / V-ENV / P-ENV プレビュー発音中のプチノイズを解消 — 出力バッファ拡大 + アンダーラン時デクリック (`src/core/keyboard/KeyboardAudioOutput.ts`, `src/core/player/FramePlaybackWorklet.ts`, `src/core/player/__tests__/FramePlaybackWorklet.test.ts` 新規, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-11):
+  - **背景・ユーザー報告**: 「仮想キーボードや、FM TONE、V-ENV、P-ENVのプレビューについて、鳴っている間にプチノイズが発生しています。」
+  - **原因**: 鍵盤用出力 `KeyboardAudioOutput` のワークレット目標バッファが **768 frames (≒16ms)** と極端に小さく、worklet からの残量報告 (4 render quantum ≒ 10.7ms ごと) の遅延と pump 間隔 (10ms) を差し引くと実効在庫下限が数十 frames (1ms 未満) しかなかった。UI 描画等でメインスレッドが一瞬遅延するたびにワークレット側が供給枯渇 (アンダーラン) し、**無音への急落と供給回復時の波形不連続が「プチ」ノイズ**として聞こえていた。MML 演奏側 (`AudioEngine`) は目標 4096 frames (≒85ms) があるためノイズが出ない。
+  - **対応内容**:
+    1. `KeyboardAudioOutput`: 目標バッファを **768 → 2048 frames (≒43ms)** へ拡大 (打鍵レイテンシは平均 20ms 程度で実用域を維持)、pump チャンクを 256 → 512 frames へ変更 (postMessage 回数を半減)。
+    2. `FramePlaybackWorklet` (演奏側と共有): バッファ残量報告を 4 → **2 render quantum (≒5ms) ごと**に高頻度化し、メインスレッド側の残量見積もり誤差を低減。
+    3. **デクリック機構をワークレットへ追加** (演奏側にも有効な保険): アンダーラン時は直前レベルから ≒1.3ms (64 frames) かけてフェードアウト、供給回復時はフェードインして波形の不連続を緩和。通常再生中はゲイン 1 のまま無影響。`clear` 要求時はフェード状態もリセット。
+  - **テスト**: `FramePlaybackWorklet.test.ts` (新規・5 件) — worklet ソース文字列をスタブ環境へ評価して `process()` を直接駆動し、通常再生ゲイン / アンダーラン時フェードアウト (即座に 0 へ落ちない) / 回復時フェードイン (64 フレームで通常ゲイン) / 残量報告タイミング / clear 時の即時無音を検証。
+  - **検証**: `npx tsc -b` エラーゼロ / `npm test` 全 45 ファイル・639 件合格 + 1 skip / `npm run lint` エラーゼロ (既存警告 10 件のみ) / `npm run build` 成功。
+  - **備考**: 症状は同一経路 (`virtualSynth` → `KeyboardSoundEngine` → `KeyboardAudioOutput`) を共有する仮想キーボード全音源 (PSG / NOISE / BEEP / @IN / @VE / @PE) と FM TONE / V-ENV / P-ENV 各エディタ試聴で共通のため、本修正で一括解消される。
 
 - **fix: 仮想キーボード / FM TONE プレビューで「ひどいノイズ」が鳴る問題を修正 (Phase B 直後のバグ・ユーザー報告)** (2026-09-10):
   - **現象**: `fm_panpot.mml` 演奏 (MML 再生) は正しくマリンバ風に鳴るが、MML エディタモードで仮想キーボードを押下 / FM TONE タブのプレビューでは激しいノイズが混入する。

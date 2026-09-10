@@ -1,7 +1,8 @@
 /**
  * 仮想キーボード / エディタ試聴用の低レイテンシ Web Audio 出力アダプタ。
  * 演奏プレビュー用 AudioEngine (20ms pump / 目標 4096 frames ≒ 85ms) と異なり、
- * 10ms pump + 小バッファ (数百 frames) で常時駆動し鍵盤の即時応答を優先する。
+ * 10ms pump + 中小バッファ (目標 2048 frames ≒ 43ms) で常時駆動し、
+ * 打鍵応答とアンダーラン (プチノイズ) 耐性のバランスを取る。
  * AudioWorklet には演奏と同じ FramePlaybackWorkletSource (Blob URL) を流用する。
  */
 import { FramePlaybackWorkletSource } from '../player/FramePlaybackWorklet';
@@ -11,11 +12,17 @@ const WorkletProcessorName = 'mzsd-frame-playback';
 /** pump の呼び出し間隔 (ms)。 */
 const PumpIntervalMs = 10;
 
-/** 1 回の pump で合成するフレーム数 (≒ 5ms 分)。 */
-const PumpChunkFrames = 256;
+/** 1 回の pump で合成するフレーム数 (≒ 10ms 分 @48kHz)。 */
+const PumpChunkFrames = 512;
 
-/** AudioWorklet 側に保持する目標バッファ量 (フレーム数、≒ 16ms)。 */
-const TargetBufferedFrames = 768;
+/**
+ * AudioWorklet 側に保持する目標バッファ量 (フレーム数、≒ 43ms)。
+ * 小さすぎるとメインスレッドの一時的な遅延 (UI 描画 / GC 等) でワークレット側が
+ * 供給枯渇 (アンダーラン) し、無音への急落と再開の不連続 = プチノイズとして聞こえる。
+ * worklet からの残量報告には ≒ 5ms の遅延 + 1 チャンク分の補充粒度があるため、
+ * 実効在庫下限は目標値から (pump 間隔 + 報告遅延 + チャンク) 分を差し引いた量になる。
+ */
+const TargetBufferedFrames = 2048;
 
 /** ScriptProcessor フォールバックのバッファサイズ (フレーム数)。 */
 const ScriptProcessorBufferSize = 512;
