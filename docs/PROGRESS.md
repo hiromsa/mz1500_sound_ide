@@ -6,8 +6,8 @@
 ---
 
 ## 1. 現在のステータス概要
-- **バージョン**: `v0.0.1-beta.126`（コミット通番＋短縮ハッシュ ハイブリッド方式）
-- **テスト通過状況**: 全 44 テストファイル / 632 件パス + 1 skip（`npm test` / Vitest）
+- **バージョン**: `v0.0.1-beta.127`（コミット通番＋短縮ハッシュ ハイブリッド方式）
+- **テスト通過状況**: 全 44 テストファイル / 634 件パス + 1 skip（`npm test` / Vitest）
 - **型検査状況**: エラー 0 件（`npx tsc -b`）
 - **主要機能の稼働状況**:
   - Web ネイティブ MML コンパイラ（9ch / 17ch / ワークトラック W1〜W99 対応）
@@ -53,6 +53,12 @@
 ---
 
 ## 3. 直近の完了作業（最新）
+
+- **fix: 仮想キーボード / FM TONE プレビューで「ひどいノイズ」が鳴る問題を修正 (Phase B 直後のバグ・ユーザー報告)** (2026-09-10):
+  - **現象**: `fm_panpot.mml` 演奏 (MML 再生) は正しくマリンバ風に鳴るが、MML エディタモードで仮想キーボードを押下 / FM TONE タブのプレビューでは激しいノイズが混入する。
+  - **原因**: `DcsgChip` の減衰レジスタ初期値が **0 (= 最大音量)** のため、KeyboardSoundEngine は DCSG に何も書いていない状態で **ノイズ ch が全開で鳴りっぱなし**になっていた。MML 再生では MZSD ドライバ初期化が全チャンネルを無音化するため問題が顕在化しなかった。KeyboardSoundEngine はボイス発音中のみ `AudioFrameMixer.read()` (全チップ合成) を呼ぶため、FM ノートの裏で両 PSG のホワイトノイズ (初期 `renderSample = -0.218 ≠ 0`) が最大音量で混入していた。
+  - **対応内容**: `KeyboardSoundEngine` コンストラクタで MZSD ドライバと同様に **DCSG 全チャンネル (psg1×4 + psg2×4) を減衰 15 で無音化**して開始するよう修正 (FM は keyon 無し・BEEP は gate 無しで元々無音)。
+  - **テスト**: 回帰テスト 2 件を `KeyboardSoundEngine.test.ts` へ追加 (① 初期状態で全チップ無音 = 減衰レジスタ 15 + `renderSample === 0`、② FM 発音中に DCSG 減衰レジスタが書き換わらず L/R 出力が FM のみ = 独立ノイズの混入なし)。`npm test` 全 44 ファイル・634 件合格 + 1 skip / `npx tsc -b` エラーゼロ。
 
 - **仮想キーボード音源統一 Phase B: PSG / ノイズ / BEEP および V-ENV / P-ENV エディタ試聴をチップ駆動へ統一 — 全試聴経路が MML 演奏と同一のチップエミュレーションに (`src/core/keyboard/VolumeEnvelopePlayback.ts` 新設 (移動), `src/core/keyboard/KeyboardSoundEngine.ts`, `src/utils/virtualSynth.ts`, `src/view/VolEnvelopeEditor.tsx`, `src/view/PitchEnvelopeEditor.tsx`, `src/app/App.tsx`, テスト 13 件追加・仕様書更新)** (2026-09-10):
   - **対応内容** (2026-09-10 ユーザー確定 Plan のとおり実装):

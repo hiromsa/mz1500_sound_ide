@@ -278,6 +278,15 @@ export class KeyboardSoundEngine {
   constructor(sampleRate: number = DefaultSampleRate) {
     this.mixer = new AudioFrameMixer(sampleRate);
     this.mixer.attachDriver(this.driver);
+
+    // DCSG の減衰レジスタは初期値 0 (= 最大音量) のため、何も書かなければノイズ ch が
+    // 最初から全開で鳴り続ける。MZSD ドライバの初期化と同様に全チャンネルを無音化して開始する
+    // (FM は keyon 無し・BEEP は gate 無しで元々無音)
+    for (const psg of [this.mixer.chips.psg1, this.mixer.chips.psg2]) {
+      for (let channel = 0; channel < DcsgChip.ChannelCount; channel++) {
+        psg.setAttenuation(channel, 15);
+      }
+    }
   }
 
   /** 発音中 (リリース中含む) のボイス数 (FM + DCSG + BEEP の合計)。 */

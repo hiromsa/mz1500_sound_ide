@@ -25,6 +25,43 @@ function tick(engine: KeyboardSoundEngine, frames = 1): Float32Array {
 }
 
 describe('KeyboardSoundEngine', () => {
+  it('初期状態で全チップは無音 (DCSG の減衰レジスタ初期値 0 = 最大音量のノイズ ch を無音化する)', () => {
+    const engine = new KeyboardSoundEngine();
+    const { psg1, psg2, beep } = engine.mixer.chips;
+
+    // DCSG は減衰 0 (= 最大音量) だとノイズ ch が最初から鳴り続けるため、
+    // MZSD ドライバと同様に全チャンネル減衰 15 で開始しなければならない
+    for (const chip of [psg1, psg2]) {
+      for (let channel = 0; channel < 4; channel++) {
+        expect(chip.attenuationRegister(channel)).toBe(15);
+        expect(chip.renderSample(48000)).toBe(0);
+      }
+    }
+    expect(beep.renderSample(48000)).toBe(0);
+  });
+
+  it('FM 発音中に DCSG ノイズが混入しない (L/R の標本が独立ノイズで汚染されない)', () => {
+    const engine = new KeyboardSoundEngine();
+    engine.fmNoteOn(72, { fmTone: testTone, volume: 15 });
+
+    const buffer = tick(engine, 10);
+
+    // PSG の減衰レジスタは書き換えられていない (FM 発音は DCSG に触れない)
+    for (const chip of [engine.mixer.chips.psg1, engine.mixer.chips.psg2]) {
+      for (let channel = 0; channel < 4; channel++) {
+        expect(chip.attenuationRegister(channel)).toBe(15);
+      }
+    }
+
+    // 出力は FM (中央) のみ: L と R は完全一致する
+    for (let i = 0; i < buffer.length; i += 2) {
+      if (buffer[i] !== 0 || buffer[i + 1] !== 0) {
+        expect(buffer[i]).toBe(buffer[i + 1]);
+        break;
+      }
+    }
+  });
+
   it('fmNoteOn で音色レジスタ / KC-KF / KEY ON が書かれる', () => {
     const engine = new KeyboardSoundEngine();
     engine.fmNoteOn(60, { fmTone: testTone, volume: 15 });
