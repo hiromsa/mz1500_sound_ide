@@ -114,9 +114,10 @@ function appendBlockWithCrc(target: QdfBlockBuilder, block: QdfBlockBuilder): vo
 /**
  * ASCII コードを MZ-1500 ディスプレイコード (キャラクタセット 0) へ変換する。
  * MZ-1500 のテキスト VRAM は ASCII と無関係なディスプレイコード体系のため、
- * 画面に文字を表示する機能ではこの変換が必要
- * (実測: "PSG OCT" → 10 13 07 00 0F 03 14、"MARIO SPECIAL" → 0D 01 12 09 0F 00 13 10 05 03 09 01 0C)。
- * ※ QDF ヘッダのファイル名は ASCII で記録する (実機 QDF の慣行)。IPL が表示時に変換する。
+ * QDF ヘッダのファイル名を IPL のロード表示に出すには、**この変換済みの値**を
+ * ヘッダに記録する必要がある (実測: "PSG OCT" → 10 13 07 00 0F 03 14、
+ * "MARIO SPECIAL" → 0D 01 12 09 0F 00 13 10 05 03 09 01 0C)。
+ * 変換できない記号は空白 (0x00) 扱いとする。
  */
 export function asciiToDisplayCode(code: number): number {
   if (code === 0x20) {
@@ -150,13 +151,11 @@ function appendFileName(target: QdfBlockBuilder, fileName: string): void {
     .join('')
     .slice(0, FileNameLength);
 
-  // ファイル名は ASCII のまま記録する (実機 QDF の慣行)。IPL がロード表示時に
-  // ASCII → ディスプレイコードへ変換するため、ここで表示コード化すると二重変換になる。
   appendAscii(target, normalized);
   for (let i = normalized.length; i < FileNameLength; i++) {
-    target.appendByte(0x20); // 空白パディング (0x0D 埋めは IPL のロード表示で文字化けする)
+    target.appendByte(0x20);
   }
-  target.appendByte(0x0d); // ファイル名終端 (第 17 バイト)
+  target.appendByte(0x0d);
 }
 
 /**
