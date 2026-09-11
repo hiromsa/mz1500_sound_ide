@@ -47,6 +47,47 @@ describe('AudioFrameMixer', () => {
     expect(rightMax).toBe(0); // PSG2 / BEEP / FM は無音
   });
 
+  it('setPsgOutputPlacement で DCSG チップの出力定位を変更できる (center = L/R 両方 / right = R のみ)', () => {
+    const mixer = new AudioFrameMixer(48000);
+    // DCSG の減衰レジスタ初期値は 0 (= 最大音量) のため、全チャンネルを無音化してから
+    // psg1 トーン ch0 のみを鳴らす (MZSD ドライバ初期化と同一状態)
+    for (const chip of [mixer.chips.psg1, mixer.chips.psg2]) {
+      for (let channel = 0; channel < 4; channel++) {
+        chip.setAttenuation(channel, 15);
+      }
+    }
+    mixer.chips.psg1.setTonePeriod(0, 253);
+    mixer.chips.psg1.setAttenuation(0, 0);
+
+    const peaks = () => {
+      const buffer = new Float32Array(800 * 2);
+      mixer.read(buffer);
+      let leftMax = 0;
+      let rightMax = 0;
+      for (let i = 0; i < 800; i++) {
+        leftMax = Math.max(leftMax, Math.abs(buffer[i * 2]));
+        rightMax = Math.max(rightMax, Math.abs(buffer[(i * 2) + 1]));
+      }
+      return { leftMax, rightMax };
+    };
+
+    // 既定 (実機配線): psg1 → L のみ
+    expect(peaks().leftMax).toBeGreaterThan(0);
+    expect(peaks().rightMax).toBe(0);
+
+    // center: L と R の両チャンネルへ同一出力 (仮想キーボード ENV 試聴などの中央定位)
+    mixer.setPsgOutputPlacement(0, 'center');
+    const center = peaks();
+    expect(center.leftMax).toBeGreaterThan(0);
+    expect(center.rightMax).toBe(center.leftMax);
+
+    // right: R のみ
+    mixer.setPsgOutputPlacement(0, 'right');
+    const right = peaks();
+    expect(right.leftMax).toBe(0);
+    expect(right.rightMax).toBeGreaterThan(0);
+  });
+
   it('reports finished when all tracks end', () => {
     const mixer = new AudioFrameMixer(48000);
     const builder = new SongBuilder();

@@ -6,8 +6,8 @@
 ---
 
 ## 1. 現在のステータス概要
-- **バージョン**: `v0.0.1-beta.137+1c3f614`（コミット通番＋短縮ハッシュ ハイブリッド方式）
-- **テスト通過状況**: 全 47 テストファイル / 643 件パス + 1 skip（`npm test` / Vitest）
+- **バージョン**: `v0.0.1-beta.138+4b916bb`（コミット通番＋短縮ハッシュ ハイブリッド方式）
+- **テスト通過状況**: 全 47 テストファイル / 656 件パス + 1 skip（`npm test` / Vitest）
 - **型検査状況**: エラー 0 件（`npx tsc -b`）
 - **主要機能の稼働状況**:
   - Web ネイティブ MML コンパイラ（9ch / 17ch / ワークトラック W1〜W99 対応）
@@ -28,6 +28,10 @@
   - 実機環境での AudioWorklet / Web Audio 再生挙動のクロスチェック。
 
 ### 優先度: 中 (Medium Priority)
+- [ ] **TRACK MONITOR の DCSG 出力定位 (左・右・中央) 選択機能 (ユーザー構想 2026-09-11)**
+  - DCSG1 (P1-P3 / N1) / DCSG2 (P4-P6 / N2) それぞれの出力定位を左・右・中央から選択できるようにする (あくまでプレビュー用)。
+  - **仮想キーボードの `OUT: L/R/C (MONO)` 定位バッジ・発音と連動**させる (ユーザー確定)。
+  - 布地実装済み: `AudioFrameMixer.setPsgOutputPlacement(chipIndex, 'left' | 'right' | 'center')` (既定 = 実機配線どおり chip0 = L / chip1 = R)。演奏プレビュー (Player) と仮想キーボード (KeyboardSoundEngine) の双方のミキサーへ同一設定を反映する UI を新設する。
 - [ ] **和音（Poly）トラックの複数独立スプリット管理 (別AIへの引継ぎタスク)**
   - 現状の `MidiRouterModal` は単一の `splitTargets: { [voice: number]: string }` を共有しているため、複数和音トラック存在時にスプリット先が同一になる。
   - `WorkTrack` 内部にトラック固有の `splitTargets`（または個別ボイスアサインマップ）を内包化し、トラックごとに独立したスプリット先へ振り分けられるよう内部データ構造を拡張する。
@@ -53,6 +57,19 @@
 ---
 
 ## 3. 直近の完了作業（最新）
+
+- **feat(ui): 仮想キーボードを単音 (モノフォニック) 発音化 & 発音定位を実機 DCSG チップ配線に連動 — PSG の多押しで左右交互に鳴る問題を修正 (`src/view/VirtualKeyboard.tsx`, `src/utils/virtualSynth.ts`, `src/utils/keyboardChipMode.ts`, `src/utils/mmlCaretParser.ts`, `src/core/keyboard/KeyboardSoundEngine.ts`, `src/core/player/AudioFrameMixer.ts`, 各テスト, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-11):
+  - **背景・ユーザー報告**: 「仮想キーボードをたくさん押していると、PSGのばあい、左から鳴ったり、右から鳴ったりします。」
+  - **原因**: 実機 MZ-1500 は DCSG1 → 左 / DCSG2 → 右に配線されており (`AudioFrameMixer.read` の `PSG1 → L / PSG2 → R`)、仮想キーボードのポリフォニック発音が実機音声数 (トーン 6 = psg1×3 + psg2×3) を超えると左右両チップに割り当てられ、音の出入りのたびに定位が不規則に変わっていた (1〜3 音目 = 左 / 4 音目以降 = 右)。
+  - **対応内容** (2026-09-11 ユーザー確定方針「MML モード時はキャレットトラックのチップから鳴らす (P1〜P3 = 左 / P4〜P6 = 右、ENV 編集時 = 中央)・仮想キーボードはとりあえず単音でよい」のとおり):
+    1. **単音化**: `VirtualSynthEngine.noteOnMonophonic()` を新設 (既存発音を `allNotesOff` で即時停止してから発音)。`VirtualKeyboard.handleNoteOn` は全エンジン (PSG / FM / ノイズ / BEEP) を単音発音とし、同時押し・ドラッグ中も常に 1 音のみ鳴る。`noteOn` (重ね発音) はエディタ試聴用に維持。`activeVoiceCount` getter を検証用に追加。
+    2. **定位解決**: `keyboardChipMode.ts` に `resolvePsgOutputPlacement()` (純粋関数) を新設 — MML モードはキャレットトラックの DCSG チップ (`resolveDcsgChipIndexFromTrackName`: P1-P3/N1 = 0 = 左 / P4-P6/N2 = 1 = 右 / W1-W99 等は null = 中央)、ENV エディタモードと FM / BEEP は中央。
+    3. **チップ指定発音**: `KeyboardSoundEngine.psgNoteOn / noiseNoteOn` へ `chip: 0 | 1` オプションを追加。`allocateDcsgSlots` は指定チップのスロットのみを候補とし、steal も同一チップ内で完結。
+    4. **ミキサー定位 API**: `AudioFrameMixer.setPsgOutputPlacement(chipIndex, 'left' | 'right' | 'center')` を新設 (既定 = 実機配線どおり)。`center` は L/R 両チャンネルへ同一出力 (ENV 試聴の中央定位)。**仮想キーボード専用ミキサーにのみ適用され、MML 演奏プレビューの定位は実機配線のまま不変**。
+    5. **UI**: コントロールバーへ `OUT: L/R/C (MONO)` 定位バッジを新設 (L = シアン / R = アンバー / C = グレー + 単音発音のツールチップ)。トラック → チップ → 定位の対応が鍵盤試聴上で常時わかる。
+  - **将来布地**: ユーザー構想の「TRACK MONITOR 上で DCSG1 / DCSG2 の出力定位 (左・右・中央) を選択 (プレビュー用)」は Pending Tasks へ記録。`setPsgOutputPlacement` API はその布地として実装済み。
+  - **テスト**: `keyboardChipMode.test.ts` (+6: 定位解決の全分岐) / `AudioFrameMixer.test.ts` (+1: setPsgOutputPlacement の L / center / right 振り分け) / `KeyboardSoundEngine.test.ts` (+3: chip 指定発音・同一チップ内 steal・ノイズチップ指定) / `virtualSynth.test.ts` (+3: noteOnMonophonic の単音化・音源跨ぎ)。
+  - **検証**: `npx tsc -b` エラーゼロ / `npm test` 全 47 ファイル・656 件合格 + 1 skip (+13) / `npm run lint` エラーゼロ (既存警告 10 は変更なし) / `npm run build` 成功。
 
 - **fix(ui): MML エディタの同一文字出現ハイライト (occurrencesHighlight) を無効化 — キャレット下文字と同じ文字の反転表示を廃止 (`src/view/MmlEditor.tsx`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-11):
   - **背景・ユーザー要望**: 「キャレット位置の文字と同じ文字をMMLエディタが反転表示する動きになってますが、廃止したいです。」

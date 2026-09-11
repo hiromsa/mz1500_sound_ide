@@ -4,7 +4,9 @@ import { virtualSynth, type SoundEngineType, type SynthPlayOptions } from '../ut
 import {
   isNoiseIntegrateChipActive,
   normalizeChipModeEngine,
+  resolvePsgOutputPlacement,
   type VirtualKeyboardChipMode,
+  type VirtualKeyboardPsgPlacement,
 } from '../utils/keyboardChipMode';
 import type { MmlCaretContext } from '../utils/mmlCaretParser';
 import { isMmlNoteInsertModeActive } from '../utils/mmlNoteInserter';
@@ -286,6 +288,28 @@ export function VirtualKeyboard({
     caretTrackName: mmlContext?.trackName ?? '',
   });
 
+  // 2.7 発音定位 (実機チップ配線に対応: DCSG1 = P1-P3/N1 = 左 / DCSG2 = P4-P6/N2 = 右 / その他 = 中央)
+  const effectivePsgPlacement: VirtualKeyboardPsgPlacement = useMemo(
+    () =>
+      resolvePsgOutputPlacement({
+        effectiveEngine,
+        isMmlContext: activeTabContext === 'mml',
+        caretTrackName: mmlContext?.trackName ?? '',
+      }),
+    [effectiveEngine, activeTabContext, mmlContext],
+  );
+
+  // 定位の変化を発音エンジンのミキサーへ反映 (center = 両チップ出力で中央定位にする)
+  useEffect(() => {
+    if (effectivePsgPlacement === 'center') {
+      virtualSynth.setPsgOutputPlacement(0, 'center');
+      virtualSynth.setPsgOutputPlacement(1, 'center');
+    } else {
+      virtualSynth.setPsgOutputPlacement(0, 'left');
+      virtualSynth.setPsgOutputPlacement(1, 'right');
+    }
+  }, [effectivePsgPlacement]);
+
   // DCSG (PSG) 実機レジスタで出せない低音域の鍵盤は無効化する
   // (トーン周期レジスタ 10bit の下限 = period 1023 ≒ 109.3Hz / A2 未満は実機で発音不可)
   const isDcsgToneLimited = effectiveEngine === 'psg';
@@ -428,7 +452,7 @@ export function VirtualKeyboard({
     });
   }, [onChangeTestMidiNote, testMidiNote]);
 
-  // ノート発音ハンドラ
+  // ノート発音ハンドラ (単音・モノフォニック: 新しいキーを押すと前の音は即時停止する)
   const handleNoteOn = useCallback((midiNote: number) => {
     // [MML INSERT] モード中は押下鍵を MML 音符としてキャレット位置へ挿入する
     // (実機 DCSG 音域制限は発音のみの制約のため、音域外の鍵でも挿入は行う)
@@ -448,6 +472,11 @@ export function VirtualKeyboard({
       volume: effectiveVolume,
       detune: mmlContext?.detune || 0,
     };
+
+    // 発音先の DCSG チップ (定位: DCSG1 = P1-P3/N1 = 左 / DCSG2 = P4-P6/N2 = 右 / 中央 = PSG1 + PSG2 両出力)
+    if (effectiveEngine === 'psg' || effectiveEngine === 'noise') {
+      options.psgChip = effectivePsgPlacement === 'right' ? 1 : 0;
+    }
 
     // ノイズ波形 / 統合モード設定 (ノイズトラックは @WN、PSG は @IN)
     if (effectiveEngine === 'noise') {
@@ -479,7 +508,7 @@ export function VirtualKeyboard({
       options.volEnvRelease = effectiveVolEnvData.release;
     }
 
-    virtualSynth.noteOn(midiNote, options);
+    virtualSynth.noteOnMonophonic(midiNote, options);
   }, [
     isMmlInsertMode,
     onInsertMmlNote,
@@ -487,6 +516,7 @@ export function VirtualKeyboard({
     effectiveVolume,
     effectiveNoiseType,
     effectiveNoiseIntegrate,
+    effectivePsgPlacement,
     mmlContext,
     activeFmTone,
     definedFmTones,
@@ -699,6 +729,27 @@ export function VirtualKeyboard({
                 <option value="noise">NOISE (DCSG)</option>
               </select>
             )}
+          </div>
+
+          {/* 発音定位バッジ (実機 DCSG チップ配線に対応) + 単音発音 (MONO) 表示 */}
+          <div
+            className={`flex items-center px-2 py-0.5 rounded border text-[10px] font-bold shrink-0 ${
+              effectivePsgPlacement === 'left'
+                ? 'bg-cyan-950/60 border-cyan-500/40 text-cyan-300'
+                : effectivePsgPlacement === 'right'
+                  ? 'bg-amber-950/50 border-amber-500/40 text-amber-300'
+                  : 'bg-zinc-900/80 border-white/[0.08] text-zinc-400'
+            }`}
+            title={[
+              effectivePsgPlacement === 'left'
+                ? '発音定位: 左 — DCSG1 (P1-P3 / N1) トラックの発音は実機配線どおり左チャンネルから出力されます'
+                : effectivePsgPlacement === 'right'
+                  ? '発音定位: 右 — DCSG2 (P4-P6 / N2) トラックの発音は実機配線どおり右チャンネルから出力されます'
+                  : '発音定位: 中央 — ENVエディタ試聴・FM / BEEP・Wトラック (作業用) は中央から出力されます',
+              '仮想キーボードは単音 (モノフォニック) 発音です。新しいキーを押すと前の音を停止します',
+            ].join('\n')}
+          >
+            OUT: {effectivePsgPlacement === 'left' ? 'L' : effectivePsgPlacement === 'right' ? 'R' : 'C'} (MONO)
           </div>
 
           {/* 2) FM音色指定 (@VOICE: FM時のみ) */}

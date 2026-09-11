@@ -1,6 +1,7 @@
 /**
  * チップ合成 + 60Hz シーケンサ駆動 + ミキシング。
- * 出力は 48kHz / 2ch / float。PSG1 → L、PSG2 → R、BEEP / FM → 中央。
+ * 出力は 48kHz / 2ch / float。DCSG はチップごとの出力定位 (既定 = 実機配線どおり PSG1 → L / PSG2 → R)、
+ * BEEP / FM → 中央。
  * C# 版では AudioEngine.MixerProvider が NAudio の ISampleProvider として担っていた部分を、
  * Web Audio に依存しない純粋ロジックとして切り出したもの (vitest で完全にテスト可能)。
  * (移植元: MzSound.Player/Audio/AudioEngine.cs — MixerProvider.Read / UpdateTrackLevels)
@@ -8,6 +9,24 @@
 import { ChipBank } from '../chips/ChipBank';
 import type { FrameDriver } from './FrameDriver';
 import { MzsdSong } from './MzsdSong';
+
+/**
+ * DCSG チップ (PSG1 / PSG2) の出力定位。
+ * 'left' / 'right' は実機配線 (PSG1 → L / PSG2 → R)、'center' は L と R の両チャンネルへ同一出力。
+ */
+export type PsgOutputPlacement = 'left' | 'right' | 'center';
+
+/** PSG 標本 1 点を指定定位の (L, R) 出力へ振り分ける。 */
+function routePsgSample(sample: number, placement: PsgOutputPlacement): [number, number] {
+  switch (placement) {
+    case 'left':
+      return [sample, 0];
+    case 'right':
+      return [0, sample];
+    case 'center':
+      return [sample, sample];
+  }
+}
 
 /** 既定の出力サンプルレート (Hz)。C# 版の AudioEngine.SampleRate と同一。 */
 export const DefaultSampleRate = 48000;
@@ -42,6 +61,9 @@ export class AudioFrameMixer {
   private masterLevel = 0;
 
   private frameAccumulator = 0;
+
+  /** DCSG チップの出力定位 (既定 = 実機配線どおり PSG1 → L / PSG2 → R)。 */
+  private readonly psgPlacements: [PsgOutputPlacement, PsgOutputPlacement] = ['left', 'right'];
 
   /** FM 合成用の int バッファ (ステレオインターリーブ)。 */
   private fmBuffer = new Int32Array(0);
@@ -101,6 +123,14 @@ export class AudioFrameMixer {
     this.masterVolume = Math.min(Math.max(volume, 0), 1);
   }
 
+  /**
+   * DCSG チップの出力定位を設定する (プレビュー用)。
+   * 既定は実機配線どおり chip0 = 左 / chip1 = 右。'center' は両チャンネルへ同一出力する。
+   */
+  setPsgOutputPlacement(chipIndex: 0 | 1, placement: PsgOutputPlacement): void {
+    this.psgPlacements[chipIndex] = placement;
+  }
+
   /** トラックの VU レベル (0-1) を取得する。 */
   getTrackLevel(trackIndex: number): number {
     return this.trackLevels[trackIndex];
@@ -140,9 +170,18 @@ export class AudioFrameMixer {
         }
       }
 
-      // PSG1 → L、PSG2 → R、BEEP / FM → 中央 (内蔵スピーカ = モノラルミックス相当)
-      const left = this.chips.psg1.renderSample(this.sampleRate);
-      const right = this.chips.psg2.renderSample(this.sampleRate);
+      // DCSG はチップごとの出力定位へ振り分け (既定 = 実機配線どおり PSG1 → L / PSG2 → R)、
+      // BEEP / FM → 中央 (内蔵スピーカ = モノラルミックス相当)
+      const [psg1Left, psg1Right] = routePsgSample(
+        this.chips.psg1.renderSample(this.sampleRate),
+        this.psgPlacements[0],
+      );
+      const [psg2Left, psg2Right] = routePsgSample(
+        this.chips.psg2.renderSample(this.sampleRate),
+        this.psgPlacements[1],
+      );
+      const left = psg1Left + psg2Left;
+      const right = psg1Right + psg2Right;
       const fmLeft = this.fmBuffer[i * 2] / 32768.0 * 0.4;
       const fmRight = this.fmBuffer[(i * 2) + 1] / 32768.0 * 0.4;
       const mono = this.chips.beep.renderSample(this.sampleRate) * 0.5;

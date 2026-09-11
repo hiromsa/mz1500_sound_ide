@@ -6,7 +6,7 @@
  * 関係なく @IN セレクタを試聴可能にする。
  */
 import type { SoundEngineType } from './virtualSynth';
-import { isDcsgTone3TrackName } from './mmlCaretParser';
+import { isDcsgTone3TrackName, resolveDcsgChipIndexFromTrackName } from './mmlCaretParser';
 
 /** CHIP セレクタの選択値 ('psg_tone3' = 「PSG P3/P6 (@IN)」モードの明示選択) */
 export type VirtualKeyboardChipMode = SoundEngineType | 'auto' | 'psg_tone3';
@@ -43,4 +43,33 @@ export function isNoiseIntegrateChipActive(args: NoiseIntegrateAvailability): bo
   if (args.effectiveEngine !== 'psg') return false;
   if (args.manualEngine === 'psg_tone3') return true;
   return !args.isMmlContext || isDcsgTone3TrackName(args.caretTrackName);
+}
+
+/** PSG / ノイズ発音のステレオ定位 ('left' = DCSG1 側 / 'right' = DCSG2 側 / 'center' = 中央)。 */
+export type VirtualKeyboardPsgPlacement = 'left' | 'right' | 'center';
+
+/** {@link resolvePsgOutputPlacement} への引数 */
+export interface PsgPlacementResolution {
+  /** 実効音源 (正規化済み) */
+  effectiveEngine: SoundEngineType;
+  /** MML エディタモードか (ENV エディタ等は false = トラック概念なし) */
+  isMmlContext: boolean;
+  /** MML キャレット位置のトラック名 (MML モード以外では空文字でよい) */
+  caretTrackName: string;
+}
+
+/**
+ * 仮想キーボード発音のステレオ定位を実機チップ構成から解決する。
+ *
+ * - FM / BEEP → 'center' (OPM 既定 RL = L+R / 8253 内蔵スピーカ = 中央出力)
+ * - ENV エディタモード (トラック概念なし) → 'center' (両チップから出力し中央定位にする)
+ * - MML モード → キャレットトラックの DCSG チップ配線に従う
+ *   (P1-P3 / N1 = DCSG1 = 左、P4-P6 / N2 = DCSG2 = 右、W1-W99 など実機未割当トラック = 中央)
+ */
+export function resolvePsgOutputPlacement(args: PsgPlacementResolution): VirtualKeyboardPsgPlacement {
+  if (args.effectiveEngine !== 'psg' && args.effectiveEngine !== 'noise') return 'center';
+  if (!args.isMmlContext) return 'center';
+  const chip = resolveDcsgChipIndexFromTrackName(args.caretTrackName);
+  if (chip === null) return 'center';
+  return chip === 0 ? 'left' : 'right';
 }

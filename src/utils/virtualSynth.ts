@@ -8,6 +8,7 @@
 import { type FmToneData } from '../core/fm/FmTone';
 import { KeyboardSoundEngine } from '../core/keyboard/KeyboardSoundEngine';
 import { KeyboardAudioOutput } from '../core/keyboard/KeyboardAudioOutput';
+import type { PsgOutputPlacement } from '../core/player/AudioFrameMixer';
 
 export { sustainEnvelopeIndex, VolumeEnvelopePlayback } from '../core/keyboard/VolumeEnvelopePlayback';
 
@@ -37,6 +38,8 @@ export interface SynthPlayOptions {
   noiseType?: 'periodic' | 'white'; // ノイズ種別
   /** ノイズ統合モード (MML @IN コマンド相当、PSG エンジン専用)。0 = 統合なし / 1 = 周期ノイズ連動 / 2 = ホワイトノイズ連動。 */
   noiseIntegrate?: 0 | 1 | 2;
+  /** PSG / ノイズ発音先の DCSG チップ (0 = PSG1 = 左 / 1 = PSG2 = 右)。未指定時は空きスロットへ自動割当。 */
+  psgChip?: 0 | 1;
 }
 
 /**
@@ -70,8 +73,36 @@ export class VirtualSynthEngine {
     this.keyboardEngine.setMasterVolume(volume);
   }
 
+  /**
+   * DCSG チップの出力定位を設定する (仮想キーボードの定位表示・ENV 試聴の中央配置用)。
+   * 既定 = 実機配線どおり chip0 = 左 / chip1 = 右。
+   */
+  public setPsgOutputPlacement(chipIndex: 0 | 1, placement: PsgOutputPlacement): void {
+    this.keyboardEngine.setPsgOutputPlacement(chipIndex, placement);
+  }
+
+  /** 発音中 (リリース中含む) のノート数 (デバッグ / テスト用)。 */
+  public get activeVoiceCount(): number {
+    return this.keyboardEngine.activeVoiceCount;
+  }
+
   // ノートON (エンジン種別に応じて KeyboardSoundEngine へ委譲)
   public noteOn(midiNote: number, options: SynthPlayOptions) {
+    this.dispatchNoteOn(midiNote, options);
+  }
+
+  /**
+   * 単音ノートON (仮想キーボード用)。
+   * 既存の全発音を即時停止 (リリースを打ち切り) してから新ノートを発音するため、
+   * 常に 1 音のみ鳴る (モノフォニック)。
+   */
+  public noteOnMonophonic(midiNote: number, options: SynthPlayOptions) {
+    this.keyboardEngine.allNotesOff();
+    this.dispatchNoteOn(midiNote, options);
+  }
+
+  /** 発音の共通経路 (オーディオ出力の起動 + エンジン種別ディスパッチ)。 */
+  private dispatchNoteOn(midiNote: number, options: SynthPlayOptions) {
     void this.keyboardOutput.ensureStarted();
 
     switch (options.engine) {
@@ -95,6 +126,7 @@ export class VirtualSynthEngine {
           volEnvLoop: options.volEnvLoop,
           volEnvRelease: options.volEnvRelease,
           noiseIntegrate: options.noiseIntegrate,
+          chip: options.psgChip,
         });
         break;
       case 'noise':
@@ -104,6 +136,7 @@ export class VirtualSynthEngine {
           volEnv: options.volEnv,
           volEnvLoop: options.volEnvLoop,
           volEnvRelease: options.volEnvRelease,
+          chip: options.psgChip,
         });
         break;
       case 'beep':

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   perceptualMasterGain,
   sustainEnvelopeIndex,
+  VirtualSynthEngine,
   VolumeEnvelopePlayback,
 } from '../virtualSynth';
 
@@ -123,5 +124,36 @@ describe('perceptualMasterGain', () => {
     expect(perceptualMasterGain(-0.001)).toBe(0);
     expect(perceptualMasterGain(1.001)).toBe(1);
     expect(perceptualMasterGain(2)).toBe(1);
+  });
+});
+
+/**
+ * VirtualSynthEngine.noteOnMonophonic (仮想キーボードの単音発音) のテスト。
+ * 鍵盤の同時押し・ドラッグ中も常に 1 音のみ鳴る (モノフォニック) ことを固定する。
+ */
+describe('VirtualSynthEngine — 単音発音 (noteOnMonophonic)', () => {
+  it('従来の noteOn は重ね発音できる (エディタ試聴など複数ボイス用途のため挙動を維持)', () => {
+    const synth = new VirtualSynthEngine();
+    synth.noteOn(60, { engine: 'psg', volume: 10 });
+    synth.noteOn(64, { engine: 'psg', volume: 10 });
+    expect(synth.activeVoiceCount).toBe(2);
+    synth.allNotesOff();
+  });
+
+  it('noteOnMonophonic は既存発音をすべて即時停止してから発音する (常に 1 音)', () => {
+    const synth = new VirtualSynthEngine();
+    synth.noteOn(60, { engine: 'psg', volume: 10 });
+    synth.noteOn(62, { engine: 'psg', volume: 10 });
+    synth.noteOnMonophonic(64, { engine: 'psg', volume: 10 });
+    expect(synth.activeVoiceCount).toBe(1);
+    synth.allNotesOff();
+  });
+
+  it('noteOnMonophonic は音源をまたいで単音化する (FM 発音中に PSG を押すと FM は停止)', () => {
+    const synth = new VirtualSynthEngine();
+    synth.noteOn(60, { engine: 'fm', volume: 15 });
+    synth.noteOnMonophonic(64, { engine: 'psg', volume: 10 });
+    expect(synth.activeVoiceCount).toBe(1);
+    synth.allNotesOff();
   });
 });

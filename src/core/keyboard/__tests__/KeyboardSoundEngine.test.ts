@@ -237,6 +237,39 @@ describe('KeyboardSoundEngine — PSG (DCSG)', () => {
     expect(engine.hasVoice(66)).toBe(true);
   });
 
+  it('chip: 1 指定の psgNoteOn は psg2 (DCSG2 = 右チャンネル) へ発音する', () => {
+    const engine = new KeyboardSoundEngine();
+    engine.psgNoteOn(69, { volume: 15, chip: 1 });
+
+    expect(engine.mixer.chips.psg2.tonePeriodRegister(0)).toBe(253);
+    expect(engine.mixer.chips.psg2.attenuationRegister(0)).toBe(0);
+    expect(engine.mixer.chips.psg1.attenuationRegister(0)).toBe(15); // psg1 側は無音のまま
+  });
+
+  it('chip 指定時は同一チップ内でのみ割り当て・steal する (空きのある別チップへ逃げない)', () => {
+    const engine = new KeyboardSoundEngine();
+    for (let note = 60; note < 63; note++) {
+      engine.psgNoteOn(note, { volume: 15, chip: 1 }); // psg2 のトーン 3 音声を占有
+    }
+    engine.psgNoteOn(63, { volume: 15, chip: 1 }); // 4 音目 → psg2 の最古ボイス (note 60) を steal
+
+    expect(engine.activeVoiceCount).toBe(3);
+    expect(engine.hasVoice(60)).toBe(false);
+    expect(engine.hasVoice(63)).toBe(true);
+    // psg1 (chip 0) へは一切発音しない
+    for (let channel = 0; channel < 3; channel++) {
+      expect(engine.mixer.chips.psg1.attenuationRegister(channel)).toBe(15);
+    }
+  });
+
+  it('chip: 0 指定の noiseNoteOn は psg1 のノイズ ch へ発音する (N1 = 左 / N2 = 右の定位)', () => {
+    const engine = new KeyboardSoundEngine();
+    engine.noiseNoteOn(60, { volume: 10, chip: 0 });
+
+    expect(engine.mixer.chips.psg1.attenuationRegister(3)).toBe(5);
+    expect(engine.mixer.chips.psg2.attenuationRegister(3)).toBe(15);
+  });
+
   it('@VE は 60Hz で減衰レジスタへ反映される (サステイン末尾でホールド)', () => {
     const engine = new KeyboardSoundEngine();
     engine.psgNoteOn(60, { volume: 15, volEnv: [15, 10, 5], volEnvLoop: -1 });

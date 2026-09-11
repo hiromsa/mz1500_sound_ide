@@ -60,6 +60,17 @@ export function isDcsgTone3TrackName(trackName: string): boolean {
 }
 
 /**
+ * トラック名から属する DCSG チップ (0 = PSG1 / 1 = PSG2) を判定する。
+ * 実機構成: DCSG1 = P1-P3 + N1 / DCSG2 = P4-P6 + N2 (mml_reference.md §1 準拠)。
+ * B1 / F1-F8 / W1-W99 など DCSG に属さないトラックは null を返す。
+ */
+export function resolveDcsgChipIndexFromTrackName(trackName: string): 0 | 1 | null {
+  if (/^(?:P[1-3]|N1)$/.test(trackName)) return 0;
+  if (/^(?:P[4-6]|N2)$/.test(trackName)) return 1;
+  return null;
+}
+
+/**
  * デフォルトの演奏状態を生成する。
  * voiceId は全トラック共通で 1 を初期値とする (各エディタ連動用の既定値)。
  */

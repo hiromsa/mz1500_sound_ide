@@ -12,6 +12,7 @@ import { AudioFrameMixer, DefaultSampleRate } from '../player/AudioFrameMixer';
 import { fmKcKfForPitch, fmToneDataToParameters, FM_PITCH_UNIT, writeFmToneRegisters } from '../player/FmToneRegisters';
 import type { FrameDriver } from '../player/FrameDriver';
 import { FmToneParameterCount } from '../player/MzsdSong';
+import type { PsgOutputPlacement } from '../player/AudioFrameMixer';
 import { BeepChip } from '../chips/BeepChip';
 import { DcsgChip } from '../chips/DcsgChip';
 import { VolumeEnvelopePlayback } from './VolumeEnvelopePlayback';
@@ -76,6 +77,13 @@ export interface KeyboardPsgNoteOptions {
 
   /** ノイズ統合モード (@IN コマンド相当)。1 = 周期ノイズ連動 / 2 = ホワイトノイズ連動。 */
   noiseIntegrate?: 0 | 1 | 2;
+
+  /**
+   * 発音先の DCSG チップ (0 = PSG1 / 1 = PSG2)。
+   * 仮想キーボードの定位制御 (キャレットトラックの DCSG チップから発音) 用。
+   * 未指定時は従来どおり両チップの空きスロットへ割り当てる。
+   */
+  chip?: 0 | 1;
 }
 
 /** ノイズ (DCSG ノイズチャンネル) 発音 1 音分のオプション。 */
@@ -94,6 +102,9 @@ export interface KeyboardNoiseNoteOptions {
 
   /** 音量エンベロープのリリース位置 (-1 = なし)。 */
   volEnvRelease?: number;
+
+  /** 発音先の DCSG チップ (0 = PSG1 / 1 = PSG2)。未指定時は両チップの空きスロットへ割り当てる。 */
+  chip?: 0 | 1;
 }
 
 /** BEEP (8253 PIT) 発音 1 音分のオプション (音量はハードウェア仕様上なし)。 */
@@ -403,7 +414,7 @@ export class KeyboardSoundEngine {
 
     const integrateMode = options.noiseIntegrate ?? 0;
     const kind: DcsgVoiceKind = integrateMode === 1 || integrateMode === 2 ? 'integrate' : 'tone';
-    const slots = this.allocateDcsgSlots(kind);
+    const slots = this.allocateDcsgSlots(kind, options.chip);
 
     const volume = Math.min(Math.max(options.volume ?? 15, 0), 15);
     const volEnvValues = options.volEnv && options.volEnv.length > 0 ? options.volEnv : null;
@@ -451,7 +462,7 @@ export class KeyboardSoundEngine {
   noiseNoteOn(midiNote: number, options: KeyboardNoiseNoteOptions): void {
     this.terminateDcsgVoice(midiNote);
 
-    const slots = this.allocateDcsgSlots('noise');
+    const slots = this.allocateDcsgSlots('noise', options.chip);
     const volume = Math.min(Math.max(options.volume ?? 15, 0), 15);
     const volEnvValues = options.volEnv && options.volEnv.length > 0 ? options.volEnv : null;
     const voice: DcsgVoice = {
@@ -538,16 +549,30 @@ export class KeyboardSoundEngine {
   }
 
   /**
+   * DCSG チップの出力定位を設定する (仮想キーボード試聴の定位制御用)。
+   * 既定 = 実機配線どおり chip0 = 左 / chip1 = 右。
+   */
+  setPsgOutputPlacement(chipIndex: 0 | 1, placement: PsgOutputPlacement): void {
+    this.mixer.setPsgOutputPlacement(chipIndex, placement);
+  }
+
+  /**
    * DCSG チャンネルスロットを割り当てる (実機音声数制限: トーン 6 / ノイズ 2 / @IN 統合 2)。
+   * chip 指定時はそのチップのスロットのみを候補とし、steal も同一チップ内で行う
+   * (仮想キーボードの定位制御: キャレットトラックの DCSG チップから発音)。
    * 全スロット使用中はリリース中→最古のボイスを steal する。
    */
-  private allocateDcsgSlots(kind: DcsgVoiceKind): { chipIndex: number; channel: number; slots: number[] } {
+  private allocateDcsgSlots(kind: DcsgVoiceKind, chip?: 0 | 1): { chipIndex: number; channel: number; slots: number[] } {
     // 候補: tone = 各 PSG の ch0-2 / noise = 各 PSG の ch3 / integrate = PSG ごとの (ch2, ch3) ペア
-    const candidates: number[][] = kind === 'noise'
+    const allCandidates: number[][] = kind === 'noise'
       ? [[3], [7]]
       : kind === 'integrate'
         ? [[2, 3], [6, 7]]
         : [[0], [1], [2], [4], [5], [6]];
+    // 候補スロットはチップ単位で完結するため、先頭スロットの所属チップで絞り込める
+    const candidates = chip === undefined
+      ? allCandidates
+      : allCandidates.filter((slots) => (slots[0] < 4) === (chip === 0));
 
     const occupied = () => {
       const slots = new Set<number>();
@@ -565,6 +590,9 @@ export class KeyboardSoundEngine {
       // 全候補が使用中: リリース中を優先し、次に最古のボイスを steal する
       let victim: DcsgVoice | null = null;
       for (const voice of this.dcsgVoices.values()) {
+        if (chip !== undefined && voice.chipIndex !== chip) {
+          continue; // 指定チップ外のボイスは steal しても候補スロットが空かないため対象外
+        }
         if (victim === null || stealRank(voice) < stealRank(victim)) {
           victim = voice;
         }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isNoiseIntegrateChipActive, normalizeChipModeEngine } from '../keyboardChipMode';
+import { isNoiseIntegrateChipActive, normalizeChipModeEngine, resolvePsgOutputPlacement } from '../keyboardChipMode';
 
 describe('keyboardChipMode', () => {
   describe('normalizeChipModeEngine', () => {
@@ -82,6 +82,57 @@ describe('keyboardChipMode', () => {
           caretTrackName: '',
         }),
       ).toBe(true);
+    });
+  });
+
+  describe('resolvePsgOutputPlacement', () => {
+    it('MML モード: DCSG1 系トラック (P1-P3 / N1) は左定位', () => {
+      for (const caretTrackName of ['P1', 'P2', 'P3', 'N1']) {
+        expect(
+          resolvePsgOutputPlacement({ effectiveEngine: 'psg', isMmlContext: true, caretTrackName }),
+        ).toBe('left');
+      }
+    });
+
+    it('MML モード: DCSG2 系トラック (P4-P6 / N2) は右定位', () => {
+      for (const caretTrackName of ['P4', 'P5', 'P6', 'N2']) {
+        expect(
+          resolvePsgOutputPlacement({ effectiveEngine: 'psg', isMmlContext: true, caretTrackName }),
+        ).toBe('right');
+      }
+    });
+
+    it('MML モード: ノイズエンジンもキャレットトラックの DCSG チップに従う (N1 = 左 / N2 = 右)', () => {
+      expect(
+        resolvePsgOutputPlacement({ effectiveEngine: 'noise', isMmlContext: true, caretTrackName: 'N1' }),
+      ).toBe('left');
+      expect(
+        resolvePsgOutputPlacement({ effectiveEngine: 'noise', isMmlContext: true, caretTrackName: 'N2' }),
+      ).toBe('right');
+    });
+
+    it('MML モード: 実機未割当トラック (W1-W99 / B1 / F1 / 解析不能) は中央定位', () => {
+      for (const caretTrackName of ['W1', 'W99', 'B1', 'F1', '']) {
+        expect(
+          resolvePsgOutputPlacement({ effectiveEngine: 'psg', isMmlContext: true, caretTrackName }),
+        ).toBe('center');
+      }
+    });
+
+    it('FM / BEEP エンジンは常に中央定位 (OPM 既定 RL = L+R / 8253 内蔵スピーカ)', () => {
+      for (const effectiveEngine of ['fm', 'beep'] as const) {
+        expect(
+          resolvePsgOutputPlacement({ effectiveEngine, isMmlContext: true, caretTrackName: 'P1' }),
+        ).toBe('center');
+      }
+    });
+
+    it('ENV エディタモード (トラック概念なし) は PSG / ノイズ選択時も中央定位', () => {
+      for (const effectiveEngine of ['psg', 'noise'] as const) {
+        expect(
+          resolvePsgOutputPlacement({ effectiveEngine, isMmlContext: false, caretTrackName: '' }),
+        ).toBe('center');
+      }
     });
   });
 });
