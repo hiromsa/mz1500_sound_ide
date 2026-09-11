@@ -97,8 +97,11 @@ buildQuickDiskImage(fileName: string, executableData: Uint8Array): Uint8Array
   これは再生時の `Z80DriverMachine.load` と同一の配置であり、QD からロードして実行アドレス 0x1200
   へ飛べば実機で演奏が開始される。
 - `executableData.length > 0xBE00` の場合は `Error` を投げる (QD データブロック上限)。
-- `fileName` は ASCII 16 文字に正規化される (非 ASCII 文字は `?` に置換、以降は 0x0D パディング)。
+- `fileName` は ASCII 16 文字に正規化される (非 ASCII 文字は `?` に置換、以降は **0x20 空白パディング**)。
   C# 版の Shift-JIS (Encoding 932) エンコードはブラウザ標準 API が存在しないため ASCII 限定とした。
+  0x0D パディングは IPL のロード表示 (IPL IS LOADING <ファイル名>) で文字化けするため使用しない。
+  画面表示用の ASCII → ディスプレイコード変換は `asciiToDisplayCode()` として本モジュールに用意
+  (将来の画面表示機能向け。QDF ヘッダのファイル名は実機 QDF の慣行どおり ASCII で記録する)。
 
 ### §4.1 UI 側の連携 (`App.handleExport`)
 

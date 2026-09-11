@@ -111,6 +111,35 @@ function appendBlockWithCrc(target: QdfBlockBuilder, block: QdfBlockBuilder): vo
   target.appendByte(crc >> 8);
 }
 
+/**
+ * ASCII コードを MZ-1500 ディスプレイコード (キャラクタセット 0) へ変換する。
+ * MZ-1500 のテキスト VRAM は ASCII と無関係なディスプレイコード体系のため、
+ * 画面に文字を表示する機能ではこの変換が必要
+ * (実測: "PSG OCT" → 10 13 07 00 0F 03 14、"MARIO SPECIAL" → 0D 01 12 09 0F 00 13 10 05 03 09 01 0C)。
+ * ※ QDF ヘッダのファイル名は ASCII で記録する (実機 QDF の慣行)。IPL が表示時に変換する。
+ */
+export function asciiToDisplayCode(code: number): number {
+  if (code === 0x20) {
+    return 0x00; // 空白
+  }
+
+  if (code >= 0x30 && code <= 0x39) {
+    return 0x20 + (code - 0x30); // '0'-'9'
+  }
+
+  if (code >= 0x41 && code <= 0x5a) {
+    return 0x01 + (code - 0x41); // 'A'-'Z'
+  }
+
+  if (code >= 0x61 && code <= 0x7a) {
+    return 0x50 + (code - 0x61); // 'a'-'z'
+  }
+
+  // 記号のディスプレイコード対応は実測データが限られるため、
+  // 確定していない記号は空白扱いとする (将来 display.html の対応表で拡張)。
+  return 0x00;
+}
+
 /** QD のファイル名 (ASCII 16 文字 + 0x20 埋め + 0x0D 終端 = 17 バイト) に正規化して追加する。 */
 function appendFileName(target: QdfBlockBuilder, fileName: string): void {
   const normalized = [...fileName]
@@ -121,11 +150,11 @@ function appendFileName(target: QdfBlockBuilder, fileName: string): void {
     .join('')
     .slice(0, FileNameLength);
 
+  // ファイル名は ASCII のまま記録する (実機 QDF の慣行)。IPL がロード表示時に
+  // ASCII → ディスプレイコードへ変換するため、ここで表示コード化すると二重変換になる。
   appendAscii(target, normalized);
-  // 空白 (表示コード 0x20) でパディングする。0x0D 埋めにすると IPL の
-  // 「IPL IS LOADING <ファイル名>」表示で 0x0D 以降が文字化けする (実機 QDF 準拠)。
   for (let i = normalized.length; i < FileNameLength; i++) {
-    target.appendByte(0x20);
+    target.appendByte(0x20); // 空白パディング (0x0D 埋めは IPL のロード表示で文字化けする)
   }
   target.appendByte(0x0d); // ファイル名終端 (第 17 バイト)
 }

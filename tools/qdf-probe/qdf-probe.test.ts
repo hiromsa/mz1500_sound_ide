@@ -28,6 +28,11 @@ describe('qdf-probe', () => {
     expect(result.musicData).not.toBeNull();
     writeFileSync(join(repoRoot, 'tools', 'cs-probe', 'out', 'music_data.bin'), result.musicData!);
 
+    // 0x0D パディング版 (文字化け再現用) も出力: display code 0x0D の字形確認用
+    const padded0d = new Uint8Array(0xa8c2);
+    padded0d.set(result.musicData!);
+    writeFileSync(join(repoRoot, 'tools', 'cs-probe', 'out', 'music_data_0d.bin'), padded0d);
+
     const executableImage = Z80DriverImage.buildExecutableImage(
       Z80DriverImage.defaultDriver,
       result.musicData!,
