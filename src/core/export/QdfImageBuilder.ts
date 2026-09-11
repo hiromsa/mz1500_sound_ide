@@ -111,7 +111,7 @@ function appendBlockWithCrc(target: QdfBlockBuilder, block: QdfBlockBuilder): vo
   target.appendByte(crc >> 8);
 }
 
-/** QD のファイル名 (ASCII 16 文字 + 0x0D x1-17) に正規化して追加する。 */
+/** QD のファイル名 (ASCII 16 文字 + 0x20 埋め + 0x0D 終端 = 17 バイト) に正規化して追加する。 */
 function appendFileName(target: QdfBlockBuilder, fileName: string): void {
   const normalized = [...fileName]
     .map((ch) => {
@@ -122,10 +122,12 @@ function appendFileName(target: QdfBlockBuilder, fileName: string): void {
     .slice(0, FileNameLength);
 
   appendAscii(target, normalized);
+  // 空白 (表示コード 0x20) でパディングする。0x0D 埋めにすると IPL の
+  // 「IPL IS LOADING <ファイル名>」表示で 0x0D 以降が文字化けする (実機 QDF 準拠)。
   for (let i = normalized.length; i < FileNameLength; i++) {
-    target.appendByte(0x0d);
+    target.appendByte(0x20);
   }
-  target.appendByte(0x0d);
+  target.appendByte(0x0d); // ファイル名終端 (第 17 バイト)
 }
 
 /**

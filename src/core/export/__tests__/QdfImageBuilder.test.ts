@@ -54,7 +54,7 @@ describe('buildQuickDiskImage', () => {
     const fileName = [...header.subarray(5, 5 + 16)]
       .map((b) => String.fromCharCode(b))
       .join('');
-    expect(fileName).toBe('THEME  OF MZ' + String.fromCharCode(0x0d).repeat(4));
+    expect(fileName).toBe('THEME  OF MZ' + ' '.repeat(4));
 
     const dataSize = header[24] | (header[25] << 8);
     expect(dataSize).toBe(QdfDataBlockSize);
@@ -94,7 +94,7 @@ describe('buildQuickDiskImage', () => {
     const image2 = buildQuickDiskImage('テーマ', payload);
     const header = image2.subarray(HeaderBlockOffset, HeaderBlockOffset + 0x44);
     const fileName = [...header.subarray(5, 5 + 16)].map((b) => String.fromCharCode(b)).join('');
-    expect(fileName).toBe('???'.padEnd(16, String.fromCharCode(0x0d)));
+    expect(fileName).toBe('???'.padEnd(16, ' '));
   });
 
   it('rejects a payload larger than the data block size', () => {
