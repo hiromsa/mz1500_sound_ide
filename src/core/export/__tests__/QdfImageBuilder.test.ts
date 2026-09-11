@@ -6,11 +6,10 @@
 import { describe, expect, it } from 'vitest';
 import { buildQuickDiskImage, crc16Arc, QdfDataBlockSize, QdfImageSize } from '../QdfImageBuilder';
 
-// ブロック配置オフセット (実装の GAP / SYNC サイズから算出される固定位置)
-const InfoBlockOffset = 16 + 0x12da + 10; // 4852
-const HeaderMarkerOffset = InfoBlockOffset + 2 + 2 + 10 + 0xaeb; // 7661
-const HeaderBlockOffset = HeaderMarkerOffset + 1 + 10; // 7672
-const DataBlockOffset = HeaderMarkerOffset + 1 + 10 + 0x44 + 2 + 10 + 0xff + 10; // 8017
+// ブロック配置オフセット (実機 QDF ダンプ MARIO/PAC-MAN/GALAGA と 1 バイト単位で一致する固定位置)
+const InfoBlockOffset = 0x12f3; // SYNC x9 (0x12EA-0x12F2) の直後
+const HeaderBlockOffset = 0x1df1; // ディレクトリ後 SYNC x6 → GAP 0x00 x2795 → SYNC x9 の直後
+const DataBlockOffset = 0x1f46; // ヘッダ後 SYNC x6 → GAP 0x00 x255 → SYNC x10 の直後
 
 describe('crc16Arc', () => {
   it('computes the CRC-16/ARC check value for the standard test vector', () => {

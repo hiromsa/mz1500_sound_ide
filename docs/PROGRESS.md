@@ -6,14 +6,14 @@
 ---
 
 ## 1. 現在のステータス概要
-- **バージョン**: `v0.0.1-beta.128`（コミット通番＋短縮ハッシュ ハイブリッド方式）
-- **テスト通過状況**: 全 45 テストファイル / 639 件パス + 1 skip（`npm test` / Vitest）
+- **バージョン**: `v0.0.1-beta.129`（コミット通番＋短縮ハッシュ ハイブリッド方式）
+- **テスト通過状況**: 全 46 テストファイル / 648 件パス + 1 skip（`npm test` / Vitest）
 - **型検査状況**: エラー 0 件（`npx tsc -b`）
 - **主要機能の稼働状況**:
   - Web ネイティブ MML コンパイラ（9ch / 17ch / ワークトラック W1〜W99 対応）
   - 内製 TypeScript Z80 CPU エミュレーションコア & Z80 サウンドドライバ実行環境
   - DCSG (SN76489) / OPM (YM2151) / 8253 BEEP 音源エミュレーション & Web Audio 再生
-  - QuickDisk イメージ (`.qdf`) 実機演奏プレイヤー内包エクスポート
+  - QuickDisk イメージ (`.qdf`) 実機演奏プレイヤー内包エクスポート（**MZ-1500 エミュレータ (C# 実装) での実機 IPL 経由ロード・演奏確認済み**）
   - MIDI ROUTING STUDIO (SMF プレビュー & MML 変換 & 和音自動ボイス分離)
   - MML TRANSFORM (半音・オクターブ移調 & 音量スケーリング & チャンネル置換 / 他方言トラック A-Z 対応)
   - ローカルフォルダオープン (`OPEN LOCAL FOLDER...`) & IndexedDB / localStorage 自動永続化・次回アクセス時完全復元
@@ -24,7 +24,7 @@
 
 ### 優先度: 高 (High Priority)
 - [ ] **実機 / エミュレータでの試聴・起動確認**
-  - 生成された QuickDisk イメージ (`.qdf`) の実機および各種エミュレータでの動作・演奏確認。
+  - 生成された QuickDisk イメージ (`.qdf`) の実機および各種エミュレータでの動作・演奏確認（C# 実装エミュレータ headless CLI でのロード・演奏は確認済み。実機 / GUI での確認が残務）。
   - 実機環境での AudioWorklet / Web Audio 再生挙動のクロスチェック。
 
 ### 優先度: 中 (Medium Priority)
@@ -53,6 +53,20 @@
 ---
 
 ## 3. 直近の完了作業（最新）
+
+- **feat(sound): .qdf (実機演奏プレイヤー) を MZ-1500 実機 IPL 経由で起動・演奏可能に — ドライバ v1.3 実機互換化 (60Hz タイマー割り込み駆動 / RAM フック 1039h / ワーク 0xB000 系) + QDF ブロック配置の実機ダンプ準拠 + Z80 コア INT 実装 (`driver/mzsd_driver.asm`, `src/core/z80/Z80Processor.ts`, `src/core/player/Z80DriverMachine.ts`, `src/core/export/QdfImageBuilder.ts`, `docs/specification/quickdisk_export.md` 更新)** (2026-09-11):
+  - **背景・ユーザー報告**: 「.qdf出力したものがmz1500エミュレーターで鳴りません。」
+  - **調査結果 (C# 実装エミュレータ `mz1500_emulator_csharp` の headless CLI + xUnit による実測)**:
+    1. QDF イメージ自体は正常 (IPL が認識し frame 113 でデータ転送開始、frame ~343 で転送完了、メモリ 0x1200 への展開も正確)。
+    2. **不動作の根本原因 (ドライバ側)**: 実機のリセット直後は `D000h-FFFFh = VRAM & I/O 空間` バンクのため、ドライバのワーク (0xF800-0xFEFF) とスタック (0xF7FF) への書き込みがすべて無効化されていた (IDE 内蔵 `Z80DriverMachine` はバンクなし常時 RAM のため Web では顕在化せず)。
+    3. **不動作の第 2 原因**: バンクを RAM に切り替えると E008h (H-BLANK) / E004-E007h (BEEP 8253) が MMIO として読めなくなる (`Z80MemoryBus.IsMmioEnabled` = MonitorHigh 時のみ)。さらに実機の H-BLANK はスキャンライン単位 (15.7kHz) で変化するため、H-BLANK ポーリングによる 60Hz 同期は原理的に成立しない。
+  - **対応内容**:
+    1. **`driver/mzsd_driver.asm` v1.3**: フレーム同期を **60Hz タイマー割り込み駆動**へ改修 (8253 ch1 = mode2 count 1、ch2 = mode0 count 0x107 = 263 → BLANK 15.7kHz 分周 → OUT2 AND 8255 PC2 (INTMSK) → /INT。ISR は ch2 再アーム + process_frame 1 フレーム分を実行)。メインループは EI / HALT 待機。ワークを **0xB000-0xB797 (0x1000-0xCFFF の RAM 領域)** へ移動し、SP = 0xBFFF。バンク切替 (OUT E0h / E1h / E3h) は**廃止** (ワークを MonitorHigh 状態でも書ける領域へ移動したため不要)。ISR フックは **IPL の RAM フック 1039h/103Ah 方式** (ROM 0038h が参照、VB リファレンス実装 hotatemusic.qdf 準拠)。
+    2. **`src/core/z80/Z80Processor.ts`**: マスク可能割り込みの実装 (`requestInterrupt()` / IM0/1/2 受付 / EI 直後 1 命令の遅延 / HALT 解除 / IM2 ベクタバイト供給コールバック)。単体テスト新設。
+    3. **`src/core/player/Z80DriverMachine.ts`**: `runFrame()` のフレーム境界で 60Hz INT を注入 (実機の 8253 ch2 + PC2 相当)。`finished` 判定を HALT ベースから **STAT_PLAY クリア ベース**へ変更。RST 38h フック構造 (0038h: JP 1038h) を load 時に再現。
+    4. **`src/core/export/QdfImageBuilder.ts`**: ブロック配置 (SYNC 数 / GAP 長 / ブロック位置) を**実機 QDF ダンプ (MARIO / PAC-MAN / GALAGA) と 1 バイト単位で一致**するよう修正 (ディレクトリ 0x12F3 / ヘッダ 0x1DF1 / データ 0x1F46、ディレクトリ後 SYNC x6 / GAP 2795 等)。旧構成 (全ブロック SYNC x10 + 0x00 マーカ) では実機 IPL の自動ロードが開始しないことを確認。
+  - **検証**: `npx tsc -b` エラーゼロ / `npm test` 全 46 ファイル通過 / `npm run lint` エラーゼロ / `npm run build` 成功。**C# 実装エミュレータ headless CLI での実測**: QDF ロード (「IPL IS LOADING」→完了) → exec (0x1200) → **60 秒 WAV 出力で PSG 演奏を確認** (peak 1.000 / 5-19 秒に持続発音)。IDE (Web Audio) との等価性テストも全パス。
+  - **備考**: ワークを 0xB000 系へ移動したため CB_STATUS 等の契約アドレスが変更 (0xF800 → 0xB000)。`tools/qdf-probe/` (QDF 生成・構造解析の検証ツール) を追加。エミュレータ側の一時観測テスト (`Mz1500.Core.Tests/QdfProbeTests.cs`) は同リポジトリに残置 (デバッグ資産)。
 
 - **fix: 仮想キーボード / FM TONE / V-ENV / P-ENV プレビュー発音中のプチノイズを解消 — 出力バッファ拡大 + アンダーラン時デクリック (`src/core/keyboard/KeyboardAudioOutput.ts`, `src/core/player/FramePlaybackWorklet.ts`, `src/core/player/__tests__/FramePlaybackWorklet.test.ts` 新規, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-11):
   - **背景・ユーザー報告**: 「仮想キーボードや、FM TONE、V-ENV、P-ENVのプレビューについて、鳴っている間にプチノイズが発生しています。」

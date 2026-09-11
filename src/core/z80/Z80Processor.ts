@@ -103,6 +103,18 @@ export class Z80Processor {
 
   private halted = false;
 
+  /** INT ラインが有効 (マスク可能割り込み要求中) か。requestInterrupt() で立てる。 */
+  private interruptRequested = false;
+
+  /** EI 実行後、次の 1 命令が完了するまで割り込みを受け付けない (Z80 規約)。 */
+  private eiDelayActive = false;
+
+  /**
+   * IM2 受付時にバスへ供給するベクタバイト (未指定時は 0xFF = RST 38h 相当)。
+   * 実機のベクタなし INT 線 (8253 OUT2 AND PC2) は IM1 前提のため通常は未指定。
+   */
+  interruptVectorProvider: (() => number) | null = null;
+
   /** 今実行した命令が HALT か (命令完了時に halted へ反映)。 */
   private haltExecuted = false;
 
@@ -138,6 +150,11 @@ export class Z80Processor {
     this.xyDisplacement = 0;
   }
 
+  /** マスク可能割り込み (INT) を要求する。IFF1 = 1 の次の命令境界で受け付けられる。 */
+  requestInterrupt(): void {
+    this.interruptRequested = true;
+  }
+
   /**
    * 次の 1 命令を実行し、消費 T-state を返す。
    * HALT 状態ではメモリフェッチせず NOP (4T) として動く。
@@ -155,7 +172,44 @@ export class Z80Processor {
     }
 
     this.tStatesSinceReset += cycles;
+    this.acceptPendingInterrupt();
     return cycles;
+  }
+
+  /**
+   * 命令境界で INT 要求を受け付ける (IFF1 = 1 かつ EI 遅延が無い場合)。
+   * 受付時は HALT を解除して PC を退避し、IM モードに応じたハンドラへ遷移する。
+   */
+  private acceptPendingInterrupt(): void {
+    if (this.eiDelayActive) {
+      // EI 直後の 1 命令の完了時点では割り込みを受け付けない
+      this.eiDelayActive = false;
+      return;
+    }
+
+    if (!this.interruptRequested || !this.registers.iff1) {
+      return;
+    }
+
+    this.interruptRequested = false;
+    this.registers.iff1 = false;
+    this.registers.iff2 = false;
+    this.halted = false;
+    this.push16(this.registers.pc);
+
+    if (this.registers.interruptMode === 2) {
+      // IM2: I << 8 | ベクタバイト のテーブルからジャンプ先を読む
+      const vector = (this.interruptVectorProvider?.() ?? 0xff) & 0xff;
+      const table = ((this.registers.i << 8) | vector) & 0xffff;
+      const low = this.readMemory8(table);
+      const high = this.readMemory8((table + 1) & 0xffff);
+      this.registers.pc = low | (high << 8);
+      this.tStatesSinceReset += 19;
+    } else {
+      // IM1 (およびベクタなしバスの IM0): RST 38h 相当へ
+      this.registers.pc = 0x0038;
+      this.tStatesSinceReset += 13;
+    }
   }
 
   // --- フェッチ / メモリ / ポート ---
@@ -758,6 +812,7 @@ export class Z80Processor {
       case 0xfb: // EI
         this.registers.iff1 = true;
         this.registers.iff2 = true;
+        this.eiDelayActive = true; // EI 直後の 1 命令は割り込みを受けない
         return 4;
       case 0xfc: // CALL M,nn
         return this.callIf(this.flagOn(FlagSF));

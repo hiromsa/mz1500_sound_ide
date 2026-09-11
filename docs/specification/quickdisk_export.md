@@ -1,11 +1,14 @@
 # QuickDisk (.qdf) エクスポート仕様 (`docs/specification/quickdisk_export.md`)
 
-本書は、MZ-1500 Sound IDE の `EXPORT (.qdf)` 機能が生成する QuickDisk イメージの形式仕様と
+本書は、MZ-1500 Sound IDE の `EXPORT PLAYER (.qdf)` 機能が生成する QuickDisk イメージの形式仕様と
 実装契約 (`src/core/export/QdfImageBuilder.ts`) を記録するドキュメントです。
 
 - **実装の参照元 (実績実装)**: `mz1500_sound_driver` プロジェクトの
   `Mz1500SoundPlayer/Sound/QdcImageBuilder.cs` (拡張子 `.qdc` は誤記で正しくは `.qdf`)。
   同実装は MZ-1500 エミュレータが QuickDisk イメージとして起動できるところまで動作確認済み。
+  **(2026/09/11 更新)** 実機 QDF ダンプ (MARIO / PAC-MAN / GALAGA) との 1 バイト単位比較により、
+  ブロック配置 (SYNC 数 / GAP 長) を実物準拠に修正し、MZ-1500 エミュレータ (C# 実装) の
+  実機 IPL 経由でのロード・演奏を確認済み。
 - **QD メディア仕様の一次情報**: `mz1500_emulator_csharp/docs/mz1500_specification/MZ1500_Storage_QuickDisk.md`
   (Common Source Project の QUICKDISCK クラス精査 + sample.qdf 実測)。CRC やブロック構造は同書 §3〜§5 に一致する。
 
@@ -25,25 +28,27 @@
 
 ## 2. イメージ構造 (物理レイアウト)
 
-```
+```text
 オフセット   サイズ        内容
 0x0000       16            "-QD format-" (11B) + 0xFF x5
 0x0010       0x12DA        GAP (0 埋め)
-0x12EA       10            SYNC (0x16 x10)
-0x12F4       2 + 2         Information Block (ディレクトリ): A5h + ブロック総数(2) + CRC16(L,H)
-0x12FA       10            SYNC (0x16 x10)
-0x1304       0xAEB         GAP (0 埋め)
-0x1DEF       1 + 10        0x00 マーカ + SYNC x10
-0x1DFA       0x44 + 2      Header Block (68B) + CRC16
-0x1E40       10            SYNC x10
-0x1E4A       0xFF          GAP (0 埋め)
-0x1F49       10            SYNC x10
-0x1F53       0xBE04 + 2    Data Block (A5h + タイプ + サイズ + データ + 0 パディング) + CRC16
-(末尾)       10            SYNC x10 → 以降 0 埋めで 0x14010 まで
+0x12EA       9             SYNC (0x16 x9)
+0x12F3       2 + 2         Information Block (ディレクトリ): A5h + ブロック総数(2) + CRC16(L,H)
+0x12F7       6             SYNC (0x16 x6)
+0x12FD       2795          GAP (0 埋め)
+0x1DE8       9             SYNC (0x16 x9)
+0x1DF1       0x44 + 2      Header Block (68B) + CRC16
+0x1E37       6             SYNC (0x16 x6)
+0x1E3D       255           GAP (0 埋め)
+0x1F3C       10            SYNC (0x16 x10)
+0x1F46       0xBE04 + 2    Data Block (A5h + タイプ + サイズ + データ + 0 パディング) + CRC16
+(末尾)       5             SYNC (0x16 x5) → 以降 0 埋めで 0x14010 まで
 ```
 
-※ 実機の QD リード側は 2,700 バイト目から SYNC を走査してブロックを探索するため、
-GAP の厳密な長さは識別に影響しない。本実装は実績のある C# 版と同一の値を採用した。
+※ SYNC 数 / GAP 長 / ブロック位置 (ディレクトリ 0x12F3 / ヘッダ 0x1DF1 / データ 0x1F46) は
+実機 QDF ダンプ (MARIO / PAC-MAN / GALAGA) と 1 バイト単位で一致させる。
+汎用的な「全ブロック SYNC x10」構成では実機 IPL の自動ロードが開始しないことを確認済み。
+※ QD リード側は 2,700 バイト目から SYNC を走査してブロックを探索する。
 
 ### 2.1 Header Block (68 バイト = 0x44 固定)
 
@@ -106,8 +111,28 @@ buildQuickDiskImage(fileName: string, executableData: Uint8Array): Uint8Array
 
 ---
 
-## 5. 履歴
+## 5. ドライバの実機互換動作 (`driver/mzsd_driver.asm` v1.3)
+
+実機 MZ-1500 (および C# 実装のエミュレータ) で演奏するため、ドライバは以下の実機互換構成を採る。
+
+| 項目 | 内容 |
+|---|---|
+| フレーム同期 | **60Hz タイマー割り込み駆動**。8253 ch1 = mode2 count 1 (BLANK 15.7kHz をカウント)、ch2 = mode0 count 0x107 = 263 (OUT1 の falling edge 263 回後に terminal → OUT2 high)、OUT2 AND 8255 PC2 (INTMSK) → Z80 /INT。VB リファレンス実装 (hotatemusic.qdf) 準拠。 |
+| 割り込みモード | **IM1 (RST 38h)**。ROM 0038h ハンドラが RAM フック **1039h/103Ah** の ISR アドレスへジャンプするため、ドライバは init_isr_hook で 1038h=0xC3、1039h/103Ah=isr アドレスを設定する。 |
+| ワーク領域 | **0xB000-0xB797** (CB + 17ch ブロック + ループスタック)。MonitorHigh (D000h-FFFFh = VRAM & I/O) 状態でも **0x1000-0xCFFF は RAM** として読み書きできるため、バンク切替は不要。ロードデータで一時的に上書きされるが、exec 後の init_work で初期化される。 |
+| スタック | SP = 0xBFFF (ワーク領域の上部)。 |
+| BEEP | E008h bit0 (GATE) は MonitorHigh のまま MMIO として書き込めるため、バンク切替は不要。 |
+
+※ 旧実装 (v1.2) は E008h bit7 (H-BLANK) ポーリング + ワーク 0xF800 台 (D000h-FFFFh = VRAM & I/O 空間) を
+使用しており、実機では (1) ワーク / スタックへの書き込みが VRAM & I/O 空間で無効化される、
+(2) H-BLANK はスキャンライン単位 (15.7kHz) で変化するため 60Hz 同期にならない、の 2 点で動作しなかった。
+IDE 内蔵環境 (`Z80DriverMachine`) はバンクなし常時 RAM で動作するため、この問題は QDF (実機相当) でのみ顕在化していた。
+
+---
+
+## 6. 履歴
 
 | 日付 | 内容 |
 |---|---|
 | 2026/09/05 | 初版作成。Phase 5 で `QdfImageBuilder` (C# QdcImageBuilder 移植) と `EXPORT (.qdf)` を実装。 |
+| 2026/09/11 | ブロック配置 (SYNC 数 / GAP 長) を実機 QDF ダンプ準拠に修正。ドライバ v1.3 (60Hz タイマー割り込み駆動 / RAM フック 1039h / ワーク 0xB000 系) へ改修し、MZ-1500 エミュレータ (C# 実装) での実機 IPL 経由ロード・演奏を確認。 |

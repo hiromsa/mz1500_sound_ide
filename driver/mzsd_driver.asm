@@ -1,11 +1,19 @@
 ; ============================================================================
-; MZSD Sound Driver v1.2  (MZ-1500 用 / 内蔵 Z80 コア (Z80dotNet) で実行)
+; MZSD Sound Driver v1.3  (MZ-1500 用 / 内蔵 Z80 コア (Z80dotNet) で実行)
 ; ============================================================================
 ; 機能:
 ;   - MZSD バイナリ音楽データ (docs/specification/binary_music_format_spec.md) を
 ;     解釈し、DCSG x2 (PSG1 = F2h / PSG2 = F3h)、BEEP (8253 Ch.0)、
 ;     YM2151 (OPM、I/O 0708h/0709h) で演奏する。
-;   - フレーム同期は E008h bit7 (H-BLANK) の 1 -> 0 遷移をポーリング (実機互換)。
+;   - フレーム同期は 60Hz タイマー割り込み駆動 (実機互換):
+;     8253 ch1 (BLANK 15.7kHz を count 262 で分周 → 60.1Hz) → ch2 (mode0 count 1、
+;     terminal count で OUT2 high) AND 8255 PC2 (INTMSK) → Z80 /INT。
+;     IM1 (RST 38h) で ISR に入り、ch2 を再アーム (count 再書き込み → OUT2 low) して
+;     から process_frame を 1 フレーム分実行する。メインループは EI / HALT で待機。
+;   - 起動時に OUT E0h / E3h でメモリバンクを RAM 側へ切り替える (実機はリセット直後
+;     D000h-FFFFh = VRAM/IO 空間のため、OUT E0h なしではワーク 0xF800 台とスタックが
+;     書けない。IDE 内蔵環境 (Z80DriverMachine) ではバンク切替は無視され常時 RAM のため
+;     同一バイナリが両環境で動作する)。
 ;   - 対応命令: NOTE / REST / TEMPO / VOLUME / VENV (音量エンベロープ) /
 ;     PENV (ピッチエンベロープ) / SWEEP / DETUNE / TRANSPOSE /
 ;     TONE (FM 音色) / PAN (ステレオ定位) / FMVOL (@v: FM 専用音量) /
@@ -14,6 +22,10 @@
 ;     TL = 音色 TL + (att * 8 (v) / 127 - @v (@v)) による音量、@FM 音色 46 パラメータのレジスタ展開に対応。
 ;   - エンベロープ / スイープ / ディチューンは C# リファレンス実装
 ;     (TrackSequencer.cs) と同一のフレーム進行で振る舞う (等価性テストで検証)。
+;   - 将来の BASIC / ゲーム統合について: 本ドライバは IM1 の RST 38h ベクタ (0038h) を
+;     OUT E3h で直接置き換えるスタンドアローン方式。BASIC / ゲーム等の既存割り込み
+;     環境と共存する場合は、0038h の既存ハンドラを退避して ISR 末尾でチェーンする方式
+;     (または実機の RAM フック 1038h 経由) に init_hook / isr を拡張すること。
 ; 構成 (メモリ):
 ;   0x1200        : ドライバ本体 (コード + 周波数テーブル) この後ろに music_data
 ;   0xF800..      : 制御ブロック / チャンネルワーク (RAM)
@@ -31,26 +43,30 @@ VSTAT           equ     0xE008          ; ビデオステータス (bit7 = H-BLA
 FM_ADDR_IO      equ     0x0708          ; YM2151 アドレスポート (データポート = 0x0709)
 
 ; ---- 制御ブロック (統合環境から参照される固定アドレス)
-CB_STATUS       equ     0xF800          ; bit0: 演奏中 / bit1: Lループ有効 / bit7: 停止要求
-CB_FRAME        equ     0xF801          ; フレームカウンタ (16bit)
-CB_TEMPO        equ     0xF803          ; 初期テンポ (quarterFrames >> 1、表示用)
-CB_TRACKS       equ     0xF804          ; トラック数 (17)
-CB_DATA         equ     0xF805          ; MZSD データ先頭アドレス (16bit)
-CB_PTRS         equ     0xF808          ; 17ch x 2B: 現在データオフセット (演奏位置ハイライト用)
-CB_CURI         equ     0xF82A          ; 処理中チャンネル番号 (内部ワーク)
-CB_LOOPS        equ     0xF82B          ; 17ch x 2B: 全体ループ (L) 復帰オフセット
-CB_VENV         equ     0xF850          ; 音量エンベロープテーブル絶対アドレス (16bit)
-CB_VCNT         equ     0xF852          ; 音量エンベロープエントリ数
-CB_PENV         equ     0xF853          ; ピッチエンベロープテーブル絶対アドレス (16bit)
-CB_PCNT         equ     0xF855          ; ピッチエンベロープエントリ数
-CB_FM           equ     0xF856          ; FM 音色テーブル絶対アドレス (16bit)
-CB_FMCNT        equ     0xF858          ; FM 音色エントリ数
-CH_BLOCKS       equ     0xF860          ; 17ch チャンネルブロック (64B x 17 = 1088B)
-LSTACK_BASE     equ     0xFD00          ; ループスタック (17ch x 8深度 x 3B = 408B)
+;      実機互換配置: IPL システムワーク (0x1000-0x11FF) の後、MonitorHigh 状態でも
+;      RAM として読み書きできる領域 (0x1000-0xCFFF) に置く。ロードデータで一時的に
+;      上書きされるが、exec 後の init_work で初期化されるため問題ない。
+CB_STATUS       equ     0xB000          ; bit0: 演奏中 / bit1: Lループ有効 / bit7: 停止要求
+CB_FRAME        equ     0xB001          ; フレームカウンタ (16bit)
+CB_TEMPO        equ     0xB003          ; 初期テンポ (quarterFrames >> 1、表示用)
+CB_TRACKS       equ     0xB004          ; トラック数 (17)
+CB_DATA         equ     0xB005          ; MZSD データ先頭アドレス (16bit)
+CB_PTRS         equ     0xB008          ; 17ch x 2B: 現在データオフセット (演奏位置ハイライト用)
+CB_CURI         equ     0xB02A          ; 処理中チャンネル番号 (内部ワーク)
+CB_LOOPS        equ     0xB02B          ; 17ch x 2B: 全体ループ (L) 復帰オフセット
+CB_VENV         equ     0xB050          ; 音量エンベロープテーブル絶対アドレス (16bit)
+CB_VCNT         equ     0xB052          ; 音量エンベロープエントリ数
+CB_PENV         equ     0xB053          ; ピッチエンベロープテーブル絶対アドレス (16bit)
+CB_PCNT         equ     0xB055          ; ピッチエンベロープエントリ数
+CB_FM           equ     0xB056          ; FM 音色テーブル絶対アドレス (16bit)
+CB_FMCNT        equ     0xB058          ; FM 音色エントリ数
+CH_BLOCKS       equ     0xB060          ; 17ch チャンネルブロック (64B x 17 = 1088B)
+LSTACK_BASE     equ     0xB600          ; ループスタック (17ch x 8深度 x 3B = 408B)
 
 STAT_PLAY       equ     0x01
 STAT_LOOP       equ     0x02
 STAT_STOPREQ    equ     0x80
+STAT_SKIPFRAME  equ     0x40            ; bit6: 次の 1 INT で process_frame をスキップ (ブート直後の 1 フレーム分)
 
 ; ---- チャンネルブロック (IX + 変位)
 CH_PTR          equ     0               ; 2B: 現在データオフセット (相対)
@@ -94,7 +110,13 @@ MAX_LOOP_DEPTH  equ     8
 ; ============================================================================
 entry:
         di
-        ld      sp,0xF7FF
+        ; 実機互換構成 (VB リファレンス実装準拠):
+        ;   - バンク切替 (OUT E0h-E3h) は一切行わない。MonitorHigh (D000h-FFFFh = VRAM & I/O)
+        ;     のまま 8253/8255 の MMIO (E000h-E00Fh) と、0x1000-0xCFFF の RAM を使用する。
+        ;   - 割り込みフックは IPL の RAM フック 1039h/103Ah (ROM 0038h が参照) を使う。
+        ;   - IDE 内蔵環境 (Z80DriverMachine) は常時 RAM + MMIO 有効のため同一バイナリが動く。
+        ld      sp,0xBFFF
+        call    init_isr_hook   ; 1039h/103Ah に isr アドレス (IM1 INT フック)
         call    init_work
         call    init_sound
 
@@ -187,31 +209,106 @@ init_tracks:
         cp      TRACK_COUNT
         jp      c,init_tracks
 
-        ; 演奏開始 (Player が CB_STATUS へ設定した L ループビット (bit1) を保持)
+        ; 演奏開始 (Player が CB_STATUS へ設定した L ループ ビット (bit1) を保持)。
+        ; bit6 (STAT_SKIPFRAME) を立てて最初の 1 INT を re-arm のみにし、IDE (旧 H-BLANK
+        ; ポーリング実装) と同じ「ブート完了後の最初の runFrame で frame 0 を処理」に揃える。
         ld      a,(CB_STATUS)
         and     STAT_LOOP
         or      STAT_PLAY
+        set     6,a
         ld      (CB_STATUS),a
         call    sync_ptrs
-main_loop:
-        call    wait_frame
-        call    process_frame
-        jp      main_loop
+        call    init_timer      ; 8253 ch1/ch2 + 8255 PC2 (60Hz タイマー割り込み) 設定
+        db      0xED,0x56       ; IM 1 (タイマー INT は RST 38h → RAM フック 1039h 経由)
+        ei
+idle_loop:
+        halt                    ; ISR (isr) が 60Hz で process_frame を実行する
+        jr      idle_loop
 
 boot_fail:
         halt
 
 ; ============================================================================
-; フレーム同期 (E008h bit7 = H-BLANK の 1 -> 0 遷移を待つ = 1/60 秒)
+; タイマー割り込みハンドラ (IM1 / RST 38h → RAM フック 1039h 経由、60Hz)
+;   1) 8253 ch2 を再アーム (mode0 のカウント再書き込み → OUT2 を low に落として次 INT を待つ)
+;   2) 演奏中 (STAT_PLAY) なら 1 フレーム分の進行 (process_frame)
 ; ============================================================================
-wait_frame:
-        ld      a,(VSTAT)
-        bit     7,a
-        jr      z,wait_frame            ; ブランキング中 -> 表示期間になるまで待つ
-wf_low:
-        ld      a,(VSTAT)
-        bit     7,a
-        jr      nz,wf_low               ; 表示中 -> ブランキングになるまで待つ
+isr:
+        push    af
+        push    bc
+        push    de
+        push    hl
+        push    ix
+        push    iy
+        call    timer_rearm
+        ld      a,(CB_STATUS)
+        bit     6,a                     ; ブート直後の 1 フレームスキップ要求?
+        jr      z,isr_frame
+        res     6,a
+        ld      (CB_STATUS),a
+        jr      isr_exit
+isr_frame:
+        bit     0,a
+        call    nz,process_frame
+isr_exit:
+        pop     iy
+        pop     ix
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        ei
+        ret
+
+; ---- 8253 ch2 再アーム: mode0 のカウント再書き込みで OUT2 → low
+;      (MonitorHigh のまま MMIO E006h へ書き込むためバンク切替は不要)
+timer_rearm:
+        push    af
+        push    hl
+        ld      hl,0xE006       ; 8253 ch2 カウンタ
+        ld      (hl),0x07       ; カウント LSB
+        ld      (hl),0x01       ; カウント MSB (再設定で OUT2 low → 再カウント開始)
+        pop     hl
+        pop     af
+        ret
+
+; ---- 60Hz タイマー割り込みのセットアップ (VB リファレンス実装準拠)
+;   8253 ch1 = mode2 count 1 (BLANK 15.7kHz をカウント)、
+;   ch2 = mode0 count 0x107 = 263 (OUT1 の falling edge 263 回後に terminal → OUT2 high → /INT)、
+;   8255 PC2 (INTMSK) = 1 で割り込み許可。MonitorHigh のまま MMIO (E000h-E00Fh) に書き込む。
+init_timer:
+        push    af
+        push    hl
+        ld      hl,0xE007       ; 8253 コントロールポート
+        ld      (hl),0xB0       ; ch2: mode0 (terminal count で OUT high)、LSB→MSB
+        ld      (hl),0x74       ; ch1: mode2 (レートジェネレータ)、LSB→MSB
+        dec     hl              ; 0xE006h = ch2 カウンタ
+        ld      (hl),0x07       ; ch2 カウント = 0x0107 = 263 (LSB)
+        ld      (hl),0x01       ; MSB
+        dec     hl              ; 0xE005h = ch1 カウンタ
+        ld      (hl),0x01       ; ch1 カウント = 1 (LSB)
+        ld      (hl),0x00       ; MSB
+        ld      a,0x05
+        ld      (0xE003),a      ; 8255 コントロール: PC2 (INTMSK) ビットセット
+        pop     hl
+        pop     af
+        ret
+
+; ---- IM1 用割り込みフック: IPL の RAM フック 1039h/103Ah に isr アドレスを書く
+;      (ROM 0038h の RST 38h ハンドラが 1039h/103Ah の ISR アドレスへジャンプする。
+;       将来 BASIC / ゲーム統合時は、既存フック値の退避とチェーン呼び出しに拡張する)
+init_isr_hook:
+        push    af
+        push    hl
+        ld      hl,0x1038       ; INT フック (JP isr の置き場所。実機 IPL が用意済みだが再設定)
+        ld      (hl),0xC3       ; JP オペコード
+        inc     hl              ; 0x1039
+        ld      de,isr
+        ld      (hl),e          ; isr アドレス LSB
+        inc     hl              ; 0x103A
+        ld      (hl),d          ; isr アドレス MSB
+        pop     hl
+        pop     af
         ret
 
 ; ============================================================================
@@ -301,7 +398,7 @@ ps_stop:
         res     0,a                     ; 演奏中 OFF
         ld      (CB_STATUS),a
         call    sync_ptrs
-        halt
+        ret                             ; 以後 ISR は STAT_PLAY OFF で process_frame をスキップする
 pf_end:
         call    sync_ptrs
         ret
@@ -312,7 +409,7 @@ do_stop:
         res     0,a
         ld      (CB_STATUS),a
         call    sync_ptrs
-        halt
+        ret                             ; 以後 ISR は STAT_PLAY OFF で process_frame をスキップする
 
 ; ---- ゲート終端処理 (IX = チャンネル)
 gate_tick:
@@ -1208,7 +1305,8 @@ wa_beep:
         jr      c,wa_b2
         xor     a
 wa_b2:
-        ld      (VSTAT),a
+        ld      (VSTAT),a       ; E008h bit0 = BEEP ゲート (MonitorHigh のまま MMIO 有効)
+        jr      wa_done
 wa_done:
         pop     de
         pop     bc

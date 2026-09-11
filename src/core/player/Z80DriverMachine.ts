@@ -3,7 +3,10 @@
  * 64KB RAM + MZ-1500 相当の音源 I/O (DCSG x2 = F2h/F3h/E9h、BEEP 8253 = E004h/E007h、
  * ビデオステータス = E008h、YM2151 = 0708h/0709h) を内製 Z80 コアへ接続し、
  * 1 フレーム (1/60 秒 = 59,659T) ずつドライバを実行する。
- * フレーム同期は実機互換で E008h bit7 (H-BLANK) ポーリング (フレーム末尾をブランキング扱い)。
+ * フレーム同期は 60Hz タイマー割り込み駆動 (実機互換): runFrame のフレーム境界で
+ * INT を要求し、ドライバの ISR (IM1 / RST 38h) が 1 フレーム分の process_frame を
+ * 実行して HALT で待機する。ドライバは起動時に OUT E0h/E3h でバンクを RAM 側へ
+ * 切り替えるが、本環境はバンクなしの常時 RAM なので無視される。
  * (移植元: MzSound.Player/Driver/Z80DriverMachine.cs)
  */
 import { ChipBank } from '../chips/ChipBank';
@@ -90,11 +93,14 @@ export class Z80DriverMachine {
    */
   static readonly BlankTStates = 4560;
 
-  /** 制御ブロック: CB_STATUS (bit0 演奏中 / bit1 L ループ / bit7 停止要求)。 */
-  static readonly CbStatusAddress = 0xf800;
+  /**
+   * 制御ブロック: CB_STATUS (bit0 演奏中 / bit1 L ループ / bit7 停止要求)。
+   * アドレスは実機互換配置 (IPL システムワーク領域の後、ロード領域の外側)。
+   */
+  static readonly CbStatusAddress = 0xb000;
 
   /** 制御ブロック: CB_PTRS (17ch x 2B、現在データオフセット)。 */
-  static readonly CbPtrsAddress = 0xf808;
+  static readonly CbPtrsAddress = 0xb008;
 
   /** 64KB RAM (バス実装から参照するため公開)。 */
   readonly ram = new Uint8Array(0x10000);
@@ -121,6 +127,9 @@ export class Z80DriverMachine {
 
   private finished = false;
 
+  /** ドライバのブートが完了し STAT_PLAY (bit0) が立った。 */
+  private booted = false;
+
   constructor(chips: ChipBank) {
     this.chips = chips;
     this.processor.memory = new DriverMemoryBus(this);
@@ -130,7 +139,7 @@ export class Z80DriverMachine {
     this.processor.useExtendedPortsSpace = true;
   }
 
-  /** ドライバが HALT した (演奏終了 or 停止要求)。 */
+  /** 演奏が終了した (STAT_PLAY がブート後にクリアされた = 自然終了 or 停止要求処理済み)。 */
   get isFinished(): boolean {
     return this.finished;
   }
@@ -142,7 +151,7 @@ export class Z80DriverMachine {
 
   /** 制御ブロックのフレームカウンタ。 */
   get frameCounter(): number {
-    return this.ram[0xf801] | (this.ram[0xf802] << 8);
+    return this.ram[0xb001] | (this.ram[0xb002] << 8);
   }
 
   /** テスト / デバッグ用: 現在の PC。 */
@@ -165,9 +174,16 @@ export class Z80DriverMachine {
       this.ram[Z80DriverMachine.CbStatusAddress] |= 0x02; // STAT_LOOP
     }
 
+    // 実機 IPL 相当の RST 38h ハンドラ構造を再現 (0038h: JP 1038h)。
+    // ドライバの init_isr_hook が 1038h-103Ah に「C3 + ISR アドレス」を設定する。
+    this.ram[0x0038] = 0xc3;
+    this.ram[0x0039] = 0x38;
+    this.ram[0x003a] = 0x10;
+
     this.processor.reset();
     this.processor.registers.pc = Z80DriverImage.LoadAddress;
     this.finished = false;
+    this.booted = false;
     this.frameStart = 0;
   }
 
@@ -179,11 +195,20 @@ export class Z80DriverMachine {
 
     const target = this.processor.tStatesElapsedSinceReset + Z80DriverMachine.FrameTStates;
     this.frameStart = this.processor.tStatesElapsedSinceReset;
-    while (this.processor.tStatesElapsedSinceReset < target && !this.processor.isHalted) {
+    // フレーム境界で 60Hz タイマー割り込みを要求 (実機: 8253 ch2 OUT AND 8255 PC2 → INT)。
+    // ドライバは EI / HALT で待機しており、HALT 状態のまま次の命令境界で受け付ける。
+    this.processor.requestInterrupt();
+    while (this.processor.tStatesElapsedSinceReset < target) {
       this.processor.executeNextInstruction();
     }
 
-    if (this.processor.isHalted) {
+    // ブート完了 (STAT_PLAY 立) を検出してから bit0 が落ちた = 演奏終了 / 停止要求処理済み。
+    // HALT は割り込み待ちの常態となったため停止判定には使わない。
+    if (!this.booted && (this.status & 0x01) !== 0) {
+      this.booted = true;
+    }
+
+    if (this.booted && (this.status & 0x01) === 0) {
       this.finished = true;
     }
   }
