@@ -6,7 +6,7 @@
 ---
 
 ## 1. 現在のステータス概要
-- **バージョン**: `v0.0.1-beta.136+9d53ac3`（コミット通番＋短縮ハッシュ ハイブリッド方式）
+- **バージョン**: `v0.0.1-beta.137+1c3f614`（コミット通番＋短縮ハッシュ ハイブリッド方式）
 - **テスト通過状況**: 全 47 テストファイル / 643 件パス + 1 skip（`npm test` / Vitest）
 - **型検査状況**: エラー 0 件（`npx tsc -b`）
 - **主要機能の稼働状況**:
@@ -53,6 +53,12 @@
 ---
 
 ## 3. 直近の完了作業（最新）
+
+- **fix(ui): MML エディタの同一文字出現ハイライト (occurrencesHighlight) を無効化 — キャレット下文字と同じ文字の反転表示を廃止 (`src/view/MmlEditor.tsx`, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-11):
+  - **背景・ユーザー要望**: 「キャレット位置の文字と同じ文字をMMLエディタが反転表示する動きになってますが、廃止したいです。」
+  - **原因**: Monaco Editor (0.56.0) 既定の `occurrencesHighlight: 'singleFile'` が有効で、キャレット下のシンボルと同一の文字が文書内の全箇所で反転ハイライトされていた。MML は 1 文字コマンド (`cdefgab` / `o` / `v` 等) が主体のため、キャレット移動のたびに画面全体が反転表示されて視認性を損なう。
+  - **対応内容**: `MmlEditor.tsx` のエディタ `options` に `occurrencesHighlight: 'off'` を追加 (1 プロパティ追加・`wordBasedSuggestions: 'off'` 無効化と同一パターン)。**`selectionHighlight` (選択範囲と同一テキストのハイライト) は選択時のみの挙動のため据え置き** (コードコメントで明記)。仕様は `docs/specification/ui.md` の MML エディタセクションへ記録。
+  - **検証**: `npx tsc -b` エラーゼロ / `npm test` 全 47 ファイル・643 件合格 + 1 skip (変更なし) / `npm run lint` エラーゼロ (既存警告 10 は変更なし)。
 
 - **test(sound): FM 音源 (.qdf) の実機演奏検証プローブを追加 — fm_voice_macro.mml が Web IDE 内蔵エンジン / C# 実装エミュレータ両環境で正常演奏することを実測確認 (`tools/qdf-probe/fm-probe.test.ts` 新規, `docs/specification/quickdisk_export.md` 更新)** (2026-09-11):
   - **背景・ユーザー報告**: 「FM音源のデータを.qdf エクスポートすると、IPL Loding の表示までは行われますが、再生されません。例：fm_voice_macro.mml」→ **調査完了時点でユーザーより勘違いであったことが報告済み (対応不要確定)**。ただし実測により両環境での FM 演奏動作と、将来改善候補 3 点が確定したため記録する。

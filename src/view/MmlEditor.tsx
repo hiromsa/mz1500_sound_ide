@@ -1689,6 +1689,11 @@ export function MmlEditor({
               renderLineHighlight: 'all',
               mouseWheelZoom: true,
               contextmenu: false,
+              // Monaco 既定の同一シンボル出現ハイライト (キャレット下の文字と同じ文字を
+              // 文書内の全箇所で反転表示) を無効化。MML は 1 文字コマンド (cdefgab / o / v 等)
+              // が主体のため、キャレット移動のたびに画面全体が反転表示されて視認性を損なう。
+              // ※ selectionHighlight (選択範囲と同一テキストのハイライト) は選択時のみの挙動のため据え置き。
+              occurrencesHighlight: 'off',
               // MML 専用補完プロバイダー未実装のため、Monaco 既定のワードベースサジェスト
               // (文書内の既存単語を機械的に候補表示) を無効化。
               // 有効なままだと MML の無間記述トークン断片やコメント英単語が不自然な候補として出現する。
