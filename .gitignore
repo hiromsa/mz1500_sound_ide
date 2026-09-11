@@ -27,3 +27,6 @@ tools/cs-probe/out/
 *.njsproj
 *.sln
 *.sw?
+
+# vitest json reporter output
+.vitest/
