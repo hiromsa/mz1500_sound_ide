@@ -139,3 +139,4 @@ IDE 内蔵環境 (`Z80DriverMachine`) はバンクなし常時 RAM で動作す�
 |---|---|
 | 2026/09/05 | 初版作成。Phase 5 で `QdfImageBuilder` (C# QdcImageBuilder 移植) と `EXPORT (.qdf)` を実装。 |
 | 2026/09/11 | ブロック配置 (SYNC 数 / GAP 長) を実機 QDF ダンプ準拠に修正。ドライバ v1.3 (60Hz タイマー割り込み駆動 / RAM フック 1039h / ワーク 0xB000 系) へ改修し、MZ-1500 エミュレータ (C# 実装) での実機 IPL 経由ロード・演奏を確認。ファイル名のパディングを 0x0D → 0x20 空白へ変更 (0x0D 埋めは IPL ロード表示で文字化けする)。ASCII → ディスプレイコード変換関数 `asciiToDisplayCode()` を追加 (将来の画面表示機能向け)。 |
+| 2026/09/11 | **FM (OPM) 曲の実測検証を追加** (`tools/qdf-probe/fm-probe.test.ts`)。fm_voice_macro.mml の .qdf について、IDE 内蔵 Z80 エンジンと C# 実装エミュレータ headless CLI (`Mz1500.Cli --qd --wav`) の両環境で演奏を確認 (C# 側 12 秒 WAV peak 0.247 / OPM レジスタは IDE 側と 1 バイト単位で一致)。FM 音量 0.247 は `@v100` → TL27 (約 -20dB) の仕様どおり。将来改善候補: C# エミュレータ既定 OPM クロック 4MHz vs Web IDE 3.58MHz の音程差、実機向け `write_fm` の busy 待ち (~8μs) 未挿入。 |

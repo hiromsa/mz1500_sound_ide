@@ -6,8 +6,8 @@
 ---
 
 ## 1. 現在のステータス概要
-- **バージョン**: `v0.0.1-beta.129+fe67671`（コミット通番＋短縮ハッシュ ハイブリッド方式）
-- **テスト通過状況**: 全 46 テストファイル / 648 件パス + 1 skip（`npm test` / Vitest）
+- **バージョン**: `v0.0.1-beta.136+9d53ac3`（コミット通番＋短縮ハッシュ ハイブリッド方式）
+- **テスト通過状況**: 全 47 テストファイル / 643 件パス + 1 skip（`npm test` / Vitest）
 - **型検査状況**: エラー 0 件（`npx tsc -b`）
 - **主要機能の稼働状況**:
   - Web ネイティブ MML コンパイラ（9ch / 17ch / ワークトラック W1〜W99 対応）
@@ -53,6 +53,18 @@
 ---
 
 ## 3. 直近の完了作業（最新）
+
+- **test(sound): FM 音源 (.qdf) の実機演奏検証プローブを追加 — fm_voice_macro.mml が Web IDE 内蔵エンジン / C# 実装エミュレータ両環境で正常演奏することを実測確認 (`tools/qdf-probe/fm-probe.test.ts` 新規, `docs/specification/quickdisk_export.md` 更新)** (2026-09-11):
+  - **背景・ユーザー報告**: 「FM音源のデータを.qdf エクスポートすると、IPL Loding の表示までは行われますが、再生されません。例：fm_voice_macro.mml」→ **調査完了時点でユーザーより勘違いであったことが報告済み (対応不要確定)**。ただし実測により両環境での FM 演奏動作と、将来改善候補 3 点が確定したため記録する。
+  - **実測結果 (IDE 内蔵 Z80 エンジン + C# エミュレータ headless CLI)**:
+    1. **IDE 内蔵エンジン** (`MmlCompiler → Z80DriverMachine + ChipBank`): ブート 2 フレームで STAT_PLAY、frame 0 で KEYON、OPM レジスタは `$20=0xEC (RL=L+R/FB=5/ALG=4)`、`KC=0x52`、TL = 音色 TL + @v100 オフセット 27 = `0x2F/0x2B/0x35/0x1B` とすべて正しい。FM 音声 peak 869/32768、演奏は frame 360 で自然終了。
+    2. **C# 実装エミュレータ** (`mz1500_emulator_csharp` / `Mz1500.Cli --qd ... --wav`): 同一 .qdf を実機 IPL 経由でロード → Q キー → **12 秒 WAV 出力で peak 0.247 を確認 (演奏されている)**。xUnit (`QdfProbeTests.ObserveFmQdfRegisters`) による OPM レジスタ観測でも **IDE 側と 1 バイト単位で一致** (`$20=0xEC / KC=0x52 / TL=0x2F,0x2B,0x35,0x1B`)。
+    3. **比較基準**: PSG 曲 (`psg_octave_transpose.qdf`) は同条件で peak 1.000。FM の 0.247 は `@v100` → TL27 (約 -20dB 減衰) の仕様どおりの音量。
+  - **判明した将来改善候補 (今回対応なし)**:
+    1. **OPM チップクロック既定値の差**: C# エミュレータ既定 = **4MHz** (`Ym2151.ReferenceClockHz`)、Web IDE = **3.58MHz** (`ChipBank` が `DcsgChip.ClockHz` を指定)。同一 MML の音程が約 11.7% 異なる (C# GUI には 4MHz/3.58MHz 切替メニューあり)。
+    2. **実機向け write_fm の busy 待ちなし**: ドライバの `write_fm` は YM2151 のアドレス→データ書き込み間に必要な約 8μs の待ちを挿入していない (エミュレータは即時反映のため問題なし。**実機 ACZ-8BS1MZ での演奏時にレジスタ書き込みが抜けるリスク**)。
+    3. **Web IDE の FM 再生音量が PSG 比で小さい** (`@v100` → TL27 は仕様どおりだが、PSG v15 との音量バランスは UX として要確認)。
+  - **テスト**: `tools/qdf-probe/fm-probe.test.ts` (新規 3 件): ① 内蔵エンジンで FM 曲を実行し KEYON / レジスタ / 音声 peak を観測、② PSG 曲の peak 比較、③ fm_voice_macro.qdf を `tools/cs-probe/out/` へ生成 (C# 側実測の入力)。`npx tsc -b` エラーゼロ / `npm run lint` エラーゼロ (既存警告 10 変更なし) / `npm test` 全 47 ファイル・643 件合格 + 1 skip。
 
 - **feat(sound): .qdf (実機演奏プレイヤー) を MZ-1500 実機 IPL 経由で起動・演奏可能に — ドライバ v1.3 実機互換化 (60Hz タイマー割り込み駆動 / RAM フック 1039h / ワーク 0xB000 系) + QDF ブロック配置の実機ダンプ準拠 + Z80 コア INT 実装 (`driver/mzsd_driver.asm`, `src/core/z80/Z80Processor.ts`, `src/core/player/Z80DriverMachine.ts`, `src/core/export/QdfImageBuilder.ts`, `docs/specification/quickdisk_export.md` 更新)** (2026-09-11):
   - **背景・ユーザー報告**: 「.qdf出力したものがmz1500エミュレーターで鳴りません。」
