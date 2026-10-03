@@ -1,10 +1,10 @@
 # GitHub Pages への自動デプロイ (main ブランチ push 時)
 #
-# 注意: `npm test` (vitest) のうちチップ照合テストは、C# リファレンスツール
-# (tools/cs-probe / net9.0-windows・リポジトリ外の MzSound.Player を参照) が
-# 生成する out/reference.json を必要とするため、CI では実行できない。
-# よって本ワークフローでは lint + build のみを実行してデプロイする。
-# (単体テストはローカルで `npm test` を実行して確認すること)
+# チップ照合テストが参照する C# リファレンス値 (reference.json) は
+# src/core/chips/__tests__/fixtures/ としてリポジトリ管理しているため、
+# CI でも `npm test` (src/ 配下の単体テスト) を実行できる。
+# (tools/qdf-probe の実測プローブは C# リファレンスツールの生成物を必要とするため
+#  `npm run test:probe` によるローカル実行のみ。CI では実行しない)
 name: Deploy to GitHub Pages
 
 on:
@@ -40,6 +40,9 @@ jobs:
 
       - name: Lint
         run: npm run lint
+
+      - name: Test
+        run: npm test
 
       - name: Build
         run: npm run build

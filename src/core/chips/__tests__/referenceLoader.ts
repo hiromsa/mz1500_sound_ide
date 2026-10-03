@@ -1,7 +1,11 @@
 /// <reference types="node" />
 /**
- * C# リファレンス値 (tools/cs-probe/out/reference.json) の読み込みヘルパー。
- * 生成方法: dotnet run --project tools/cs-probe -c Release
+ * C# リファレンス値 (チップ照合テスト用フィクスチャ) の読み込みヘルパー。
+ * フィクスチャはリポジトリ管理しているため、クリーンチェックアウト / CI でも `npm test` が完結する。
+ *
+ * フィクスチャの更新方法:
+ *   1. `dotnet run --project tools/cs-probe -c Release` で tools/cs-probe/out/reference.json を再生成
+ *   2. `npm run update-chip-reference` で本フィクスチャへ反映
  */
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -24,7 +28,7 @@ let cached: ChipReference | null = null;
 export function loadReference(): ChipReference {
   if (cached === null) {
     const path = resolve(
-      fileURLToPath(new URL('../../../../tools/cs-probe/out/reference.json', import.meta.url)),
+      fileURLToPath(new URL('./fixtures/reference.json', import.meta.url)),
     );
     cached = JSON.parse(readFileSync(path, 'utf-8')) as ChipReference;
   }

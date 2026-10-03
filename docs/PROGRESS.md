@@ -7,7 +7,7 @@
 
 ## 1. 現在のステータス概要
 - **バージョン**: `v0.0.1-beta.139+aff2d31`（コミット通番＋短縮ハッシュ ハイブリッド方式）
-- **テスト通過状況**: 全 47 テストファイル / 669 件パス + 1 skip（`npm test` / Vitest）
+- **テスト通過状況**: 全 45 テストファイル / 665 件パス + 1 skip（`npm test` / Vitest・`src/` 配下）。`tools/qdf-probe` の実測プローブ 4 件は `npm run test:probe` に分離（ローカル実行）
 - **型検査状況**: エラー 0 件（`npx tsc -b`）
 - **主要機能の稼働状況**:
   - Web ネイティブ MML コンパイラ（9ch / 17ch / ワークトラック W1〜W99 対応）
@@ -59,6 +59,18 @@
 
 ## 3. 直近の完了作業（最新）
 
+- **chore(test/ci): テストの再現性を確保 — C# リファレンス値をリポジトリフィクスチャ化し CI で `npm test` を実行 (`src/core/chips/__tests__/fixtures/reference.json` 新規, `src/core/chips/__tests__/referenceLoader.ts`, `vite.config.ts`, `vitest.probe.config.ts` 新規, `scripts/update-chip-reference.mjs` 新規, `package.json`, `.github/workflows/deploy.yml`, [`docs/specification/ci_deploy.md`](./specification/ci_deploy.md))** (2026-09-12):
+  - **背景**: `referenceLoader.ts` が `tools/cs-probe/out/reference.json` (.gitignore 済み・C# リファレンスツール `tools/cs-probe` のローカル生成物 / リポジトリ外の MzSound.Player を ProjectReference) を直接参照していたため、クリーンチェックアウト / CI でチップ照合テスト (BeepChip / DcsgChip / SystemRandom / Ym2151) が必ず失敗していた。また vitest 既定の include により `tools/qdf-probe` の実測プローブ (.qdf / .bin を `tools/cs-probe/out/` へ書き込む副作用あり) が `npm test` に混在していた。
+  - **対応内容**:
+    1. **reference.json のフィクスチャ化**: `src/core/chips/__tests__/fixtures/reference.json` (6.4KB) をリポジトリ管理し、`referenceLoader.ts` を同フィクスチャ読み込みへ変更。`npm run update-chip-reference` (新規 `scripts/update-chip-reference.mjs`) で cs-probe 出力からフィクスチャへ反映できる。
+    2. **実測プローブの分離**: `vite.config.ts` の `test.include` を `src/**/*.test.{ts,tsx}` に限定し、新規 `vitest.probe.config.ts` (`tools/**/*.test.ts`) + `npm run test:probe` でプローブを明示実行する方式へ変更。
+    3. **CI へ `npm test` ステップ追加**: `deploy.yml` を lint → **test** → build の順に更新 (冒頭の注意書きも現状に合わせ改訂)。
+    4. **ドキュメント**: [`ci_deploy.md`](./specification/ci_deploy.md) のワークフロー表・注意事項を改訂 (フィクスチャ更新手順 / probe 分離の説明 / 履歴追記)。
+  - **検証**:
+    - **クリーン相当検証**: `tools/cs-probe/out/` を一時退避した状態で `npm test` → **全 45 テストファイル・665 件合格 + 1 skip** (終了コード 0)。CI と同一条件でチップ照合テストが完結することを確認。
+    - `npm run test:probe` → 2 ファイル・4 件合格 (分離後も明示実行で動作)。
+    - `npm run update-chip-reference` → フィクスチャと cs-probe 出力のハッシュ一致を確認。
+    - `npx tsc -b` エラーゼロ / `npm run build` 成功 / `npm run lint` エラーゼロ (警告 12、変更なし)。
 - **feat(mml/ui): `@SW` コマンドを `@PS` に刷新 & 右ペインに P-SW (ピッチスイープ) タブ・波形ジェネレーターUIを新設 (`src/view/PitchSweepEditor.tsx` 新規, `src/core/mml/MmlCompiler.ts`, `src/core/mml/parser/MmlParser.ts`, `src/utils/mmlContextParser.ts`, `src/utils/mmlDefinitionLoader.ts`, `src/utils/mmlCaretParser.ts`, `src/utils/mmlLanguage.ts`, `src/view/MmlEditor.tsx`, `src/view/VirtualKeyboard.tsx`, `src/app/App.tsx`, サンプル・ドキュメント更新)** (2026-09-12):
   - **背景・ユーザー要望**:
     1. `@SW` は `@PS` に変更する。

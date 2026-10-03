@@ -1,7 +1,7 @@
 {
     "name": "mz1500_sound_ide",
     "private": true,
-    "version": "0.0.1-beta.139",
+    "version": "0.0.1-beta.140",
     "type": "module",
     "scripts": {
         "dev": "vite",
@@ -10,7 +10,9 @@
         "preview": "vite preview",
         "predeploy": "npm run build",
         "deploy": "gh-pages -d dist",
-        "test": "vitest run"
+        "test": "vitest run",
+        "test:probe": "vitest run --config vitest.probe.config.ts",
+        "update-chip-reference": "node scripts/update-chip-reference.mjs"
     },
     "dependencies": {
         "@monaco-editor/react": "^4.7.0",

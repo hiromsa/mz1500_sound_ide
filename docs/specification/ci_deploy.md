@@ -1,7 +1,7 @@
 # CI / デプロイ (GitHub Actions による GitHub Pages 自動デプロイ)
 
 ## 概要
-- `main` ブランチへの push、および手動実行 (`workflow_dispatch`) をトリガーに、GitHub Actions で lint → build → GitHub Pages 公開まで自動実行する。
+- `main` ブランチへの push、および手動実行 (`workflow_dispatch`) をトリガーに、GitHub Actions で lint → test → build → GitHub Pages 公開まで自動実行する。
 - ワークフロー定義: [`.github/workflows/deploy.yml`](../../.github/workflows/deploy.yml)
 
 ## ワークフローの処理内容
@@ -11,19 +11,22 @@
 | 2 | `actions/setup-node@v4` で Node.js 22 + npm キャッシュをセットアップ |
 | 3 | `npm ci` で依存をインストール |
 | 4 | `npm run lint` (oxlint) |
-| 5 | `npm run build` (`tsc -b && vite build`、型チェック込み) |
-| 6 | `actions/configure-pages@v5` + `actions/upload-pages-artifact@v3` で `dist/` をアップロード |
-| 7 | `actions/deploy-pages@v4` で Pages へ公開 |
+| 5 | `npm test` (Vitest・`src/` 配下の単体テスト) |
+| 6 | `npm run build` (`tsc -b && vite build`、型チェック込み) |
+| 7 | `actions/configure-pages@v5` + `actions/upload-pages-artifact@v3` で `dist/` をアップロード |
+| 8 | `actions/deploy-pages@v4` で Pages へ公開 |
 
 - 同時実行制御 (`concurrency.group: pages`) により、連続 push 時は実行中の古いデプロイを打ち切って最新のみをデプロイする。
 
 ## 重要な注意事項
 
-### 単体テスト (`npm test`) は CI で実行していない
-- チップ照合テスト (`src/core/chips/__tests__/` 等) は C# リファレンス値 `tools/cs-probe/out/reference.json` を必要とする。
-- この JSON は `tools/cs-probe` (ターゲット `net9.0-windows` / **リポジトリ外**の `mz1500_sound_devenv/src/MzSound.Player` を ProjectReference) がローカルで生成するものであり、CI 環境では生成できない (`out/` は `.gitignore` 済み)。
-- そのため CI では **lint + build のみ**を実行し、単体テストは push 前にローカルで `npm test` を実行して確認する運用とする。
-- 将来的に C# リファレンス値を CI で扱う場合 (例: `reference.json` をリポジトリへコミット、または .NET セットアップの導入) は、本ワークフローへ `npm test` ステップを追加すること。
+### チップ照合テストの C# リファレンス値 (`reference.json`) について
+- チップ照合テスト (`src/core/chips/__tests__/`) が参照する C# リファレンス値は **`src/core/chips/__tests__/fixtures/reference.json` としてリポジトリ管理**しているため、クリーンチェックアウト / CI でも `npm test` が完結する (2026-09-12 より)。
+- 元データは `tools/cs-probe` (ターゲット `net9.0-windows` / **リポジトリ外**の `mz1500_sound_devenv/src/MzSound.Player` を ProjectReference) がローカル生成するものであり、CI では生成できない (`tools/cs-probe/out/` は `.gitignore` 済み)。
+- リファレンス値を更新する場合 (C# 実装変更時など):
+  1. `dotnet run --project tools/cs-probe -c Release` で `tools/cs-probe/out/reference.json` を再生成
+  2. `npm run update-chip-reference` でフィクスチャへ反映してコミット
+- 実測プローブ (`tools/qdf-probe`・`npm run test:probe`) は C# リファレンスツールの生成物 (.qdf / .bin) の書き込み・読み込みを伴うため **CI では実行せずローカル実行のみ**。Vitest の `include` を分離 (`vite.config.ts` = `src/` 配下 / `vitest.probe.config.ts` = `tools/` 配下) しているため、通常の `npm test` にプローブは含まれない。
 
 ### 初回適用時に必要な GitHub 側の設定 (リポジトリ管理者)
 1. リポジトリ **Settings → Pages → Build and deployment** の **Source** を `GitHub Actions` に変更する。
@@ -38,3 +41,4 @@
 | 日付 | 内容 | 状態 |
 |---|---|---|
 | 2026-09-06 | ワークフロー新規作成 (lint + build + deploy-pages) | ✅ 完了 (GitHub 側の Pages Source 切替は要確認) |
+| 2026-09-12 | `npm test` ステップを追加 (reference.json を `src/core/chips/__tests__/fixtures/` へフィクスチャ化)。実測プローブ (`tools/`) を `npm run test:probe` に分離 | ✅ 完了 |
