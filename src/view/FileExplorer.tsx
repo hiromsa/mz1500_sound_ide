@@ -16,23 +16,8 @@ import {
 import { ConfirmDialog } from './components/ConfirmDialog';
 import { SAMPLE_MML_FILES } from '../data/sampleMmlSongs';
 import { saveWorkspaceFolder, loadWorkspaceFolder, clearWorkspaceFolder } from '../utils/workspaceStorage';
+import type { FileItem } from '../types/FileItem';
 
-export interface FileItem {
-  id: string;
-  name: string;
-  isFolder: boolean;
-  isOpen?: boolean;
-  children?: FileItem[];
-  isSample?: boolean;
-  file?: File;
-  /** File System Access API のファイルハンドル (Ctrl+S での書き込み保存に使用) */
-  fileHandle?: FileSystemFileHandle;
-  /** 親ディレクトリのハンドル (リネームや削除時に使用) */
-  parentHandle?: FileSystemDirectoryHandle;
-  /** フォルダ自身の場合のディレクトリハンドル (そのフォルダ内での新規作成に使用) */
-  dirHandle?: FileSystemDirectoryHandle;
-  content?: string;
-}
 
 /** テキストファイルかどうか判定 */
 function isTextFile(fileName: string): boolean {

@@ -1,7 +1,7 @@
 /**
  * ローカルワークスペースフォルダの永続化ストレージ (IndexedDB + localStorage フォールバック)
  */
-import type { FileItem } from '../view/FileExplorer';
+import type { FileItem } from '../types/FileItem';
 
 export interface SerializableFileItem {
   id: string;

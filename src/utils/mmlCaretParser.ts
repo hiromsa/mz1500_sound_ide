@@ -1,4 +1,5 @@
 import type { SoundEngineType } from './virtualSynth';
+import { buildMacroCommandPatternSource, buildMacroDefinitionLinePatternSource } from './mmlMacroDictionary';
 
 /**
  * MML キャレット位置の演奏コンテキスト (トラック名・音源・オクターブ・音量・各ID等)。
@@ -42,11 +43,14 @@ const TRACK_NAME_PATTERN = /^(?:P[1-6]|N[1-2]|B1|F[1-8]|W\d+)$/;
 
 /**
  * 演奏状態に影響するコマンドトークンのパターン。
- * - `@` 系コマンドは正式パーサ同様に大文字小文字を区別しない
+ * - マクロ (`@PE` / `@PS` / `@VE` 等) は `mmlMacroDictionary` から生成 (正式パーサ同様に大文字小文字を区別しない)
  * - `D` (ディチューン) は音符 `d` と区別するため大文字のみ (正式パーサ準拠)
  * - `f2` / `d4` のような音長付き音符はどのパターンにも誤マッチしない
  */
-const COMMAND_PATTERN = /@[fF][mM]\d+|@[pP][eE]\d+|@[eE][pP]\d+|@[pP][sS]\d+|@[vV][eE]\d+|@[wW][nN]\d+|@[iI][nN]\d+|@[vV]\d+|@\d+|[oO][1-8]|[<>]|[vV]\d+|D-?\d+/g;
+const COMMAND_PATTERN = new RegExp(
+  `@[fF][mM]\\d+|${buildMacroCommandPatternSource()}|@[wW][nN]\\d+|@[iI][nN]\\d+|@[vV]\\d+|@\\d+|[oO][1-8]|[<>]|[vV]\\d+|D-?\\d+`,
+  'g',
+);
 
 /** トラック名から音源種別を判定する (mml_reference.md 2節準拠) */
 export function resolveEngineFromTrackName(trackName: string): SoundEngineType {
@@ -107,12 +111,15 @@ function stripLineComment(line: string): string {
   return index < 0 ? line : line.slice(0, index);
 }
 
+/** マクロ定義行判定パターン (`@VE1 = { ... }` / `@PE1 = { ... }` / `@1 = { ... }` 等・辞書から生成) */
+const MACRO_DEFINITION_LINE_PATTERN = new RegExp(buildMacroDefinitionLinePatternSource(), 'i');
+
 /**
  * マクロ定義行 (`@VE1 = { ... }` / `@PE1 = { ... }` / `@1 = { ... }` 等) かどうか。
  * 定義行はトラックの演奏状態へ影響しないため走査対象から除外する。
  */
 function isMacroDefinitionLine(line: string): boolean {
-  return /^\s*@(?:VE|EP|PE|PS|FM)?\d*\s*=/i.test(line);
+  return MACRO_DEFINITION_LINE_PATTERN.test(line);
 }
 
 /** 行頭のトラック指定の検出結果 */

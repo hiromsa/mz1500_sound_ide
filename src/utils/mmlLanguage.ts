@@ -1,5 +1,6 @@
 import type { Monaco } from '@monaco-editor/react';
 import type { languages, editor } from 'monaco-editor';
+import { MML_MACROS } from './mmlMacroDictionary';
 
 export const MML_LANGUAGE_ID = 'mz1500-mml';
 export const MML_THEME_NAME = 'mz1500-mml-theme';
@@ -47,27 +48,20 @@ export const mmlMonarchTokensProvider: languages.IMonarchLanguage = {
       [/^#(?:OCTAVE|OPM|FM)\b/i, { token: 'keyword.directive', next: '@directiveValue' }],
       [/^#\w+\b/i, 'keyword.directive'],
 
-      // マクロ定義行: @1 = { ... }, @VE1 = { ... }, @PE1 = { ... }
+      // マクロ定義行: @1 = { ... }, @VE1 = { ... }, @PE1 = { ... }, @PS1 = { ... }
+      // (エンベロープ系マクロ部は mmlMacroDictionary から生成)
       [/([@](?:FM)?\d+)(\s*=\s*)(\{)/i, [
         'macro.fm',
         'delimiter',
         { token: 'delimiter.bracket', next: '@macroBody' }
       ]],
-      [/([@](?:VE)\d+)(\s*=\s*)(\{)/i, [
-        'macro.vol',
-        'delimiter',
-        { token: 'delimiter.bracket', next: '@macroBody' }
-      ]],
-      [/([@](?:PE|EP)\d+)(\s*=\s*)(\{)/i, [
-        'macro.pitch',
-        'delimiter',
-        { token: 'delimiter.bracket', next: '@macroBody' }
-      ]],
-      [/([@](?:PS)\d+)(\s*=\s*)(\{)/i, [
-        'macro.pitch',
-        'delimiter',
-        { token: 'delimiter.bracket', next: '@macroBody' }
-      ]],
+      ...MML_MACROS.flatMap((macro): languages.IMonarchLanguageRule[] => [[
+        new RegExp(`([@](?:${macro.prefixes.join('|')})\\d+)(\\s*=\\s*)(\\{)`, 'i'), [
+          macro.token,
+          'delimiter',
+          { token: 'delimiter.bracket', next: '@macroBody' }
+        ],
+      ]]),
 
       // トラック指定子 (全17トラック: P1〜P6, N1〜N2, B1, F1〜F8、および作業用トラック: W1〜W99)
       [/\b(P[1-6])\b/i, 'track.psg'],
@@ -77,10 +71,11 @@ export const mmlMonarchTokensProvider: languages.IMonarchLanguage = {
       [/\b(W\d+)\b/i, 'track.psg'],
 
       // 音色・エンベロープ・効果音マクロ適用 / 解除
+      // (エンベロープ系マクロ部は mmlMacroDictionary から生成)
       [/[@](?:FM)?\d+\b/i, 'macro.fm'],
-      [/[@](?:VE)\d*\b/i, 'macro.vol'],
-      [/[@](?:PE|EP)\d*\b/i, 'macro.pitch'],
-      [/[@](?:PS)\d*\b/i, 'macro.pitch'],
+      ...MML_MACROS.flatMap((macro): languages.IMonarchLanguageRule[] => [[
+        new RegExp(`[@](?:${macro.prefixes.join('|')})\\d*\\b`, 'i'), macro.token,
+      ]]),
       [/[@](?:WN|IN)\d+\b/i, 'macro.noise'],
 
       // テンポ

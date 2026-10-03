@@ -3,6 +3,12 @@
  * - 指定行に含まれる @N / @VEN / @PEN の ID を抽出
  * - MML全文から使用済み ID セットを収集して新規採番に使用
  */
+import {
+  MML_MACROS,
+  buildMacroCallRegExp,
+  buildAllMacroCallsRegExp,
+  type MmlMacroKind,
+} from './mmlMacroDictionary';
 
 // ──────────────────────────────────────────────
 // 型定義
@@ -60,41 +66,30 @@ function stripComment(line: string): string {
 export function analyzeMmlLine(line: string): MmlLineAnalysis {
   const effective = stripComment(line);
 
-  let toneId: number | null = null;
-  let volEnvId: number | null = null;
-  let pitchEnvId: number | null = null;
-  let pitchSweepId: number | null = null;
+  const ids: MmlLineAnalysis = {
+    toneId: null,
+    volEnvId: null,
+    pitchEnvId: null,
+    pitchSweepId: null,
+  };
 
-  // @PEN を先にマッチ (@PE が @P を含むため)
-  const peMatch = effective.match(/@PE(\d+)/i);
-  if (peMatch) {
-    pitchEnvId = parseInt(peMatch[1], 10);
-  }
-
-  // @PSN (ピッチスイープ)
-  const psMatch = effective.match(/@PS(\d+)/i);
-  if (psMatch) {
-    pitchSweepId = parseInt(psMatch[1], 10);
-  }
-
-  // @VEN (音量エンベロープは @VE のみ対応。旧 @v は将来の拡張用に予約)
-  const veMatch = effective.match(/@VE(\d+)/i);
-  if (veMatch) {
-    volEnvId = parseInt(veMatch[1], 10);
+  // マクロ辞書 (pitchEnv → pitchSweep → volEnv の定義順) に従って ID を抽出する
+  for (const macro of MML_MACROS) {
+    for (const match of effective.matchAll(buildMacroCallRegExp(macro))) {
+      ids[macro.analysisKey] = parseInt(match[2], 10);
+      break; // 行内で最初に出現した ID を採用
+    }
   }
 
   // @N / @FMN  (数字のみ or FM プレフィックス)
   // @PE や @VE, @PS との衝突を避けるためにそれらを除外した後にマッチ
-  const stripped = effective
-    .replace(/@PE\d+/gi, '')
-    .replace(/@PS\d+/gi, '')
-    .replace(/@VE\d+/gi, '');
+  const stripped = effective.replace(buildAllMacroCallsRegExp(), '');
   const toneMatch = stripped.match(/@(?:FM)?(\d+)/i);
   if (toneMatch) {
-    toneId = parseInt(toneMatch[1], 10);
+    ids.toneId = parseInt(toneMatch[1], 10);
   }
 
-  return { toneId, volEnvId, pitchEnvId, pitchSweepId };
+  return ids;
 }
 
 // ──────────────────────────────────────────────
@@ -106,33 +101,27 @@ export function analyzeMmlLine(line: string): MmlLineAnalysis {
  * 主に「新規採番」時の最大ID+1の計算に使用する。
  */
 export function collectUsedIds(content: string): UsedIds {
-  const toneIds = new Set<number>();
-  const volEnvIds = new Set<number>();
-  const pitchEnvIds = new Set<number>();
-  const pitchSweepIds = new Set<number>();
+  const ids: UsedIds = {
+    toneIds: new Set<number>(),
+    volEnvIds: new Set<number>(),
+    pitchEnvIds: new Set<number>(),
+    pitchSweepIds: new Set<number>(),
+  };
 
-  for (const m of content.matchAll(/@(?:PE|EP)(\d+)/gi)) {
-    pitchEnvIds.add(parseInt(m[1], 10));
-  }
-
-  for (const m of content.matchAll(/@PS(\d+)/gi)) {
-    pitchSweepIds.add(parseInt(m[1], 10));
-  }
-
-  for (const m of content.matchAll(/@VE(\d+)/gi)) {
-    volEnvIds.add(parseInt(m[1], 10));
+  // マクロ辞書 (pitchEnv → pitchSweep → volEnv の定義順) に従って使用済み ID を収集する
+  for (const macro of MML_MACROS) {
+    for (const m of content.matchAll(buildMacroCallRegExp(macro))) {
+      ids[macro.usedIdsKey].add(parseInt(m[2], 10));
+    }
   }
 
   // @N / @FMN - ただし @PE / @PS / @VE を除いた文字列に対してマッチ
-  const stripped = content
-    .replace(/@PE\d+/gi, '')
-    .replace(/@PS\d+/gi, '')
-    .replace(/@VE\d+/gi, '');
+  const stripped = content.replace(buildAllMacroCallsRegExp(), '');
   for (const m of stripped.matchAll(/@(?:FM)?(\d+)/gi)) {
-    toneIds.add(parseInt(m[1], 10));
+    ids.toneIds.add(parseInt(m[1], 10));
   }
 
-  return { toneIds, volEnvIds, pitchEnvIds, pitchSweepIds };
+  return ids;
 }
 
 /**
@@ -148,8 +137,8 @@ export function nextAvailableId(usedIds: Set<number>): number {
 // 定義ブロック解析
 // ──────────────────────────────────────────────
 
-/** 右クリックメニューの「編集」対象となる定義ブロックの種別 */
-export type MmlDefinitionKind = 'tone' | 'volEnv' | 'pitchEnv' | 'pitchSweep';
+/** 右クリックメニューの「編集」対象となる定義ブロックの種別 (tone は `@<番号>` 固有書式のため辞書対象外) */
+export type MmlDefinitionKind = 'tone' | MmlMacroKind;
 
 /** MML 内のマクロ定義ブロック (`@<種別><番号> = { ... }`) 1件分の情報 */
 export interface MmlDefinitionBlock {

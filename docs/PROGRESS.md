@@ -29,6 +29,10 @@
   - 実機環境での AudioWorklet / Web Audio 再生挙動のクロスチェック。
 
 ### 優先度: 中 (Medium Priority)
+- [ ] **ENV 系エディタ 3 兄弟の共通化 (リファクタリング)**
+  - `VolEnvelopeEditor` (1,176 行) / `PitchEnvelopeEditor` (1,150 行) / `PitchSweepEditor` (1,129 行) は構造が酷似 (ID 入力 + 波形キャンバス + ループ点 + 試聴シーケンス + MML 反映)。
+  - 共通部品 (`EnvelopeTableCanvas` + `useEnvelopePreviewPlayback`) の抽出と、`PITCH_RANGES` 等の定数・波形生成関数の共有化を検討する。
+  - 大規模 UI リファクタリングのため**ブラウザでの動作検証 (MCP chrome-devtools-mcp) を伴って実施すること** (2026-09-12 判定)。
 - [ ] **TRACK MONITOR の DCSG 出力定位 (左・右・中央) 選択機能 (ユーザー構想 2026-09-11)**
   - DCSG1 (P1-P3 / N1) / DCSG2 (P4-P6 / N2) それぞれの出力定位を左・右・中央から選択できるようにする (あくまでプレビュー用)。
   - **仮想キーボードの `OUT: L/R/C (MONO)` 定位バッジ・発音と連動**させる (ユーザー確定)。
@@ -59,6 +63,14 @@
 
 ## 3. 直近の完了作業（最新）
 
+- **refactor(core): レイヤリング違反の解消と MML マクロ辞書の単一ソース化 (`src/types/FileItem.ts` 新規, `src/utils/mmlMacroDictionary.ts` 新規, `src/view/FileExplorer.tsx`, `src/utils/workspaceStorage.ts`, `src/utils/mmlCaretParser.ts`, `src/utils/mmlContextParser.ts`, `src/utils/mmlLanguage.ts`, `mmlMacroDictionary.test.ts` 新規)** (2026-09-12):
+  - **背景**: 永続化ロジック (`src/utils/workspaceStorage.ts`) が UI コンポーネント (`src/view/FileExplorer.tsx`) の型 (`FileItem`) に依存する逆依存があり、`.clinerules` の「UI とロジックの分離」「高凝集・疎結合」に反していた。また `@PS` 追加時に 5 箇所へ手作業配線が必要だった MML マクロの定義が各パーサ・ハイライトに分散していた。
+  - **対応内容**:
+    1. **`FileItem` を `src/types/FileItem.ts` へ移動**: UI に依存しない純型定義として分離し、`workspaceStorage.ts` / テストの import を変更。`utils → view` の逆依存を解消。
+    2. **`src/utils/mmlMacroDictionary.ts` 新設**: マクロ種別 (pitchEnv / pitchSweep / volEnv)、呼び出しプレフィックス (エイリアス `@EP` 含む)、Monarch トークン種別、分析結果・使用済み ID セットへの書き込み先キーを単一ソース化。`analyzeMmlLine` / `collectUsedIds` (mmlContextParser)、`COMMAND_PATTERN` / マクロ定義行判定 (mmlCaretParser)、Monarch ハイライトの定義行 & 呼び出しパターン (mmlLanguage) を辞書駆動へ変更。**今後 `@XX` マクロを追加する際は辞書 + `mmlCaretParser.applyCommand` の分岐のみで済む**。
+    3. `MmlDefinitionKind` を `'tone' | MmlMacroKind` へ統合 (mmlDefinitionLoader は既に mmlContextParser から import しており二重定義なし)。
+    4. **テスト**: `mmlMacroDictionary.test.ts` を新設 (+4: 呼び出しパターンの ID 解析 / 小文字対応 / 全マクロ除去 / 定義行判定)。
+  - **検証**: `npx tsc -b` エラーゼロ / `npm test` 全 46 テストファイル・669 件合格 + 1 skip (+4) / `npm run build` 成功 / `npm run lint` 警告 0 件。
 - **chore(docs/lint): README 書き直し・仕様索引の漏れ修正・oxlint 警告ゼロ化 (`README.md`, `docs/specification/README.md`, `src/app/App.tsx`, `src/view/MidiRouterModal.tsx`, `src/view/MmlTransformPanel.tsx`, `src/view/VirtualKeyboard.tsx`, `src/view/PitchEnvelopeEditor.tsx`, `src/view/PitchSweepEditor.tsx`, `src/utils/__tests__/workspaceStorage.test.ts`, `src/utils/mmlLanguage.test.ts` → `src/utils/__tests__/` 移動, `package.json`)** (2026-09-12):
   - **対応内容**:
     1. **README.md を Vite テンプレートから本プロジェクトの README へ書き直し** (プロジェクト概要 / 主な機能 / 開発環境 / コマンド一覧 / CI・デプロイ / ライセンス。Credits 節は維持)。

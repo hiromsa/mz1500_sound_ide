@@ -5,7 +5,7 @@ import {
   loadWorkspaceFolder, 
   clearWorkspaceFolder 
 } from '../workspaceStorage';
-import type { FileItem } from '../../view/FileExplorer';
+import type { FileItem } from '../../types/FileItem';
 
 describe('workspaceStorage', () => {
   const dummyTree: FileItem[] = [
