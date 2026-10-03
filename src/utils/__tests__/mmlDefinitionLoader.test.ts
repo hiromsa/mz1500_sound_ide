@@ -7,6 +7,7 @@ import {
   isIdDefined,
   loadFmToneDefinition,
   loadPitchEnvDefinition,
+  loadPitchSweepDefinition,
   loadVolEnvDefinition,
 } from '../mmlDefinitionLoader';
 
@@ -211,5 +212,41 @@ describe('isIdDefined', () => {
 
   it('種別が異なる同一 ID は定義済みと判定しない', () => {
     expect(isIdDefined(content, 'tone', 2)).toBe(false);
+  });
+
+  it('@PS 定義を判定できる', () => {
+    const psContent = '@PS5 = { 0, 10, 20 }';
+    expect(isIdDefined(psContent, 'pitchSweep', 5)).toBe(true);
+    expect(isIdDefined(psContent, 'pitchSweep', 6)).toBe(false);
+  });
+});
+
+describe('loadPitchSweepDefinition', () => {
+  it('ピッチスイープ定義を読み込む', () => {
+    const content = [
+      '@PS1 = {',
+      '  /* NAME: Rise */',
+      '  0, 10, 20, 30, 40',
+      '}',
+    ].join('\n');
+
+    const loaded = loadPitchSweepDefinition(content, 1);
+    expect(loaded).not.toBeNull();
+    expect(loaded?.name).toBe('Rise');
+    expect(loaded?.data).toEqual([0, 10, 20, 30, 40]);
+    expect(loaded?.loopPoint).toBe(-1);
+  });
+
+  it('ループ付きのピッチスイープ定義を読み込む', () => {
+    const content = '@PS2 = { 0, 5, | 10, 15 }\n';
+    const loaded = loadPitchSweepDefinition(content, 2);
+    expect(loaded).not.toBeNull();
+    expect(loaded?.data).toEqual([0, 5, 10, 15]);
+    expect(loaded?.loopPoint).toBe(2);
+  });
+
+  it('存在しない ID は null を返す', () => {
+    const content = '@PS1 = { 0, 10 }\n';
+    expect(loadPitchSweepDefinition(content, 99)).toBeNull();
   });
 });

@@ -17,7 +17,6 @@ const OpTempo = 0x02;
 const OpVolume = 0x03;
 const OpVenv = 0x04;
 const OpPenv = 0x05;
-const OpSweep = 0x06;
 const OpDetune = 0x07;
 const OpTranspose = 0x08;
 const OpTone = 0x09;
@@ -48,6 +47,7 @@ export class MmlParser {
   private readonly diagnostics: MmlDiagnostic[];
   private readonly venvIndexByNumber = new Map<number, number>();
   private readonly penvIndexByNumber = new Map<number, number>();
+  private readonly psIndexByNumber = new Map<number, number>();
   private readonly toneIndexByNumber = new Map<number, number>();
 
   private result = new ParseResult();
@@ -58,6 +58,8 @@ export class MmlParser {
     pitchEnvelopes: readonly PitchEnvelope[],
     fmTones: readonly FmTone[],
     diagnostics: MmlDiagnostic[],
+    peIndexByNumber?: ReadonlyMap<number, number>,
+    psIndexByNumber?: ReadonlyMap<number, number>,
   ) {
     this.source = source;
     this.diagnostics = diagnostics;
@@ -65,9 +67,16 @@ export class MmlParser {
     volumeEnvelopes.forEach((env, i) => {
       this.venvIndexByNumber.set(env.number, i);
     });
-    pitchEnvelopes.forEach((env, i) => {
-      this.penvIndexByNumber.set(env.number, i);
-    });
+    if (peIndexByNumber) {
+      peIndexByNumber.forEach((v, k) => this.penvIndexByNumber.set(k, v));
+    } else {
+      pitchEnvelopes.forEach((env, i) => {
+        this.penvIndexByNumber.set(env.number, i);
+      });
+    }
+    if (psIndexByNumber) {
+      psIndexByNumber.forEach((v, k) => this.psIndexByNumber.set(k, v));
+    }
     fmTones.forEach((tone, i) => {
       this.toneIndexByNumber.set(tone.number, i);
     });
@@ -347,11 +356,15 @@ export class MmlParser {
   private processAt(line: string, pos: number, lineNo: number, tracks: TrackBuilder[]): number {
     // 長い語から先に判定する (@PE / @VE / @FM は mml_reference.md 3.4-3.6 のエイリアス)
     // 音量エンベロープは @VE のみ対応 (@v は FM 専用音量コマンドとして再利用)
-    if (startsWithWord(line, pos, 'EP')) return this.processPitchEnvelopeCmd(line, pos + 2, lineNo, tracks);
-    if (startsWithWord(line, pos, 'PE')) return this.processPitchEnvelopeCmd(line, pos + 2, lineNo, tracks);
+    if (startsWithWord(line, pos, 'EP')) return this.processPitchEnvelopeCmd(line, pos + 2, lineNo, tracks, 'PE');
+    if (startsWithWord(line, pos, 'PE')) return this.processPitchEnvelopeCmd(line, pos + 2, lineNo, tracks, 'PE');
+    if (startsWithWord(line, pos, 'PS')) return this.processPitchEnvelopeCmd(line, pos + 2, lineNo, tracks, 'PS');
     if (startsWithWord(line, pos, 'VE')) return this.processVolumeEnvelopeCmd(line, pos + 2, lineNo, tracks);
     if (startsWithWord(line, pos, 'FM')) return this.processTone(line, pos + 2, lineNo, tracks);
-    if (startsWithWord(line, pos, 'SW')) return this.processSweep(line, pos + 2, lineNo, tracks);
+    if (startsWithWord(line, pos, 'SW')) {
+      this.diagnostics.push(mmlError(lineNo, pos + 1, '@SW は廃止されました。@PS を使用してください'));
+      return -1;
+    }
     if (startsWithWord(line, pos, 'v')) return this.processFineVolume(line, pos + 1, lineNo, tracks);
     if (startsWithWord(line, pos, 'wn')) return this.processNoiseWave(line, pos + 2, lineNo, tracks);
     if (startsWithWord(line, pos, 'in')) return this.processNoiseSync(line, pos + 2, lineNo, tracks);
@@ -459,14 +472,20 @@ export class MmlParser {
     return read.next;
   }
 
-  private processPitchEnvelopeCmd(line: string, pos: number, lineNo: number, tracks: TrackBuilder[]): number {
+  private processPitchEnvelopeCmd(
+    line: string,
+    pos: number,
+    lineNo: number,
+    tracks: TrackBuilder[],
+    prefix: 'PE' | 'PS' = 'PE',
+  ): number {
     const read = readUnsigned(line, pos, -1);
     if (read === null) {
-      this.diagnostics.push(mmlError(lineNo, pos + 1, '@EP には番号が必要です (解除は @EP255)'));
+      this.diagnostics.push(mmlError(lineNo, pos + 1, `@${prefix} には番号が必要です (解除は @${prefix}0 または @${prefix}255)`));
       return -1;
     }
 
-    if (read.value === 255) {
+    if (read.value === 0 || read.value === 255) {
       for (const t of tracks) {
         t.state.pitchEnvIndex = -1;
         t.code.push(OpPenv);
@@ -476,9 +495,11 @@ export class MmlParser {
       return read.next;
     }
 
-    const index = this.penvIndexByNumber.get(read.value);
+    const indexMap = prefix === 'PS' ? this.psIndexByNumber : this.penvIndexByNumber;
+    const index = indexMap.get(read.value);
     if (index === undefined) {
-      this.diagnostics.push(mmlError(lineNo, pos + 1, `未定義のピッチエンベロープ @EP${read.value} です`));
+      const typeName = prefix === 'PS' ? 'ピッチスイープ' : 'ピッチエンベロープ';
+      this.diagnostics.push(mmlError(lineNo, pos + 1, `未定義の${typeName} @${prefix}${read.value} です`));
       return -1;
     }
 
@@ -556,24 +577,7 @@ export class MmlParser {
     return read.next;
   }
 
-  // ---- @SW / @wn / @in ----
-
-  private processSweep(line: string, pos: number, lineNo: number, tracks: TrackBuilder[]): number {
-    const read = readSigned(line, pos, -1);
-    if (read === null) {
-      this.diagnostics.push(mmlError(lineNo, pos + 1, '@SW には数値が必要です'));
-      return -1;
-    }
-
-    const sweep = Math.min(127, Math.max(-128, read.value));
-    for (const t of tracks) {
-      t.state.sweep = sweep;
-      t.code.push(OpSweep);
-      t.code.push(sweep & 0xff);
-    }
-
-    return read.next;
-  }
+  // ---- @wn / @in ----
 
   private processNoiseWave(line: string, pos: number, lineNo: number, tracks: TrackBuilder[]): number {
     const read = readUnsigned(line, pos, -1);

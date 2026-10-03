@@ -250,6 +250,47 @@ export function loadPitchEnvDefinition(content: string, id: number): PitchEnvDef
 }
 
 // ──────────────────────────────────────────────
+// PITCH SWEEP (@PSN = { ... })
+// ──────────────────────────────────────────────
+
+/** PITCH SWEEP (@PSN = { ... }) 定義をエディタのデータ形状へロードした結果 */
+export interface PitchSweepDefinition {
+  /** 定義名 (MMLコメント &#47;* NAME: xxx *&#47; から抽出、未指定時は undefined) */
+  name?: string;
+  /** 各フレームのピッチ変調値 */
+  data: number[];
+  /** ループ開始ステップ (-1 = ループなし) */
+  loopPoint: number;
+}
+
+/**
+ * MML 全文から指定 ID のピッチスイープ定義を読み込む。
+ * 定義が存在しない・有効な要素が 1 つも無い場合は null を返す。
+ */
+export function loadPitchSweepDefinition(content: string, id: number): PitchSweepDefinition | null {
+  const body = extractDefinitionBody(content, 'pitchSweep', id);
+  if (body === null) return null;
+
+  const name = extractDefinitionName(body);
+  const data: number[] = [];
+  let loopPoint = -1;
+
+  for (const token of splitDefinitionTokens(body)) {
+    if (token === '|') {
+      if (loopPoint < 0) loopPoint = data.length;
+      continue;
+    }
+
+    if (isIntegerToken(token)) {
+      data.push(parseInt(token, 10));
+    }
+  }
+
+  if (data.length === 0) return null;
+  return { name, data, loopPoint };
+}
+
+// ──────────────────────────────────────────────
 // 定義済み判定
 // ──────────────────────────────────────────────
 

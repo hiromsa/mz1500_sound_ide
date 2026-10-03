@@ -63,6 +63,11 @@ export const mmlMonarchTokensProvider: languages.IMonarchLanguage = {
         'delimiter',
         { token: 'delimiter.bracket', next: '@macroBody' }
       ]],
+      [/([@](?:PS)\d+)(\s*=\s*)(\{)/i, [
+        'macro.pitch',
+        'delimiter',
+        { token: 'delimiter.bracket', next: '@macroBody' }
+      ]],
 
       // トラック指定子 (全17トラック: P1〜P6, N1〜N2, B1, F1〜F8、および作業用トラック: W1〜W99)
       [/\b(P[1-6])\b/i, 'track.psg'],
@@ -75,7 +80,7 @@ export const mmlMonarchTokensProvider: languages.IMonarchLanguage = {
       [/[@](?:FM)?\d+\b/i, 'macro.fm'],
       [/[@](?:VE)\d*\b/i, 'macro.vol'],
       [/[@](?:PE|EP)\d*\b/i, 'macro.pitch'],
-      [/[@]SW-?\d+\b/i, 'macro.pitch'],
+      [/[@](?:PS)\d*\b/i, 'macro.pitch'],
       [/[@](?:WN|IN)\d+\b/i, 'macro.noise'],
 
       // テンポ

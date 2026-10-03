@@ -116,7 +116,7 @@ const SEMITONE_TO_KEY_LABEL: Record<number, string> = {
 // PCキーボード演奏キーのうち黒鍵に割り当てられるセミトーン (キーアサイン表示の色分け用)
 const BLACK_KEY_SEMITONES = new Set([1, 3, 6, 8, 10, 13, 15]);
 
-export type ActiveTabContext = 'mml' | 'tone' | 'vol_envelope' | 'pitch_envelope';
+export type ActiveTabContext = 'mml' | 'tone' | 'vol_envelope' | 'pitch_envelope' | 'pitch_sweep';
 
 interface VirtualKeyboardProps {
   activeTabContext: ActiveTabContext;
@@ -249,8 +249,8 @@ export function VirtualKeyboard({
       // VOL ENVエディタ時はPSGまたはNOISE
       return (manual === 'noise' || manual === 'psg') ? manual : 'psg';
     }
-    if (activeTabContext === 'pitch_envelope') {
-      // PITCH ENVエディタ時はFM / PSG / BEEP
+    if (activeTabContext === 'pitch_envelope' || activeTabContext === 'pitch_sweep') {
+      // PITCH ENV / P-SW エディタ時はFM / PSG / BEEP
       if (manual === 'fm' || manual === 'psg' || manual === 'beep') {
         return manual;
       }
@@ -318,8 +318,8 @@ export function VirtualKeyboard({
 
   // 3. ピッチエンベロープ (@PE) の実効データ判定
   const effectivePitchEnvData = useMemo(() => {
-    if (activeTabContext === 'pitch_envelope') {
-      // PITCH ENVエディタ時はエディタで編集中のデータを常に適用
+    if (activeTabContext === 'pitch_envelope' || activeTabContext === 'pitch_sweep') {
+      // PITCH ENV / P-SW エディタ時はエディタで編集中のデータを常に適用
       return { data: activePitchEnv, loop: activePitchEnvLoop };
     }
     if (selectedPitchEnv === 'editor' && activePitchEnv) {
@@ -664,6 +664,7 @@ export function VirtualKeyboard({
               {activeTabContext === 'mml' && `MML CARET: ${mmlContext?.trackName || 'P1'}`}
               {activeTabContext === 'tone' && 'FM TONE EDITOR'}
               {activeTabContext === 'pitch_envelope' && 'PITCH ENV EDITOR'}
+              {activeTabContext === 'pitch_sweep' && 'PITCH SWEEP EDITOR'}
               {activeTabContext === 'vol_envelope' && 'VOL ENV EDITOR'}
             </span>
           </div>
@@ -703,12 +704,12 @@ export function VirtualKeyboard({
                 <option value="psg">PSG (DCSG 矩形波)</option>
                 <option value="noise">NOISE (DCSG)</option>
               </select>
-            ) : activeTabContext === 'pitch_envelope' ? (
+            ) : (activeTabContext === 'pitch_envelope' || activeTabContext === 'pitch_sweep') ? (
               <select
                 value={effectiveEngine}
                 onChange={(e) => setManualEngine(e.target.value as VirtualKeyboardChipMode)}
                 className="h-5 px-1.5 rounded bg-[#0c0d12] border border-white/[0.1] text-zinc-200 text-[10px] focus:outline-none focus:border-cyan-400 cursor-pointer"
-                title="PITCH ENVエディタ時はFM/PSG/BEEPを選択可能"
+                title="PITCH ENV / P-SW エディタ時はFM/PSG/BEEPを選択可能"
               >
                 <option value="fm">FM (YM2151)</option>
                 <option value="psg">PSG (DCSG)</option>
@@ -778,12 +779,12 @@ export function VirtualKeyboard({
             </div>
           )}
 
-          {/* 3) PITCH指定 (@PE ピッチエンベロープ) */}
+          {/* 3) PITCH指定 (@PE / @PS ピッチ変調) */}
           <div className="flex items-center gap-1 pl-1 border-l border-white/[0.08]">
             <span className="text-[10px] text-zinc-500">PITCH:</span>
-            {activeTabContext === 'pitch_envelope' ? (
-              <span className="h-5 px-1.5 rounded bg-[#0c0d12] border border-cyan-500/40 text-cyan-300 text-[10px] font-bold flex items-center" title="PITCH ENVエディタのカーブを自動適用">
-                @PE (EDITOR PREVIEW)
+            {activeTabContext === 'pitch_envelope' || activeTabContext === 'pitch_sweep' ? (
+              <span className="h-5 px-1.5 rounded bg-[#0c0d12] border border-cyan-500/40 text-cyan-300 text-[10px] font-bold flex items-center" title="エディタのカーブを自動適用">
+                {activeTabContext === 'pitch_sweep' ? '@PS (EDITOR PREVIEW)' : '@PE (EDITOR PREVIEW)'}
               </span>
             ) : (
               <select

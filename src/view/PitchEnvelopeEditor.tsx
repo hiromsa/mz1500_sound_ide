@@ -24,7 +24,7 @@ const MAX_FRAMES = 128;
 export const PITCH_RANGES = [
   { value: 7, label: '±7 (Micro/Vib)', desc: '微小デチューン・浅いビブラート' },
   { value: 15, label: '±15 (Standard)', desc: '標準ビブラート・効果音' },
-  { value: 24, label: '±24 (2 Octaves)', desc: '2オクターブ・ポルタメント' },
+  { value: 24, label: '±24 (Large)', desc: '深めのビブラート・ポルタメント' },
   { value: 48, label: '±48 (Wide Bend)', desc: 'ワイドピッチベンド・急降下/急上昇' },
 ];
 

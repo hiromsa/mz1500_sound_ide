@@ -174,4 +174,22 @@ describe('MmlCompiler', () => {
     expect(result.success).toBe(false);
     expect(result.diagnostics.some((d) => d.message.includes('トラック指定'))).toBe(true);
   });
+
+  it('@PS 定義と呼び出しが成功し、@PE と独立した番号で管理される', () => {
+    const mml = `
+      @PE1 = { |, 0, 4, 0, -4 }
+      @PS1 = { 0, 10, 20, 30 }
+      P1 o4 c @PE1 d @PS1 e @PS0 f @PS255 g
+    `;
+    const result = compile(mml);
+    expect(result.success).toBe(true);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it('旧 @SW コマンドは廃止エラーとなり @PS への案内を行う', () => {
+    const mml = 'P1 o4 c @SW10 d';
+    const result = compile(mml);
+    expect(result.success).toBe(false);
+    expect(result.diagnostics.some((d) => d.message.includes('@SW は廃止されました。@PS を使用してください'))).toBe(true);
+  });
 });

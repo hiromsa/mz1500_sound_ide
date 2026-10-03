@@ -23,7 +23,8 @@ import {
   Play,
   TextSelect,
   Square,
-  Code2
+  Code2,
+  Zap
 } from 'lucide-react';
 import Editor, { type Monaco } from '@monaco-editor/react';
 import type { editor } from 'monaco-editor';
@@ -186,9 +187,11 @@ interface MmlEditorProps {
   onRequestEditTone?: (id: number) => void;
   onRequestEditVolEnv?: (id: number) => void;
   onRequestEditPitchEnv?: (id: number) => void;
+  onRequestEditPitchSweep?: (id: number) => void;
   onRequestNewTone?: (newId: number) => void;
   onRequestNewVolEnv?: (newId: number) => void;
   onRequestNewPitchEnv?: (newId: number) => void;
+  onRequestNewPitchSweep?: (newId: number) => void;
   /** 下部エリアのアクティブタブ (外部制御可能) */
   activeBottomTab?: BottomTab;
   /** 下部エリアのアクティブタブ変更コールバック */
@@ -243,9 +246,11 @@ export function MmlEditor({
   onRequestEditTone,
   onRequestEditVolEnv,
   onRequestEditPitchEnv,
+  onRequestEditPitchSweep,
   onRequestNewTone,
   onRequestNewVolEnv,
   onRequestNewPitchEnv,
+  onRequestNewPitchSweep,
   activeBottomTab: propActiveBottomTab,
   onChangeBottomTab,
   isBottomCollapsed: propIsBottomCollapsed,
@@ -396,9 +401,11 @@ export function MmlEditor({
   const onRequestEditToneRef = useRef(onRequestEditTone);
   const onRequestEditVolEnvRef = useRef(onRequestEditVolEnv);
   const onRequestEditPitchEnvRef = useRef(onRequestEditPitchEnv);
+  const onRequestEditPitchSweepRef = useRef(onRequestEditPitchSweep);
   const onRequestNewToneRef = useRef(onRequestNewTone);
   const onRequestNewVolEnvRef = useRef(onRequestNewVolEnv);
   const onRequestNewPitchEnvRef = useRef(onRequestNewPitchEnv);
+  const onRequestNewPitchSweepRef = useRef(onRequestNewPitchSweep);
   const onFocusEditorRef = useRef(onFocusEditor);
   const onCaretContextChangeRef = useRef(onCaretContextChange);
   const onAppendLogRef = useRef(onAppendLog);
@@ -413,9 +420,11 @@ export function MmlEditor({
   useEffect(() => { onRequestEditToneRef.current = onRequestEditTone; }, [onRequestEditTone]);
   useEffect(() => { onRequestEditVolEnvRef.current = onRequestEditVolEnv; }, [onRequestEditVolEnv]);
   useEffect(() => { onRequestEditPitchEnvRef.current = onRequestEditPitchEnv; }, [onRequestEditPitchEnv]);
+  useEffect(() => { onRequestEditPitchSweepRef.current = onRequestEditPitchSweep; }, [onRequestEditPitchSweep]);
   useEffect(() => { onRequestNewToneRef.current = onRequestNewTone; }, [onRequestNewTone]);
   useEffect(() => { onRequestNewVolEnvRef.current = onRequestNewVolEnv; }, [onRequestNewVolEnv]);
   useEffect(() => { onRequestNewPitchEnvRef.current = onRequestNewPitchEnv; }, [onRequestNewPitchEnv]);
+  useEffect(() => { onRequestNewPitchSweepRef.current = onRequestNewPitchSweep; }, [onRequestNewPitchSweep]);
   useEffect(() => { onFocusEditorRef.current = onFocusEditor; }, [onFocusEditor]);
   useEffect(() => { onCaretContextChangeRef.current = onCaretContextChange; }, [onCaretContextChange]);
   useEffect(() => { onAppendLogRef.current = onAppendLog; }, [onAppendLog]);
@@ -858,6 +867,7 @@ export function MmlEditor({
     const newToneId = nextAvailableId(usedIds.toneIds);
     const newVolEnvId = nextAvailableId(usedIds.volEnvIds);
     const newPitchEnvId = nextAvailableId(usedIds.pitchEnvIds);
+    const newPitchSweepId = nextAvailableId(usedIds.pitchSweepIds);
 
     const entries: MmlContextMenuEntry[] = [];
 
@@ -918,6 +928,14 @@ export function MmlEditor({
             onSelect: () => onRequestEditPitchEnvRef.current?.(definitionId),
           });
           break;
+        case 'pitchSweep':
+          entries.push({
+            id: 'edit-pitch-sweep',
+            label: `@PS${definitionId} を P-SW エディタで編集`,
+            icon: Zap,
+            onSelect: () => onRequestEditPitchSweepRef.current?.(definitionId),
+          });
+          break;
       }
     }
     if (entries.length > 0) {
@@ -970,6 +988,12 @@ export function MmlEditor({
         label: '新規 PITCH ENV を挿入...',
         icon: ChartLine,
         onSelect: () => onRequestNewPitchEnvRef.current?.(newPitchEnvId),
+      },
+      {
+        id: 'new-pitch-sweep',
+        label: '新規 P-SW を挿入...',
+        icon: Zap,
+        onSelect: () => onRequestNewPitchSweepRef.current?.(newPitchSweepId),
       },
     );
 

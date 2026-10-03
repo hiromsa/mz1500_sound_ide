@@ -6,8 +6,8 @@
 ---
 
 ## 1. 現在のステータス概要
-- **バージョン**: `v0.0.1-beta.138+4b916bb`（コミット通番＋短縮ハッシュ ハイブリッド方式）
-- **テスト通過状況**: 全 47 テストファイル / 656 件パス + 1 skip（`npm test` / Vitest）
+- **バージョン**: `v0.0.1-beta.139+aff2d31`（コミット通番＋短縮ハッシュ ハイブリッド方式）
+- **テスト通過状況**: 全 47 テストファイル / 669 件パス + 1 skip（`npm test` / Vitest）
 - **型検査状況**: エラー 0 件（`npx tsc -b`）
 - **主要機能の稼働状況**:
   - Web ネイティブ MML コンパイラ（9ch / 17ch / ワークトラック W1〜W99 対応）
@@ -17,6 +17,7 @@
   - MIDI ROUTING STUDIO (SMF プレビュー & MML 変換 & 和音自動ボイス分離)
   - MML TRANSFORM (半音・オクターブ移調 & 音量スケーリング & チャンネル置換 / 他方言トラック A-Z 対応)
   - ローカルフォルダオープン (`OPEN LOCAL FOLDER...`) & IndexedDB / localStorage 自動永続化・次回アクセス時完全復元
+  - ピッチスイープエディタ (`P-SW`) & 波形ジェネレーター（方向・カーブ曲率・ディレイ・期間・深度）
 
 ---
 
@@ -45,7 +46,7 @@
     1. `src/utils/mmlCompletion.ts` (新規・ロジック層): MML コマンド辞書 (静的データ: トラック指定子 / ディレクティブ / 音符・休符 / コマンド `o`,`l`,`v`,`t`,`q`,`K`,`D`,`^`,`[`,`]`,`@`系 等 + 説明文) とプレフィックス・文脈フィルタの純粋関数。規模感 約 200〜300 行。
     2. `src/utils/mmlLanguage.ts` へ `monaco.languages.registerCompletionItemProvider` の登録を追加 (約 50 行)。
     3. 文脈判定は既存 `src/utils/mmlCaretParser.ts` (`MmlCaretContext.engine`) を流用。FM トラック内では `@v` (0-127) を優先提示、DCSG トラックでは `v` (0-15) を提示、等の絞り込み。
-    4. 候補出し分け: 行頭=トラック指定子 (`P1`-`P6` / `N1`-`N2` / `B1` / `F1`-`F8` / `W1`-`W99`)、`#` 入力=ディレクティブ (`#TITLE` / `#COMPOSER` / `#OCTAVE` / `#OPM` / `#FM`)、`@` 入力=マクロ (`@1` / `@VE1` / `@PE1` / `@v` / `@q` / `@t` / `@WN` / `@IN` / `@SW`)、英字入力=MML コマンド。
+    4. 候補出し分け: 行頭=トラック指定子 (`P1`-`P6` / `N1`-`N2` / `B1` / `F1`-`F8` / `W1`-`W99`)、`#` 入力=ディレクティブ (`#TITLE` / `#COMPOSER` / `#OCTAVE` / `#OPM` / `#FM`)、`@` 入力=マクロ (`@1` / `@VE1` / `@PE1` / `@v` / `@q` / `@t` / `@WN` / `@IN` / `@PS`)、英字入力=MML コマンド。
     5. 辞書の元ネタ: Monarch トークン定義 (`src/utils/mmlLanguage.ts`) と `docs/specification/mml_reference.md`。
     6. テスト: `src/utils/__tests__/mmlCompletion.test.ts` を `mmlCaretParser.test.ts` のパターンに準拠して新設 (ロジック層は Monaco 非依存でテスト可能に設計)。
 - [ ] **GitHub Pages 自動デプロイの設定切替 (ユーザー操作)**
@@ -57,6 +58,37 @@
 ---
 
 ## 3. 直近の完了作業（最新）
+
+- **feat(mml/ui): `@SW` コマンドを `@PS` に刷新 & 右ペインに P-SW (ピッチスイープ) タブ・波形ジェネレーターUIを新設 (`src/view/PitchSweepEditor.tsx` 新規, `src/core/mml/MmlCompiler.ts`, `src/core/mml/parser/MmlParser.ts`, `src/utils/mmlContextParser.ts`, `src/utils/mmlDefinitionLoader.ts`, `src/utils/mmlCaretParser.ts`, `src/utils/mmlLanguage.ts`, `src/view/MmlEditor.tsx`, `src/view/VirtualKeyboard.tsx`, `src/app/App.tsx`, サンプル・ドキュメント更新)** (2026-09-12):
+  - **背景・ユーザー要望**:
+    1. `@SW` は `@PS` に変更する。
+    2. `V-ENV`、`P-ENV` の並びに `P-SW` のタブを用意したい。
+    3. おおまかな仕様としては `V-ENV`、`P-ENV` と同じだが、波形編集としては手動以外にも、かかり始め、角度(曲線のカーブの具合、直線)、上方向/下方向などをコントロールできる UI を用意する。
+  - **対応内容**:
+    1. **MML 言語仕様改訂**:
+       - `@PS` 定義マクロ (`@PS[番号] = { ... }`) を新設。トラック内からは `@PS1` 等で呼び出し、解除は `@PS0` / `@PS255`。
+       - 内部的にはピッチエンベロープ（MZSD `PitchEnvelope` テーブル）として統合処理されるが、MML 上は `@PE` と `@PS` で独立した番号体系として管理 (`peIndexByNumber` / `psIndexByNumber`)。
+       - 旧 `@SW`（毎フレーム即値加算）は完全廃止し、使用時は「`@SW は廃止されました。@PS を使用してください`」と明確に診断エラーを出力。
+    2. **P-SW タブ & PitchSweepEditor コンポーネント新設**:
+       - 右ペインタブに `P-SW` (`Zap` アイコン) を追加（`MONITOR` ➜ `FM` ➜ `V-ENV` ➜ `P-ENV` ➜ `P-SW` ➜ `SETUP` ➜ `TRANSFORM` ➜ `SETTINGS`）。
+       - **SWEEP CURVE GENERATOR (波形ジェネレーター)**: 方向（上 `UP ↗` / 下 `DOWN ↘`）、カーブ形状（直線 `LINEAR` / 指数・加速 `EXPONENTIAL` / 対数・減速 `LOGARITHMIC` / `S-CURVE`）、角度・曲率テンションスライダー (-100%〜+100%)、かかり始めディレイ (0〜64F)、継続期間 (2〜128F)、変化量 (1〜500) を備え、ワンクリックで波形を一括生成。
+       - **手動編集キャンバス & プリセット**: センターゼロ双極性バーグラフ、フリーハンドドラッグ微調整、ループ点設定、プリセット（`LASER DROP`, `FAST BEND UP`, `DELAYED SWEEP`, `SLOW DIVE`, `HYPER JUMP`）。
+       - **試聴 & MML 反映**: `virtualSynth` 経由の DCSG 矩形波チップ直接駆動によるリアルタイム試聴、`▶ MMLに反映` による MML 内定義の挿入・更新、エディタ右クリックメニュー（`@PS` 編集および `新規 P-SW を挿入...`）との連携。
+    3. **ドキュメント & サンプル更新**:
+       - `docs/specification/mml_reference.md`: `@PS` の定義・コマンドリファレンス追加、`@SW` 廃止の注記。
+       - `docs/specification/ui.md`: `P-SW` タブおよび `PitchSweepEditor` 仕様の追記。
+       - `samples/mml_reference/` 配下のサンプル（`psg_pitch_effect.mml`, `fm_pitch_effect.mml`, `beep_pitch_effect.mml`, `README.md`）を `@PS` に更新。
+    4. **キャレットコンテキスト & エディタハイライトの追従 (初回コミット漏れの修正)**:
+       - `src/utils/mmlCaretParser.ts`: `MmlCaretContext` / `TrackPlayState` へ `pitchSweepId` を追加 (`COMMAND_PATTERN` へ `@[pP][sS]\d+` 追加・`@PS` 適用分岐追加・`@PS` 定義行の走査除外追加)。MML キャレット位置の `@PS` ID が P-SW エディタへ自動追従する (`App.tsx` 側は対応済みだったがコンテキスト側が未実装で型エラー 4 件 → ビルド不能だった)。
+       - `src/utils/mmlLanguage.ts` (Monarch): `@PS[番号] = { ... }` 定義行と `@PSn` コマンドのハイライトを追加し、廃止済みの旧 `@SW` コマンドパターンを除去。
+       - `src/core/mml/parser/MmlParser.ts`: `@PS` は `OpPenv` として発行される設計のため、未使用だった `OpSweep` 定数を削除 (`noUnusedLocals` の TS6133 解消)。
+       - `mmlCaretParser.test.ts` に `@PS` のテストを +5 (ID 解析 / 小文字対応 / `@PS0`・`@PS255` の ID 保持 / 定義行の無視 / 未指定 undefined)。
+    5. **検証**:
+       - `npx tsc -b` エラーゼロ。
+       - `npm test` 全 47 テストファイル・669 件すべて合格 (+5 件、1 skip)。
+       - `npm run build` 成功 / `npm run lint` エラーゼロ (警告 12、既存分のみ)。
+       - Vitest サンプル MML 全件コンパイルパス。
+       - ブラウザサブエージェントによる実機画面動作検証（P-SW タブ、波形生成、MML 反映、エディタ同期）完了。
 
 - **feat(ui): 仮想キーボードを単音 (モノフォニック) 発音化 & 発音定位を実機 DCSG チップ配線に連動 — PSG の多押しで左右交互に鳴る問題を修正 (`src/view/VirtualKeyboard.tsx`, `src/utils/virtualSynth.ts`, `src/utils/keyboardChipMode.ts`, `src/utils/mmlCaretParser.ts`, `src/core/keyboard/KeyboardSoundEngine.ts`, `src/core/player/AudioFrameMixer.ts`, 各テスト, [`docs/specification/ui.md`](./specification/ui.md))** (2026-09-11):
   - **背景・ユーザー報告**: 「仮想キーボードをたくさん押していると、PSGのばあい、左から鳴ったり、右から鳴ったりします。」

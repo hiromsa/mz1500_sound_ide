@@ -32,14 +32,14 @@ export interface MmlCompileResult {
 }
 
 /**
- * マクロ定義行 (@VE, @EP / @PE, @FM / @<n>) を行頭から抽出する正規表現。
+ * マクロ定義行 (@VE, @EP / @PE, @PS, @FM / @<n>) を行頭から抽出する正規表現。
  * 音量エンベロープは @VE のみ対応 (旧エイリアス @v は将来の拡張用に予約するため解釈しない)。
  * 書式は docs/specification/mml_reference.md 4 章準拠 (`@<種別><番号> = { ... }`、`=` 必須)。
  */
-const macroRegex = /^[ \t]*@(?:(VE|EP|PE|FM)(\d+)|(\d+))[ \t]*=[ \t]*\{([^}]*)\}/gm;
+const macroRegex = /^[ \t]*@(?:(VE|EP|PE|PS|FM)(\d+)|(\d+))[ \t]*=[ \t]*\{([^}]*)\}/gm;
 
 /** マクロ定義の正規種別。 */
-type MacroKind = 'v' | 'EP' | 'FM';
+type MacroKind = 'v' | 'EP' | 'PS' | 'FM';
 
 /** 正規化済みマクロ定義ヘッダ。 */
 interface MacroHeader {
@@ -47,7 +47,7 @@ interface MacroHeader {
   readonly number: number;
 }
 
-/** 定義行の接頭辞を正規種別へ変換する (@VE→v、@PE→EP、@FM / @<n>→FM)。 */
+/** 定義行の接頭辞を正規種別へ変換する (@VE→v、@PE→EP、@PS→PS、@FM / @<n>→FM)。 */
 function parseMacroHeader(
   prefix: string | undefined,
   numberStr: string | undefined,
@@ -65,6 +65,8 @@ function parseMacroHeader(
     case 'EP':
     case 'PE':
       return { kind: 'EP', number };
+    case 'PS':
+      return { kind: 'PS', number };
     case 'FM':
       return { kind: 'FM', number };
     default:
@@ -84,9 +86,11 @@ export class MmlCompiler {
   compile(source: string): MmlCompileResult {
     const diagnostics: MmlDiagnostic[] = [];
 
-    // 1) マクロ定義 (@VE, @EP / @PE, @FM / @<n>) を抽出し、ソースからは行位置を崩さずに除去する
+    // 1) マクロ定義 (@VE, @EP / @PE, @PS, @FM / @<n>) を抽出し、ソースからは行位置を崩さずに除去する
     const volumeEnvelopes: VolumeEnvelope[] = [];
     const pitchEnvelopes: PitchEnvelope[] = [];
+    const peIndexByNumber = new Map<number, number>();
+    const psIndexByNumber = new Map<number, number>();
     const fmTones: FmTone[] = [];
 
     const cleaned = source.replace(
@@ -111,9 +115,22 @@ export class MmlCompiler {
           }
 
           case 'EP': {
-            const penv = parsePitchEnvelope(header.number, body, line, column, diagnostics);
+            const penv = parsePitchEnvelope(header.number, body, line, column, diagnostics, 'PE');
             if (penv !== null) {
+              const idx = pitchEnvelopes.length;
               pitchEnvelopes.push(penv);
+              peIndexByNumber.set(header.number, idx);
+            }
+
+            break;
+          }
+
+          case 'PS': {
+            const ps = parsePitchEnvelope(header.number, body, line, column, diagnostics, 'PS');
+            if (ps !== null) {
+              const idx = pitchEnvelopes.length;
+              pitchEnvelopes.push(ps);
+              psIndexByNumber.set(header.number, idx);
             }
 
             break;
@@ -137,7 +154,15 @@ export class MmlCompiler {
     const withoutHeaders = cleaned.replace(headerRegex, (match) => blankOut(match));
 
     // 3) 本体パース + コード生成
-    const parser = new MmlParser(withoutHeaders, volumeEnvelopes, pitchEnvelopes, fmTones, diagnostics);
+    const parser = new MmlParser(
+      withoutHeaders,
+      volumeEnvelopes,
+      pitchEnvelopes,
+      fmTones,
+      diagnostics,
+      peIndexByNumber,
+      psIndexByNumber,
+    );
     const parseResult = parser.parse();
 
     const hasError = diagnostics.some((d) => d.severity === DiagnosticSeverity.Error);

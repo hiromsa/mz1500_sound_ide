@@ -2,7 +2,7 @@ import type { SoundEngineType } from './virtualSynth';
 
 /**
  * MML キャレット位置の演奏コンテキスト (トラック名・音源・オクターブ・音量・各ID等)。
- * 仮想キーボードおよび右ペイン各エディタ (FM TONE / VOL ENV / PITCH ENV) との連動に使用する。
+ * 仮想キーボードおよび右ペイン各エディタ (FM TONE / VOL ENV / PITCH ENV / P-SW) との連動に使用する。
  */
 export interface MmlCaretContext {
   trackName: string;
@@ -12,6 +12,7 @@ export interface MmlCaretContext {
   voiceId?: number;
   volEnvId?: number;
   pitchEnvId?: number;
+  pitchSweepId?: number;
   detune: number;
   noiseType?: 'periodic' | 'white';
   /** ノイズ統合モード (@IN コマンド、0 = 解除 / 1 = 周期ノイズ連動 / 2 = ホワイトノイズ連動)。P3/P6 トラックのみ更新される。 */
@@ -29,6 +30,7 @@ export interface TrackPlayState {
   voiceId: number | undefined;
   volEnvId: number | undefined;
   pitchEnvId: number | undefined;
+  pitchSweepId: number | undefined;
   detune: number;
   noiseType: 'periodic' | 'white';
   noiseIntegrate: number;
@@ -44,7 +46,7 @@ const TRACK_NAME_PATTERN = /^(?:P[1-6]|N[1-2]|B1|F[1-8]|W\d+)$/;
  * - `D` (ディチューン) は音符 `d` と区別するため大文字のみ (正式パーサ準拠)
  * - `f2` / `d4` のような音長付き音符はどのパターンにも誤マッチしない
  */
-const COMMAND_PATTERN = /@[fF][mM]\d+|@[pP][eE]\d+|@[eE][pP]\d+|@[vV][eE]\d+|@[wW][nN]\d+|@[iI][nN]\d+|@[vV]\d+|@\d+|[oO][1-8]|[<>]|[vV]\d+|D-?\d+/g;
+const COMMAND_PATTERN = /@[fF][mM]\d+|@[pP][eE]\d+|@[eE][pP]\d+|@[pP][sS]\d+|@[vV][eE]\d+|@[wW][nN]\d+|@[iI][nN]\d+|@[vV]\d+|@\d+|[oO][1-8]|[<>]|[vV]\d+|D-?\d+/g;
 
 /** トラック名から音源種別を判定する (mml_reference.md 2節準拠) */
 export function resolveEngineFromTrackName(trackName: string): SoundEngineType {
@@ -81,6 +83,7 @@ function createDefaultTrackState(): TrackPlayState {
     voiceId: 1,
     volEnvId: undefined,
     pitchEnvId: undefined,
+    pitchSweepId: undefined,
     detune: 0,
     noiseType: 'white',
     noiseIntegrate: 0,
@@ -109,7 +112,7 @@ function stripLineComment(line: string): string {
  * 定義行はトラックの演奏状態へ影響しないため走査対象から除外する。
  */
 function isMacroDefinitionLine(line: string): boolean {
-  return /^\s*@(?:VE|EP|PE|FM)?\d*\s*=/i.test(line);
+  return /^\s*@(?:VE|EP|PE|PS|FM)?\d*\s*=/i.test(line);
 }
 
 /** 行頭のトラック指定の検出結果 */
@@ -247,6 +250,9 @@ export class MmlCaretContextTracker {
       state.octave = isDown ? Math.max(1, state.octave - 1) : Math.min(8, state.octave + 1);
     } else if (upper.startsWith('@PE') || upper.startsWith('@EP')) {
       state.pitchEnvId = parseOptionalInt(upper.slice(3));
+    } else if (upper.startsWith('@PS')) {
+      // @PS: ピッチスイープ (解除は @PS0 / @PS255 だが ID としてそのまま保持する (@PE と同スタイル))
+      state.pitchSweepId = parseOptionalInt(upper.slice(3));
     } else if (upper.startsWith('@VE')) {
       state.volEnvId = parseOptionalInt(upper.slice(3));
     } else if (upper.startsWith('@V')) {

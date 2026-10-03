@@ -8,7 +8,8 @@ import {
   Music,
   Music2,
   Settings,
-  Wand2
+  Wand2,
+  Zap
 } from 'lucide-react';
 import { MidiRouterModal } from '../view/MidiRouterModal';
 import { AboutModal } from '../view/AboutModal';
@@ -19,6 +20,7 @@ import { SettingsPanel } from '../view/SettingsPanel';
 import { SongSetupPanel, type SongMetadata } from '../view/SongSetupPanel';
 import { VolEnvelopeEditor } from '../view/VolEnvelopeEditor';
 import { PitchEnvelopeEditor } from '../view/PitchEnvelopeEditor';
+import { PitchSweepEditor } from '../view/PitchSweepEditor';
 import { FmToneEditor } from '../view/FmToneEditor';
 import { MmlTransformPanel, type MmlTransformRequest } from '../view/MmlTransformPanel';
 import { applyMmlTransform } from '../core/transform/mmlTransformEngine';
@@ -41,7 +43,7 @@ import type { MmlCaretContext } from '../utils/mmlCaretParser';
 import type { editor } from 'monaco-editor';
 import mz1500Logo from '../assets/mz1500logo.svg';
 
-type RightTab = 'track' | 'tone' | 'vol_envelope' | 'pitch_envelope' | 'song_setup' | 'mml_tools' | 'settings';
+type RightTab = 'track' | 'tone' | 'vol_envelope' | 'pitch_envelope' | 'pitch_sweep' | 'song_setup' | 'mml_tools' | 'settings';
 
 /** コンパイル診断を PROBLEMS パネル用の項目へ変換する。 */
 function toCompileErrorItems(
@@ -98,6 +100,7 @@ function App() {
   const [loadToneId, setLoadToneId] = useState<{ id: number; requestNo: number } | null>(null);
   const [loadVolEnvId, setLoadVolEnvId] = useState<{ id: number; requestNo: number } | null>(null);
   const [loadPitchEnvId, setLoadPitchEnvId] = useState<{ id: number; requestNo: number } | null>(null);
+  const [loadPitchSweepId, setLoadPitchSweepId] = useState<{ id: number; requestNo: number } | null>(null);
   const loadRequestCounterRef = useRef(0);
   const buildLoadRequest = useCallback((id: number) => ({ id, requestNo: ++loadRequestCounterRef.current }), []);
 
@@ -120,7 +123,7 @@ function App() {
 
   // バーチャルキーボードの発音コンテキスト判定:
   // - 左ペイン (MMLエディタ等) 選択中 / 右ペイン非表示 / 右ペインがエディタ以外のタブ → MMLキャレットコンテキスト
-  // - 右ペインで FM TONE / VOL ENV / PITCH ENV を選択中 → そのエディタのプレビューコンテキスト
+  // - 右ペインで FM TONE / VOL ENV / PITCH ENV / P-SW を選択中 → そのエディタのプレビューコンテキスト
   const activeTabContext: ActiveTabContext = (focusedPane === 'mml' || !showRightPane || activeRightTab === 'track' || activeRightTab === 'song_setup' || activeRightTab === 'mml_tools' || activeRightTab === 'settings')
     ? 'mml'
     : (activeRightTab as ActiveTabContext);
@@ -174,6 +177,14 @@ function App() {
     setShowRightPane(true);
   }, [buildLoadRequest]);
 
+  // 右クリックメニュー: PITCH SWEEP 編集リクエスト
+  const handleRequestEditPitchSweep = useCallback((id: number) => {
+    setLoadPitchSweepId(buildLoadRequest(id));
+    setActiveRightTab('pitch_sweep');
+    setFocusedPane('rightPane');
+    setShowRightPane(true);
+  }, [buildLoadRequest]);
+
   // 右クリックメニュー: 新規作成 (未使用の新IDをロードする。未定義のため初期値で初期化される)
   const handleRequestNewTone = useCallback((newId: number) => {
     setLoadToneId(buildLoadRequest(newId));
@@ -196,8 +207,15 @@ function App() {
     setShowRightPane(true);
   }, [buildLoadRequest]);
 
+  const handleRequestNewPitchSweep = useCallback((newId: number) => {
+    setLoadPitchSweepId(buildLoadRequest(newId));
+    setActiveRightTab('pitch_sweep');
+    setFocusedPane('rightPane');
+    setShowRightPane(true);
+  }, [buildLoadRequest]);
+
   // キャレット位置からの自動連動でロードされた直近のID (同一IDでの無駄な再ロード防止)
-  const lastAutoLoadedIdsRef = useRef<{ voiceId?: number; volEnvId?: number; pitchEnvId?: number }>({});
+  const lastAutoLoadedIdsRef = useRef<{ voiceId?: number; volEnvId?: number; pitchEnvId?: number; pitchSweepId?: number }>({});
 
   // MMLキャレット位置変更ハンドラ
   const handleCaretContextChange = useCallback((ctx?: MmlCaretContext) => {
@@ -216,6 +234,10 @@ function App() {
       if (ctx.pitchEnvId !== undefined && ctx.pitchEnvId !== lastAutoLoadedIdsRef.current.pitchEnvId) {
         lastAutoLoadedIdsRef.current.pitchEnvId = ctx.pitchEnvId;
         setLoadPitchEnvId(buildLoadRequest(ctx.pitchEnvId));
+      }
+      if (ctx.pitchSweepId !== undefined && ctx.pitchSweepId !== lastAutoLoadedIdsRef.current.pitchSweepId) {
+        lastAutoLoadedIdsRef.current.pitchSweepId = ctx.pitchSweepId;
+        setLoadPitchSweepId(buildLoadRequest(ctx.pitchSweepId));
       }
       if (ctx.octave !== undefined) {
         setTestMidiNote(prevNote => {
@@ -288,6 +310,10 @@ function App() {
   );
   const handleApplyPitchEnvToMml = useCallback(
     (mmlSnippet: string, id: number) => handleApplyToMml(mmlSnippet, 'pitchEnv', id),
+    [handleApplyToMml],
+  );
+  const handleApplyPitchSweepToMml = useCallback(
+    (mmlSnippet: string, id: number) => handleApplyToMml(mmlSnippet, 'pitchSweep', id),
     [handleApplyToMml],
   );
 
@@ -759,9 +785,11 @@ function App() {
             onRequestEditTone={handleRequestEditTone}
             onRequestEditVolEnv={handleRequestEditVolEnv}
             onRequestEditPitchEnv={handleRequestEditPitchEnv}
+            onRequestEditPitchSweep={handleRequestEditPitchSweep}
             onRequestNewTone={handleRequestNewTone}
             onRequestNewVolEnv={handleRequestNewVolEnv}
             onRequestNewPitchEnv={handleRequestNewPitchEnv}
+            onRequestNewPitchSweep={handleRequestNewPitchSweep}
             onEditorMount={(editorInstance) => { monacoEditorRef.current = editorInstance; }}
             onActiveSourceChange={handleActiveSourceChange}
             onCaretContextChange={handleCaretContextChange}
@@ -868,6 +896,23 @@ function App() {
               >
                 <LineChart className={`w-3.5 h-3.5 shrink-0 ${activeRightTab === 'pitch_envelope' ? 'text-[#00A8FF]' : 'text-zinc-400'}`} />
                 <span className="tracking-tight">P-ENV</span>
+              </button>
+
+              {/* タブ 4.5: P-SW */}
+              <button
+                onClick={() => {
+                  setActiveRightTab('pitch_sweep');
+                  setFocusedPane('rightPane');
+                }}
+                className={`px-2.5 text-xs font-mono font-medium focus:outline-none transition-colors border-b-2 flex items-center gap-1.5 select-none shrink-0 cursor-pointer ${
+                  activeRightTab === 'pitch_sweep'
+                    ? 'bg-[#1E1E1E] text-zinc-100 border-[#00A8FF] font-semibold'
+                    : 'text-zinc-400 border-transparent hover:text-zinc-200 hover:bg-[#333333]'
+                }`}
+                title="Pitch Sweep Editor (ピッチスイープ・ベンド)"
+              >
+                <Zap className={`w-3.5 h-3.5 shrink-0 ${activeRightTab === 'pitch_sweep' ? 'text-[#00A8FF]' : 'text-zinc-400'}`} />
+                <span className="tracking-tight">P-SW</span>
               </button>
 
               {/* タブ 5: SETUP */}
@@ -989,6 +1034,20 @@ function App() {
                   loadEnvId={loadPitchEnvId}
                   mmlSource={activeMmlSource}
                   onApplyToMml={handleApplyPitchEnvToMml}
+                  testMidiNote={testMidiNote}
+                  onChangeTestMidiNote={setTestMidiNote}
+                />
+              )}
+
+              {activeRightTab === 'pitch_sweep' && (
+                <PitchSweepEditor
+                  onChangeEnvData={(data, loop) => {
+                    setActivePitchEnv(data);
+                    setActivePitchEnvLoop(loop);
+                  }}
+                  loadEnvId={loadPitchSweepId}
+                  mmlSource={activeMmlSource}
+                  onApplyToMml={handleApplyPitchSweepToMml}
                   testMidiNote={testMidiNote}
                   onChangeTestMidiNote={setTestMidiNote}
                 />

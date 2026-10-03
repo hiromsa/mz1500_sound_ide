@@ -95,6 +95,7 @@ export function parsePitchEnvelope(
   line: number,
   column: number,
   diagnostics: MmlDiagnostic[],
+  prefix: string = 'PE',
 ): PitchEnvelope | null {
   const values: number[] = [];
   let loopIndex = -1;
@@ -116,7 +117,7 @@ export function parsePitchEnvelope(
     }
 
     if (token === '>') {
-      diagnostics.push(mmlWarn(line, column, 'ピッチエンベロープにリリース > は指定できません (無視しました)'));
+      diagnostics.push(mmlWarn(line, column, 'ピッチエンベロープ/スイープにリリース > は指定できません (無視しました)'));
       continue;
     }
 
@@ -134,7 +135,7 @@ export function parsePitchEnvelope(
   }
 
   if (values.length === 0) {
-    diagnostics.push(mmlError(line, column, `@EP${number} の要素がありません`));
+    diagnostics.push(mmlError(line, column, `@${prefix}${number} の要素がありません`));
     return null;
   }
 

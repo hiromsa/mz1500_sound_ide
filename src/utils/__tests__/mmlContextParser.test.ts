@@ -134,17 +134,18 @@ describe('findDefinitionAt', () => {
 
 describe('analyzeMmlLine (回帰)', () => {
   it('利用行から各 ID を抽出し、他コマンドを誤検出しない', () => {
-    expect(analyzeMmlLine('P1 @1 o4 c d e')).toEqual({ toneId: 1, volEnvId: null, pitchEnvId: null });
-    expect(analyzeMmlLine('@FM3 C D E')).toEqual({ toneId: 3, volEnvId: null, pitchEnvId: null });
-    expect(analyzeMmlLine('@VE2 C')).toEqual({ toneId: null, volEnvId: 2, pitchEnvId: null });
-    expect(analyzeMmlLine('@v5 C')).toEqual({ toneId: null, volEnvId: null, pitchEnvId: null }); // 旧 @v は解釈しない
-    expect(analyzeMmlLine('@PE4 C')).toEqual({ toneId: null, volEnvId: null, pitchEnvId: 4 });
-    expect(analyzeMmlLine('@WN1 @SW15 C')).toEqual({ toneId: null, volEnvId: null, pitchEnvId: null });
+    expect(analyzeMmlLine('P1 @1 o4 c d e')).toEqual({ toneId: 1, volEnvId: null, pitchEnvId: null, pitchSweepId: null });
+    expect(analyzeMmlLine('@FM3 C D E')).toEqual({ toneId: 3, volEnvId: null, pitchEnvId: null, pitchSweepId: null });
+    expect(analyzeMmlLine('@VE2 C')).toEqual({ toneId: null, volEnvId: 2, pitchEnvId: null, pitchSweepId: null });
+    expect(analyzeMmlLine('@v5 C')).toEqual({ toneId: null, volEnvId: null, pitchEnvId: null, pitchSweepId: null }); // 旧 @v は解釈しない
+    expect(analyzeMmlLine('@PE4 C')).toEqual({ toneId: null, volEnvId: null, pitchEnvId: 4, pitchSweepId: null });
+    expect(analyzeMmlLine('@PS6 C')).toEqual({ toneId: null, volEnvId: null, pitchEnvId: null, pitchSweepId: 6 });
+    expect(analyzeMmlLine('@WN1 @SW15 C')).toEqual({ toneId: null, volEnvId: null, pitchEnvId: null, pitchSweepId: null });
   });
 
   it('コメント以降は解析対象外とする', () => {
-    expect(analyzeMmlLine('; @1 O4 C')).toEqual({ toneId: null, volEnvId: null, pitchEnvId: null });
-    expect(analyzeMmlLine('@1 C ; @2')).toEqual({ toneId: 1, volEnvId: null, pitchEnvId: null });
+    expect(analyzeMmlLine('; @1 O4 C')).toEqual({ toneId: null, volEnvId: null, pitchEnvId: null, pitchSweepId: null });
+    expect(analyzeMmlLine('@1 C ; @2')).toEqual({ toneId: 1, volEnvId: null, pitchEnvId: null, pitchSweepId: null });
   });
 });
 
@@ -152,13 +153,15 @@ describe('collectUsedIds / nextAvailableId (回帰)', () => {
   it('MML 全文から定義・利用の両方の ID を収集する', () => {
     const content = [
       '@1 = { 4, 6, 31 }',
-      'P1 @1 @FM2 @VE4 @PE5 c',
+      '@PS7 = { 0, 10, 20 }',
+      'P1 @1 @FM2 @VE4 @PE5 @PS8 c',
     ].join('\n');
 
     const used = collectUsedIds(content);
     expect([...used.toneIds].sort((a, b) => a - b)).toEqual([1, 2]);
     expect([...used.volEnvIds]).toEqual([4]);
     expect([...used.pitchEnvIds]).toEqual([5]);
+    expect([...used.pitchSweepIds].sort((a, b) => a - b)).toEqual([7, 8]);
   });
 
   it('未使用 ID は最大 ID + 1 を採番する', () => {

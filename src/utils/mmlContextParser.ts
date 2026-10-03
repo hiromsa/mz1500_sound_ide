@@ -15,12 +15,15 @@ export interface MmlLineAnalysis {
   volEnvId: number | null;
   /** ピッチエンベロープ ID (@PEN) */
   pitchEnvId: number | null;
+  /** ピッチスイープ ID (@PSN) */
+  pitchSweepId: number | null;
 }
 
 export interface UsedIds {
   toneIds: Set<number>;
   volEnvIds: Set<number>;
   pitchEnvIds: Set<number>;
+  pitchSweepIds: Set<number>;
 }
 
 // ──────────────────────────────────────────────
@@ -51,7 +54,7 @@ function stripComment(line: string): string {
 // ──────────────────────────────────────────────
 
 /**
- * MML の 1 行から @N / @VEN / @PEN の使用箇所を抽出する。
+ * MML の 1 行から @N / @VEN / @PEN / @PSN の使用箇所を抽出する。
  * コメント (`;` / `//`) 以降は無視する。
  */
 export function analyzeMmlLine(line: string): MmlLineAnalysis {
@@ -60,11 +63,18 @@ export function analyzeMmlLine(line: string): MmlLineAnalysis {
   let toneId: number | null = null;
   let volEnvId: number | null = null;
   let pitchEnvId: number | null = null;
+  let pitchSweepId: number | null = null;
 
   // @PEN を先にマッチ (@PE が @P を含むため)
   const peMatch = effective.match(/@PE(\d+)/i);
   if (peMatch) {
     pitchEnvId = parseInt(peMatch[1], 10);
+  }
+
+  // @PSN (ピッチスイープ)
+  const psMatch = effective.match(/@PS(\d+)/i);
+  if (psMatch) {
+    pitchSweepId = parseInt(psMatch[1], 10);
   }
 
   // @VEN (音量エンベロープは @VE のみ対応。旧 @v は将来の拡張用に予約)
@@ -74,16 +84,17 @@ export function analyzeMmlLine(line: string): MmlLineAnalysis {
   }
 
   // @N / @FMN  (数字のみ or FM プレフィックス)
-  // @PE や @VE との衝突を避けるためにそれらを除外した後にマッチ
+  // @PE や @VE, @PS との衝突を避けるためにそれらを除外した後にマッチ
   const stripped = effective
     .replace(/@PE\d+/gi, '')
+    .replace(/@PS\d+/gi, '')
     .replace(/@VE\d+/gi, '');
   const toneMatch = stripped.match(/@(?:FM)?(\d+)/i);
   if (toneMatch) {
     toneId = parseInt(toneMatch[1], 10);
   }
 
-  return { toneId, volEnvId, pitchEnvId };
+  return { toneId, volEnvId, pitchEnvId, pitchSweepId };
 }
 
 // ──────────────────────────────────────────────
@@ -91,31 +102,37 @@ export function analyzeMmlLine(line: string): MmlLineAnalysis {
 // ──────────────────────────────────────────────
 
 /**
- * MML 全文を走査して TONE / VOL ENV / PITCH ENV の定義・使用 ID を収集する。
+ * MML 全文を走査して TONE / VOL ENV / PITCH ENV / PITCH SWEEP の定義・使用 ID を収集する。
  * 主に「新規採番」時の最大ID+1の計算に使用する。
  */
 export function collectUsedIds(content: string): UsedIds {
   const toneIds = new Set<number>();
   const volEnvIds = new Set<number>();
   const pitchEnvIds = new Set<number>();
+  const pitchSweepIds = new Set<number>();
 
   for (const m of content.matchAll(/@(?:PE|EP)(\d+)/gi)) {
     pitchEnvIds.add(parseInt(m[1], 10));
+  }
+
+  for (const m of content.matchAll(/@PS(\d+)/gi)) {
+    pitchSweepIds.add(parseInt(m[1], 10));
   }
 
   for (const m of content.matchAll(/@VE(\d+)/gi)) {
     volEnvIds.add(parseInt(m[1], 10));
   }
 
-  // @N / @FMN - ただし @PE / @VE を除いた文字列に対してマッチ
+  // @N / @FMN - ただし @PE / @PS / @VE を除いた文字列に対してマッチ
   const stripped = content
     .replace(/@PE\d+/gi, '')
+    .replace(/@PS\d+/gi, '')
     .replace(/@VE\d+/gi, '');
   for (const m of stripped.matchAll(/@(?:FM)?(\d+)/gi)) {
     toneIds.add(parseInt(m[1], 10));
   }
 
-  return { toneIds, volEnvIds, pitchEnvIds };
+  return { toneIds, volEnvIds, pitchEnvIds, pitchSweepIds };
 }
 
 /**
@@ -132,7 +149,7 @@ export function nextAvailableId(usedIds: Set<number>): number {
 // ──────────────────────────────────────────────
 
 /** 右クリックメニューの「編集」対象となる定義ブロックの種別 */
-export type MmlDefinitionKind = 'tone' | 'volEnv' | 'pitchEnv';
+export type MmlDefinitionKind = 'tone' | 'volEnv' | 'pitchEnv' | 'pitchSweep';
 
 /** MML 内のマクロ定義ブロック (`@<種別><番号> = { ... }`) 1件分の情報 */
 export interface MmlDefinitionBlock {
@@ -149,7 +166,7 @@ export interface MmlDefinitionBlock {
  * 書式はコンパイラ (MmlCompiler.ts の macroRegex) と同一で `=` 必須、
  * `{` はヘッダと同一行に置かれることを要求する。
  */
-const definitionHeaderRegex = /^[ \t]*@(?:(VE|EP|PE|FM)(\d+)|(\d+))[ \t]*=[ \t]*\{/;
+const definitionHeaderRegex = /^[ \t]*@(?:(VE|EP|PE|PS|FM)(\d+)|(\d+))[ \t]*=[ \t]*\{/;
 
 /** 定義ヘッダの接頭辞をメニュー用種別へ変換する (コンパイラ parseMacroHeader と同一の対応表)。 */
 function resolveDefinitionKind(prefix: string | undefined): MmlDefinitionKind {
@@ -159,6 +176,8 @@ function resolveDefinitionKind(prefix: string | undefined): MmlDefinitionKind {
     case 'PE':
     case 'EP':
       return 'pitchEnv';
+    case 'PS':
+      return 'pitchSweep';
     default:
       return 'tone';
   }

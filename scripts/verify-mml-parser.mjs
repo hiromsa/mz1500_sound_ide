@@ -19,51 +19,55 @@ const assert = (name, actual, expected) => {
 // ── analyzeMmlLine: 行解析 ──
 assert('P1 @1 o4 c d e -> toneId=1',
   analyzeMmlLine('P1 @1 o4 c d e'),
-  { toneId: 1, volEnvId: null, pitchEnvId: null });
+  { toneId: 1, volEnvId: null, pitchEnvId: null, pitchSweepId: null });
 
 assert('@FM3 C D E -> toneId=3',
   analyzeMmlLine('@FM3 C D E'),
-  { toneId: 3, volEnvId: null, pitchEnvId: null });
+  { toneId: 3, volEnvId: null, pitchEnvId: null, pitchSweepId: null });
 
 assert('@VE2 C -> volEnvId=2',
   analyzeMmlLine('@VE2 C'),
-  { toneId: null, volEnvId: 2, pitchEnvId: null });
+  { toneId: null, volEnvId: 2, pitchEnvId: null, pitchSweepId: null });
 
 assert('@v5 C -> volEnvId=null (@v は FM 音量コマンドであり音量エンベロープ ID には影響しない)',
   analyzeMmlLine('@v5 C'),
-  { toneId: null, volEnvId: null, pitchEnvId: null });
+  { toneId: null, volEnvId: null, pitchEnvId: null, pitchSweepId: null });
 
 assert('@PE4 C -> pitchEnvId=4',
   analyzeMmlLine('@PE4 C'),
-  { toneId: null, volEnvId: null, pitchEnvId: 4 });
+  { toneId: null, volEnvId: null, pitchEnvId: 4, pitchSweepId: null });
 
-assert('混在行 @1 @VE2 @PE3 C -> すべて抽出',
-  analyzeMmlLine('@1 @VE2 @PE3 C'),
-  { toneId: 1, volEnvId: 2, pitchEnvId: 3 });
+assert('@PS6 C -> pitchSweepId=6',
+  analyzeMmlLine('@PS6 C'),
+  { toneId: null, volEnvId: null, pitchEnvId: null, pitchSweepId: 6 });
 
-assert('混在行 @FM7 @VE8 @PE9 C -> すべて抽出',
-  analyzeMmlLine('@FM7 @VE8 @PE9 C'),
-  { toneId: 7, volEnvId: 8, pitchEnvId: 9 });
+assert('混在行 @1 @VE2 @PE3 @PS4 C -> すべて抽出',
+  analyzeMmlLine('@1 @VE2 @PE3 @PS4 C'),
+  { toneId: 1, volEnvId: 2, pitchEnvId: 3, pitchSweepId: 4 });
+
+assert('混在行 @FM7 @VE8 @PE9 @PS10 C -> すべて抽出',
+  analyzeMmlLine('@FM7 @VE8 @PE9 @PS10 C'),
+  { toneId: 7, volEnvId: 8, pitchEnvId: 9, pitchSweepId: 10 });
 
 assert('コメント行 ; @1 -> null',
   analyzeMmlLine('; @1 O4 C'),
-  { toneId: null, volEnvId: null, pitchEnvId: null });
+  { toneId: null, volEnvId: null, pitchEnvId: null, pitchSweepId: null });
 
 assert('行内コメント @1 C ; @2 -> toneId=1 (コメント後無視)',
   analyzeMmlLine('@1 C ; @2'),
-  { toneId: 1, volEnvId: null, pitchEnvId: null });
+  { toneId: 1, volEnvId: null, pitchEnvId: null, pitchSweepId: null });
 
-assert('他コマンド @WN1 @SW15 は音色IDに誤検出しない',
-  analyzeMmlLine('@WN1 @SW15 C'),
-  { toneId: null, volEnvId: null, pitchEnvId: null });
+assert('他コマンド @WN1 @q8 は音色IDに誤検出しない',
+  analyzeMmlLine('@WN1 @q8 C'),
+  { toneId: null, volEnvId: null, pitchEnvId: null, pitchSweepId: null });
 
 assert('トーン無し行 -> すべてnull',
   analyzeMmlLine('P1 o4 c d e f g'),
-  { toneId: null, volEnvId: null, pitchEnvId: null });
+  { toneId: null, volEnvId: null, pitchEnvId: null, pitchSweepId: null });
 
 assert('空行 -> すべてnull',
   analyzeMmlLine(''),
-  { toneId: null, volEnvId: null, pitchEnvId: null });
+  { toneId: null, volEnvId: null, pitchEnvId: null, pitchSweepId: null });
 
 // ── collectUsedIds: 全文走査 ──
 const sample = `; コメント
@@ -75,7 +79,9 @@ P2 @VE1 @VE2 c
 @VE4 = { 15, |L 10, |R 5 }
 P3 @PE5 c
 @PE7 = { 0, 3, 6 }
-@WN1 @SW15 @q8
+@PS8 = { 0, 5, 10 }
+P4 @PS9 c
+@WN1 @q8
 `;
 const used = collectUsedIds(sample);
 assert('collectUsedIds toneIds = {1,2,3}',
@@ -84,6 +90,8 @@ assert('collectUsedIds volEnvIds = {1,2,4}',
   [...used.volEnvIds].sort((a, b) => a - b), [1, 2, 4]);
 assert('collectUsedIds pitchEnvIds = {5,7}',
   [...used.pitchEnvIds].sort((a, b) => a - b), [5, 7]);
+assert('collectUsedIds pitchSweepIds = {8,9}',
+  [...used.pitchSweepIds].sort((a, b) => a - b), [8, 9]);
 
 // ── nextAvailableId ──
 assert('nextAvailableId({1,2,3}) = 4', nextAvailableId(new Set([1, 2, 3])), 4);

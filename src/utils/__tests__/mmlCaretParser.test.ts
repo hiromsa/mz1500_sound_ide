@@ -174,6 +174,37 @@ describe('parseMmlCaretContext', () => {
     });
   });
 
+  describe('@PS (ピッチスイープ) の解析', () => {
+    it('@PSn で pitchSweepId を解析する (@PE とは独立した ID)', () => {
+      const ctx = parseMmlCaretContext('P1 @PE1 @PS3 c', 1, 15);
+      expect(ctx.pitchEnvId).toBe(1);
+      expect(ctx.pitchSweepId).toBe(3);
+    });
+
+    it('@PS は小文字でも解析できる (@ 系は正式パーサ準拠で大文字小文字を区別しない)', () => {
+      expect(parseMmlCaretContext('P1 @ps2 c', 1, 10).pitchSweepId).toBe(2);
+    });
+
+    it('@PS0 / @PS255 も ID として保持する (@PE と同スタイル)', () => {
+      expect(parseMmlCaretContext('P1 @PS0 c', 1, 10).pitchSweepId).toBe(0);
+      expect(parseMmlCaretContext('P1 @PS255 c', 1, 12).pitchSweepId).toBe(255);
+    });
+
+    it('@PS 定義行は演奏状態へ影響しない', () => {
+      const content = [
+        '@PS1 = { 0, 10, 20 }',
+        'P1 o5 c',
+      ].join('\n');
+      const ctx = parseMmlCaretContext(content, 2, 8);
+      expect(ctx.pitchSweepId).toBeUndefined();
+      expect(ctx.octave).toBe(5);
+    });
+
+    it('pitchSweepId が無いトラックでは undefined', () => {
+      expect(parseMmlCaretContext('P1 o4 c', 1, 8).pitchSweepId).toBeUndefined();
+    });
+  });
+
   describe('@v (FM 専用音量) の適用範囲', () => {
     it('@v を FM トラックで解析する', () => {
       const ctx = parseMmlCaretContext('F1 @v100 c', 1, 12);

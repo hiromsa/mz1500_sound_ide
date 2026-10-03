@@ -19,19 +19,19 @@
 | `fm/fm_volume_atv.mml` | `@v` (0-127 の FM 専用音量) |
 | `fm/fm_voice_macro.mml` | `@N` / `@FMN` (音色定義・切替) |
 | `fm/fm_panpot.mml` | `p` (ステレオ定位) |
-| `fm/fm_pitch_effect.mml` | `D` / `@SW` / `@PE` (FM) |
+| `fm/fm_pitch_effect.mml` | `D` / `@PS` / `@PE` (FM) |
 | `psg/psg_notes_basic.mml` | 音符・休符・音長・付点・タイ・連符・半音 |
 | `psg/psg_octave_transpose.mml` | `o` / `<` `>` / `K` (移調) |
 | `psg/psg_tempo_length.mml` | `t` / `@t` / `l` |
 | `psg/psg_volume_envelope.mml` | `@VE` (減衰 / ループ `|` / リリース `>`) |
-| `psg/psg_pitch_effect.mml` | `@PE` / `@SW` / `D` (PSG) |
+| `psg/psg_pitch_effect.mml` | `@PE` / `@PS` / `D` (PSG) |
 | `psg/psg_loop_flow.mml` | `[ ]` / `L` (永久ループ) |
 | `psg/psg_noise_basic.mml` | `N1` / `@WN` / `v` (ノイズ) |
 | `psg/psg_noise_integrate.mml` | `@IN` (ノイズ統合) |
 | `psg/psg_quantize_gate.mml` | `q` / `@q` (ゲート時間) |
 | `psg/psg_volume_basic.mml` | `v` (0-15 の音量) |
 | `beep/beep_basic_scale.mml` | `B1` 音階演奏 |
-| `beep/beep_pitch_effect.mml` | `@SW` / `@PE` / `D` (BEEP) |
+| `beep/beep_pitch_effect.mml` | `@PS` / `@PE` / `D` (BEEP) |
 
 ## 使い方
 
