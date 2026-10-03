@@ -129,6 +129,8 @@ export const MmlTransformPanel: React.FC<MmlTransformPanelProps> = ({
   // FM利用可否切り替え時に無効な選択を自動解除・安全化
   useEffect(() => {
     if (!enableYM2151) {
+      // enableYM2151 (props) の変化に応じた state 補正のため effect での setState は正当
+      // oxlint-disable-next-line react/set-state-in-effect
       setSelectedTracks((prev) => prev.filter((t) => !FM_TRACK_IDS.includes(t)));
       if (FM_TRACK_IDS.includes(batchStartTarget)) setBatchStartTarget('P1');
       if (FM_TRACK_IDS.includes(reassignSource)) setReassignSource('P1');
@@ -140,6 +142,8 @@ export const MmlTransformPanel: React.FC<MmlTransformPanelProps> = ({
 
   // selectedTracks が変化した時にデフォルトのマッピングを同期生成
   useEffect(() => {
+    // selectedTracks (自身の state) の変化に応じてユーザー上書き可能なマッピングを補完する派生処理のため正当
+    // oxlint-disable-next-line react/set-state-in-effect
     setBatchMappings((prev) => {
       const next: Record<string, string> = { ...prev };
       Object.keys(next).forEach((k) => {

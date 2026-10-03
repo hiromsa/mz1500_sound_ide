@@ -12,3 +12,4 @@
 | [quickdisk_export.md](./quickdisk_export.md) | QuickDisk (.qdf) エクスポートの形式仕様・実装契約 |
 | [partial_playback.md](./partial_playback.md) | 部分再生 (キャレット位置から / 選択範囲のみ) の設計 (MmlMap 時間情報・範囲解決・プリシーク) |
 | [ci_deploy.md](./ci_deploy.md) | CI/CD (GitHub Actions による GitHub Pages 自動デプロイ) |
+| [work_tracks_and_transform_handoff.md](./work_tracks_and_transform_handoff.md) | ワークトラック (W1-W99) & MML TRANSFORM / MIDI IMPORT の実装引継ぎ仕様書 |

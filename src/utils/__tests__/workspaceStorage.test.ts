@@ -31,7 +31,7 @@ describe('workspaceStorage', () => {
     expect(sanitized[0].name).toBe('my_project');
     expect(sanitized[0].children?.[0].name).toBe('song.mml');
     expect(sanitized[0].children?.[0].content).toBe('C D E F G');
-    expect((sanitized[0].children?.[0] as any).file).toBeUndefined();
+    expect(sanitized[0].children?.[0]).not.toHaveProperty('file');
   });
 
   describe('localStorage fallback operations', () => {

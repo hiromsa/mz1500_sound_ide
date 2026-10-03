@@ -19,7 +19,8 @@ import { MmlLiveDock } from './MmlLiveDock';
 const MAX_FRAMES = 128;
 
 // 選択可能ピッチレンジ定義 (PSGトーン周期レジスタ差分値: C4 Period=427基準で 1オクターブ上昇 ≒ +213, 2オクターブ上昇 ≒ +320)
-export const PITCH_RANGES = [
+// コンポーネント内でのみ使用するため非 export (fast refresh 制約回避)
+const PITCH_RANGES = [
   { value: 25, label: '±25 (Subtle)', desc: '微小ベンド・デチューン (C4基準で約1半音)' },
   { value: 50, label: '±50 (Moderate)', desc: '中ベンド (C4基準で約2半音)' },
   { value: 100, label: '±100 (Wide)', desc: 'ワイドベンド (C4基準で約半オクターブ)' },
@@ -151,8 +152,8 @@ function calculateCurveProgress(t: number, curve: SweepCurveType, tension: numbe
   }
 }
 
-/** スイープ波形生成関数 */
-export function generateSweepWaveform(options: {
+/** スイープ波形生成関数 (コンポーネント内でのみ使用するため非 export: fast refresh 制約回避) */
+function generateSweepWaveform(options: {
   totalFrames: number;
   direction: 'up' | 'down';
   delay: number;

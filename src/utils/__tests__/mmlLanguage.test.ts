@@ -6,7 +6,7 @@ import {
   mmlMonarchTokensProvider, 
   mmlThemeData, 
   setupMmlLanguage 
-} from './mmlLanguage';
+} from '../mmlLanguage';
 import type { Monaco } from '@monaco-editor/react';
 
 describe('mmlLanguage', () => {
@@ -55,7 +55,7 @@ describe('mmlLanguage', () => {
     const rules = mmlThemeData.rules;
     expect(rules).toBeDefined();
 
-    const tokenNames = rules.map(r => r.token);
+    const tokenNames = rules.map((r: { token: string }) => r.token);
     expect(tokenNames).toContain('comment');
     expect(tokenNames).toContain('keyword.directive');
     expect(tokenNames).toContain('track.psg');
@@ -64,7 +64,7 @@ describe('mmlLanguage', () => {
     expect(tokenNames).toContain('loop.global');
 
     // 永久ループ L は bold
-    const loopRule = rules.find(r => r.token === 'loop.global');
+    const loopRule = rules.find((r: { token: string }) => r.token === 'loop.global');
     expect(loopRule?.fontStyle).toBe('bold');
   });
 

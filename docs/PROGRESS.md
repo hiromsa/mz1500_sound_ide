@@ -32,7 +32,7 @@
 - [ ] **TRACK MONITOR の DCSG 出力定位 (左・右・中央) 選択機能 (ユーザー構想 2026-09-11)**
   - DCSG1 (P1-P3 / N1) / DCSG2 (P4-P6 / N2) それぞれの出力定位を左・右・中央から選択できるようにする (あくまでプレビュー用)。
   - **仮想キーボードの `OUT: L/R/C (MONO)` 定位バッジ・発音と連動**させる (ユーザー確定)。
-  - 布地実装済み: `AudioFrameMixer.setPsgOutputPlacement(chipIndex, 'left' | 'right' | 'center')` (既定 = 実機配線どおり chip0 = L / chip1 = R)。演奏プレビュー (Player) と仮想キーボード (KeyboardSoundEngine) の双方のミキサーへ同一設定を反映する UI を新設する。
+  - 布石実装済み: `AudioFrameMixer.setPsgOutputPlacement(chipIndex, 'left' | 'right' | 'center')` (既定 = 実機配線どおり chip0 = L / chip1 = R)。演奏プレビュー (Player) と仮想キーボード (KeyboardSoundEngine) の双方のミキサーへ同一設定を反映する UI を新設する。
 - [ ] **和音（Poly）トラックの複数独立スプリット管理 (別AIへの引継ぎタスク)**
   - 現状の `MidiRouterModal` は単一の `splitTargets: { [voice: number]: string }` を共有しているため、複数和音トラック存在時にスプリット先が同一になる。
   - `WorkTrack` 内部にトラック固有の `splitTargets`（または個別ボイスアサインマップ）を内包化し、トラックごとに独立したスプリット先へ振り分けられるよう内部データ構造を拡張する。
@@ -59,6 +59,20 @@
 
 ## 3. 直近の完了作業（最新）
 
+- **chore(docs/lint): README 書き直し・仕様索引の漏れ修正・oxlint 警告ゼロ化 (`README.md`, `docs/specification/README.md`, `src/app/App.tsx`, `src/view/MidiRouterModal.tsx`, `src/view/MmlTransformPanel.tsx`, `src/view/VirtualKeyboard.tsx`, `src/view/PitchEnvelopeEditor.tsx`, `src/view/PitchSweepEditor.tsx`, `src/utils/__tests__/workspaceStorage.test.ts`, `src/utils/mmlLanguage.test.ts` → `src/utils/__tests__/` 移動, `package.json`)** (2026-09-12):
+  - **対応内容**:
+    1. **README.md を Vite テンプレートから本プロジェクトの README へ書き直し** (プロジェクト概要 / 主な機能 / 開発環境 / コマンド一覧 / CI・デプロイ / ライセンス。Credits 節は維持)。
+    2. **仕様索引の漏れを修正**: `docs/specification/README.md` へ `work_tracks_and_transform_handoff.md` を追加 (索引 9 件 / 実ファイル 9 件で一致)。
+    3. **oxlint 警告 12 件をゼロ化**:
+       - `react/immutability` (App.tsx / MidiRouterModal.tsx): `setLogs` / `splitTargets` / `monoTarget` の useState 宣言を使用箇所 (useCallback / useEffect) より前に移動 (初期化順の問題)。
+       - `react/preserve-manual-memoization` (App.tsx): `appendLog` / `handleApplyMidiRouter` の deps へ `setLogs` を追加 (useState の setter は安定参照のため再生成なし)。
+       - `react/only-export-components` (PitchEnvelopeEditor.tsx / PitchSweepEditor.tsx): 同一ファイル内でのみ使用の `PITCH_RANGES` / `generateSweepWaveform` の export を廃止 (fast refresh 制約回避。ENV 3兄弟共通化時に改めて配置検討)。
+       - `no-unsafe-optional-chaining` (workspaceStorage.test.ts): `expect(...).not.toHaveProperty('file')` へ書き換え。
+       - `react/set-state-in-effect` 4 件 (MidiRouterModal / MmlTransformPanel / VirtualKeyboard): props (`enableYM2151` / `mmlContext`) の変化に対する state 補正という正当パターンのため、理由コメント + `oxlint-disable-next-line` で意図を明示して抑制。
+    4. **テスト配置の統一**: `src/utils/mmlLanguage.test.ts` を `src/utils/__tests__/` へ移動 (他テストと同一構成)。
+    5. **`npm run verify` を登録**: `scripts/verify-mml-parser.mjs` を package.json scripts から実行可能に。
+    6. **誤字修正**: `docs/PROGRESS.md` の「布地」→「布石」(2 箇所)。
+  - **検証**: `npm run lint` **警告 0 件** / `npx tsc -b` エラーゼロ / `npm test` 全 45 ファイル・665 件合格 + 1 skip (移動した mmlLanguage.test を含む) / `npm run verify` 全ケース合格 / `npm run build` 成功。
 - **chore(test/ci): テストの再現性を確保 — C# リファレンス値をリポジトリフィクスチャ化し CI で `npm test` を実行 (`src/core/chips/__tests__/fixtures/reference.json` 新規, `src/core/chips/__tests__/referenceLoader.ts`, `vite.config.ts`, `vitest.probe.config.ts` 新規, `scripts/update-chip-reference.mjs` 新規, `package.json`, `.github/workflows/deploy.yml`, [`docs/specification/ci_deploy.md`](./specification/ci_deploy.md))** (2026-09-12):
   - **背景**: `referenceLoader.ts` が `tools/cs-probe/out/reference.json` (.gitignore 済み・C# リファレンスツール `tools/cs-probe` のローカル生成物 / リポジトリ外の MzSound.Player を ProjectReference) を直接参照していたため、クリーンチェックアウト / CI でチップ照合テスト (BeepChip / DcsgChip / SystemRandom / Ym2151) が必ず失敗していた。また vitest 既定の include により `tools/qdf-probe` の実測プローブ (.qdf / .bin を `tools/cs-probe/out/` へ書き込む副作用あり) が `npm test` に混在していた。
   - **対応内容**:
@@ -111,7 +125,7 @@
     3. **チップ指定発音**: `KeyboardSoundEngine.psgNoteOn / noiseNoteOn` へ `chip: 0 | 1` オプションを追加。`allocateDcsgSlots` は指定チップのスロットのみを候補とし、steal も同一チップ内で完結。
     4. **ミキサー定位 API**: `AudioFrameMixer.setPsgOutputPlacement(chipIndex, 'left' | 'right' | 'center')` を新設 (既定 = 実機配線どおり)。`center` は L/R 両チャンネルへ同一出力 (ENV 試聴の中央定位)。**仮想キーボード専用ミキサーにのみ適用され、MML 演奏プレビューの定位は実機配線のまま不変**。
     5. **UI**: コントロールバーへ `OUT: L/R/C (MONO)` 定位バッジを新設 (L = シアン / R = アンバー / C = グレー + 単音発音のツールチップ)。トラック → チップ → 定位の対応が鍵盤試聴上で常時わかる。
-  - **将来布地**: ユーザー構想の「TRACK MONITOR 上で DCSG1 / DCSG2 の出力定位 (左・右・中央) を選択 (プレビュー用)」は Pending Tasks へ記録。`setPsgOutputPlacement` API はその布地として実装済み。
+  - **将来布石**: ユーザー構想の「TRACK MONITOR 上で DCSG1 / DCSG2 の出力定位 (左・右・中央) を選択 (プレビュー用)」は Pending Tasks へ記録。`setPsgOutputPlacement` API はその布石として実装済み。
   - **テスト**: `keyboardChipMode.test.ts` (+6: 定位解決の全分岐) / `AudioFrameMixer.test.ts` (+1: setPsgOutputPlacement の L / center / right 振り分け) / `KeyboardSoundEngine.test.ts` (+3: chip 指定発音・同一チップ内 steal・ノイズチップ指定) / `virtualSynth.test.ts` (+3: noteOnMonophonic の単音化・音源跨ぎ)。
   - **検証**: `npx tsc -b` エラーゼロ / `npm test` 全 47 ファイル・656 件合格 + 1 skip (+13) / `npm run lint` エラーゼロ (既存警告 10 は変更なし) / `npm run build` 成功。
 

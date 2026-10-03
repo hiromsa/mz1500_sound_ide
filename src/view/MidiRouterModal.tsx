@@ -123,10 +123,22 @@ export const MidiRouterModal: React.FC<MidiRouterModalProps> = ({
   const [preset, setPreset] = useState<string>('standard');
   const [playingTarget, setPlayingTarget] = useState<string | null>(null);
 
+  // 和音スプリット設定 (DCSGファースト: P2, P3, P4)
+  const [splitTargets, setSplitTargets] = useState<{ [voice: number]: string }>({
+    1: 'P2',
+    2: 'P3',
+    3: 'P4',
+  });
+
+  // 単音設定 (DCSGファースト: P1)
+  const [monoTarget, setMonoTarget] = useState<string>('P1');
+
   // FM音源が無効化された場合の自動フォールバック
   useEffect(() => {
     if (!enableYM2151) {
       if (preset === 'fm_full') {
+        // enableYM2151 (props) の変化に応じた state 補正のため effect での setState は正当
+        // oxlint-disable-next-line react/set-state-in-effect
         setPreset('standard');
       }
       setMonoTarget((prev) => (FM_CHANNELS.includes(prev) ? 'P1' : prev));
@@ -230,14 +242,6 @@ export const MidiRouterModal: React.FC<MidiRouterModalProps> = ({
 
   // 和音スプリット設定 (DCSGファースト: P2, P3, P4)
   const [chordSplitLogic, setChordSplitLogic] = useState<'top_down' | 'bottom_up' | 'round_robin'>('top_down');
-  const [splitTargets, setSplitTargets] = useState<{ [voice: number]: string }>({
-    1: 'P2',
-    2: 'P3',
-    3: 'P4',
-  });
-
-  // 単音設定 (DCSGファースト: P1)
-  const [monoTarget, setMonoTarget] = useState<string>('P1');
 
   const selectedTrack = tracks.find((t) => t.id === selectedTrackId);
 

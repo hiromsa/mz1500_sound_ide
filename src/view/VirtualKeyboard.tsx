@@ -380,6 +380,8 @@ export function VirtualKeyboard({
 
     // 1. オクターブ自動追従
     if (mmlContext.octave !== undefined) {
+      // MML キャレットコンテキスト (props) の変化を UI state へ同期するため effect での setState は正当
+      // oxlint-disable-next-line react/set-state-in-effect
       setTypingOctave(mmlContext.octave);
     }
 

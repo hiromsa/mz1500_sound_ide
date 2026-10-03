@@ -20,8 +20,8 @@ import { MmlLiveDock } from './MmlLiveDock';
 
 const MAX_FRAMES = 128;
 
-// 選択可能ピッチレンジ定義
-export const PITCH_RANGES = [
+// 選択可能ピッチレンジ定義 (コンポーネント内でのみ使用するため非 export: fast refresh 制約回避)
+const PITCH_RANGES = [
   { value: 7, label: '±7 (Micro/Vib)', desc: '微小デチューン・浅いビブラート' },
   { value: 15, label: '±15 (Standard)', desc: '標準ビブラート・効果音' },
   { value: 24, label: '±24 (Large)', desc: '深めのビブラート・ポルタメント' },

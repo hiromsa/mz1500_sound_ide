@@ -1,7 +1,7 @@
 {
     "name": "mz1500_sound_ide",
     "private": true,
-    "version": "0.0.1-beta.140",
+    "version": "0.0.1-beta.141",
     "type": "module",
     "scripts": {
         "dev": "vite",
@@ -12,6 +12,7 @@
         "deploy": "gh-pages -d dist",
         "test": "vitest run",
         "test:probe": "vitest run --config vitest.probe.config.ts",
+        "verify": "node scripts/verify-mml-parser.mjs",
         "update-chip-reference": "node scripts/update-chip-reference.mjs"
     },
     "dependencies": {

@@ -140,6 +140,13 @@ function App() {
   // About & Credits モーダル開閉ステート
   const [isAboutOpen, setIsAboutOpen] = useState<boolean>(false);
 
+  // システムコンソールログ
+  const [logs, setLogs] = useState<string[]>([
+    'MZ-1500 IDE INITIALIZED.',
+    'AUDIO PREVIEW ENGINE READY (Web Audio API 44.1 kHz).',
+    'READY.'
+  ]);
+
   // MIDI Router からの MML 反映処理
   const handleApplyMidiRouter = useCallback((generatedMml: string) => {
     if (monacoEditorRef.current) {
@@ -151,7 +158,7 @@ function App() {
       ...prev,
       `[${time}] [MIDI ROUTER] Generated MZ-1500 tracks applied to MML editor.`,
     ]);
-  }, []);
+  }, [setLogs]);
 
   // 右クリックメニュー: FM TONE 編集リクエスト
   const handleRequestEditTone = useCallback((id: number) => {
@@ -338,13 +345,6 @@ function App() {
   // 演奏ファサード (初回 PLAY 時に生成、unmount 時に破棄)
   const playerRef = useRef<Player | null>(null);
 
-  // システムコンソールログ
-  const [logs, setLogs] = useState<string[]>([
-    'MZ-1500 IDE INITIALIZED.',
-    'AUDIO PREVIEW ENGINE READY (Web Audio API 44.1 kHz).',
-    'READY.'
-  ]);
-
   // コンパイルエラー・問題一覧 (BUILD / PLAY 実行時にコンパイル結果で更新)
   const [compileErrors, setCompileErrors] = useState<CompileErrorItem[]>([]);
 
@@ -390,7 +390,7 @@ function App() {
   const appendLog = useCallback((message: string) => {
     const time = new Date().toLocaleTimeString();
     setLogs(prev => [...prev, `[${time}] ${message}`]);
-  }, []);
+  }, [setLogs]);
 
   // MmlEditor から通知されるアクティブソースを保持する
   const handleActiveSourceChange = useCallback((source: string, fileName: string) => {
